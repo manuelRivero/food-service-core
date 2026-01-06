@@ -41,31 +41,32 @@ export const sendMessage = async (
 /**
  * Maneja los webhooks POST de WhatsApp (mensajes entrantes)
  */
-export const handleWebhook = async (
-  req: Request,
-  res: Response
-): Promise<void> => {
-  try {
-    const webhookData = req.body;
+export const handleWebhook = (req: Request, res: Response): void => {
+  const entry = req.body.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
 
-    // TODO: Implementar lógica de procesamiento de webhook
-    // Aquí iría el procesamiento de mensajes entrantes
-    
-    console.log('Webhook recibido:', webhookData);
+  const message = value?.messages?.[0];
 
-    // WhatsApp requiere respuesta 200 rápida (dentro de 20 segundos)
-    res.status(200).json({
-      success: true,
-      message: 'Webhook procesado correctamente'
-    });
-  } catch (error) {
-    console.error('Error al procesar webhook:', error);
-    // Aún así respondemos 200 para que WhatsApp no reintente
-    res.status(200).json({
-      success: false,
-      error: 'Error al procesar webhook'
-    });
+  if (!message) {
+    // Eventos tipo status, delivery, read, etc
+    res.sendStatus(200);
+    return;
   }
+
+  const from = message.from;               // teléfono del cliente
+  const text = message.text?.body;         // mensaje
+  const phoneNumberId = value.metadata?.phone_number_id;
+
+  console.log('📩 Mensaje recibido');
+  console.log('From:', from);
+  console.log('Text:', text);
+  console.log('PhoneNumberId:', phoneNumberId);
+
+  // TODO: Procesar el mensaje aquí
+  // Ejemplo: guardar en BD, responder automáticamente, etc.
+
+  res.sendStatus(200);
 };
 
 /**
@@ -88,12 +89,3 @@ export const verifyWebhook = (req: Request, res: Response): void => {
     });
   }
 };
-
-
-export const receiveMessage = (req: Request, res: Response) => {
-  console.log('📩 Incoming WhatsApp webhook:')
-  console.dir(req.body, { depth: null })
-
-  // WhatsApp exige 200 rápido
-  return res.sendStatus(200)
-}
