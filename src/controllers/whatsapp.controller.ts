@@ -42,6 +42,8 @@ export const sendMessage = async (
  * Maneja los webhooks POST de WhatsApp (mensajes entrantes)
  */
 export const handleWebhook = (req: Request, res: Response): void => {
+  console.log('📩 Webhook recibido RAW');
+  console.dir(req.body, { depth: null });
   const entry = req.body.entry?.[0];
   const change = entry?.changes?.[0];
   const value = change?.value;
@@ -49,6 +51,8 @@ export const handleWebhook = (req: Request, res: Response): void => {
   const message = value?.messages?.[0];
 
   if (!message) {
+    console.log('ℹ️ Evento sin mensaje (status / system)');
+
     // Eventos tipo status, delivery, read, etc
     res.sendStatus(200);
     return;
