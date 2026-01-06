@@ -39,23 +39,33 @@ export const sendMessage = async (
 };
 
 /**
- * Maneja los webhooks de WhatsApp
+ * Maneja los webhooks POST de WhatsApp (mensajes entrantes)
  */
 export const handleWebhook = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  const mode = req.query['hub.mode']
-  const token = req.query['hub.verify_token']
-  const challenge = req.query['hub.challenge']
+  try {
+    const webhookData = req.body;
 
-  if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
-    console.log('Webhook verified successfully')
-    res.status(200).send(challenge)
+    // TODO: Implementar lógica de procesamiento de webhook
+    // Aquí iría el procesamiento de mensajes entrantes
+    
+    console.log('Webhook recibido:', webhookData);
+
+    // WhatsApp requiere respuesta 200 rápida (dentro de 20 segundos)
+    res.status(200).json({
+      success: true,
+      message: 'Webhook procesado correctamente'
+    });
+  } catch (error) {
+    console.error('Error al procesar webhook:', error);
+    // Aún así respondemos 200 para que WhatsApp no reintente
+    res.status(200).json({
+      success: false,
+      error: 'Error al procesar webhook'
+    });
   }
-
-  console.warn('Webhook verification failed')
-  res.sendStatus(403)
 };
 
 /**
