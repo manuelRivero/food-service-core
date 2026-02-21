@@ -44,7 +44,7 @@ const buildCategoryListPages = (
   buttons: { title: string; payload: string; description?: string; sectionTitle?: string }[],
   pageSize = 10
 ): { buttons: typeof buttons; page: number; totalPages: number }[] => {
-  const itemsPerPage = Math.max(pageSize - 2, 1);
+  const itemsPerPage = Math.max(pageSize - 3, 1);
   const totalPages = Math.ceil(buttons.length / itemsPerPage);
   const pages: { buttons: typeof buttons; page: number; totalPages: number }[] = [];
 
@@ -80,6 +80,13 @@ const buildCategoryListPages = (
       });
     }
 
+    pageButtons.push({
+      title: 'Tengo una duda',
+      payload: 'ASK_QUESTION',
+      description: 'Escribe tu consulta',
+      sectionTitle: 'Ayuda'
+    });
+
     pages.push({ buttons: pageButtons, page, totalPages });
   }
 
@@ -107,7 +114,7 @@ const buildProductListPages = (
         title: 'Pagina anterior',
         payload: `CATEGORY_PAGE:${categoryId}:${prevPage}`,
         description: 'Regresar a la pagina anterior',
-        sectionTitle: 'Productos'
+        sectionTitle: 'Platillos'
       });
     }
 
@@ -363,6 +370,45 @@ export const handleCheckoutFromWebhook = async (
   await handleCheckout(business, conversation, customer, from, phoneNumberId);
 };
 
+export const handleAskQuestionFromWebhook = async (
+  payload: WhatsAppWebhookPayload
+): Promise<void> => {
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
+  if (!phoneNumberId || !from) {
+    return;
+  }
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) {
+    return;
+  }
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+
+  await findOrCreateConversationState(conversation.id);
+
+  const sender = new WhatsAppSenderService();
+  const messageText =
+    'Claro! Estoy aqui para ayudarte. Escribe tu duda y la reviso enseguida.';
+
+  await sender.sendTextMessage({
+    phoneNumberId,
+    to: from,
+    message: messageText
+  });
+
+  await createConversationMessage(conversation.id, 'ai', messageText, false);
+  await updateConversationLastMessageAt(conversation.id);
+};
+
 export const handleCancelOrderFromWebhook = async (
   payload: WhatsAppWebhookPayload
 ): Promise<void> => {
@@ -479,12 +525,12 @@ export const handleCategorySelection = async (
     await sender.sendTextMessage({
       phoneNumberId,
       to,
-      message: 'No hay productos disponibles en esta categoría.'
+      message: 'No hay platillos disponibles en esta categoría.'
     });
     await createConversationMessage(
       conversation.id,
       'ai',
-      'No hay productos disponibles en esta categoría.',
+      'No hay platillos disponibles en esta categoría.',
       false
     );
     await updateConversationLastMessageAt(conversation.id);
@@ -520,7 +566,7 @@ export const handleCategorySelection = async (
     text,
     buttons: currentPage?.buttons ?? [],
     forceList: true,
-    actionButtonLabel: 'Ver productos',
+    actionButtonLabel: 'Ver platillos',
     page: totalPages > 1 ? safePage : undefined,
     totalPages: totalPages > 1 ? totalPages : undefined
   });
@@ -807,6 +853,7 @@ const handleEndConversation = async (
   });
 
   await createConversationMessage(conversation.id, 'ai', message, false);
+  await updateConversationLastMessageAt(conversation.id);
 };
 
 export const handleCheckout = async (
