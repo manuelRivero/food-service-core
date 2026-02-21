@@ -119,14 +119,33 @@ export const detectIntent = async (
       confidence?: number;
     };
     const intents = Array.isArray(parsed.intents) ? parsed.intents : [];
-    const normalized = intents.map((intent) => normalizeIntent(intent));
-    const nonGreeting = normalized.filter((intent) => intent !== ConversationIntent.SMALL_TALK);
-    if (nonGreeting.length > 0) {
-      return nonGreeting[0];
+    const INTENT_PRIORITY: ConversationIntent[] = [
+      ConversationIntent.ORDER_FOOD,
+      ConversationIntent.PRODUCT_QUERY,
+      ConversationIntent.VIEW_MENU,
+      ConversationIntent.VIEW_ORDER,
+      ConversationIntent.TRACK_ORDER,
+      ConversationIntent.PAYMENT_REQUEST,
+      ConversationIntent.SUPPORT,
+      ConversationIntent.GENERAL_QUESTION,
+      ConversationIntent.SMALL_TALK,
+      ConversationIntent.UNKNOWN
+    ];
+
+    const normalized = intents.map((intent) => {
+      const trimmed = intent.trim().toUpperCase();
+      if (trimmed === 'BUSINESS_INFO') {
+        return ConversationIntent.GENERAL_QUESTION;
+      }
+      return normalizeIntent(trimmed);
+    });
+
+    for (const candidate of INTENT_PRIORITY) {
+      if (normalized.includes(candidate)) {
+        return candidate;
+      }
     }
-    if (normalized.length > 0) {
-      return normalized[0];
-    }
+
     console.log('Intent classifier parsed JSON has no intents:', parsed);
     return ConversationIntent.UNKNOWN;
   } catch (error) {
