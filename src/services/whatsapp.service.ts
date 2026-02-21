@@ -1050,10 +1050,11 @@ export const processIncomingMessage = async (
   const intent = await detectIntent(formattedMessages);
   console.info('Detected intent:', intent);
 
-  if (intent === ConversationIntent.SMALL_TALK && isFirstMessage && !hasGreeted) {
+  if (intent === ConversationIntent.SMALL_TALK) {
     const sender = new WhatsAppSenderService();
-    const messageText =
-      'Hola! Bienvenido/a 👋\nEstoy aqui para ayudarte. Elige una opcion para comenzar.';
+    const messageText = isFirstMessage && !hasGreeted
+      ? 'Hola! Bienvenido/a 👋\nEstoy aqui para ayudarte. Elige una opcion para comenzar.'
+      : 'Hola de nuevo! 😊\n¿Quieres ver el menu o tienes una duda?';
 
     await sender.sendInteractiveMenu({
       phoneNumberId,
