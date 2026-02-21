@@ -181,6 +181,7 @@ export const handleViewMenuIntent = async (
     text: menuResponse.text,
     buttons: menuResponse.buttons
   });
+  await updateConversationState(conversationId, { current_intent: 'greeted' });
 };
 
 export const handleViewCategoriesFromWebhook = async (
@@ -218,6 +219,7 @@ export const handleViewCategoriesFromWebhook = async (
     page,
     isReturn
   );
+  await updateConversationState(conversation.id, { current_intent: 'greeted' });
 };
 
 const handleViewCategories = async (
@@ -395,6 +397,7 @@ export const handleAskQuestionFromWebhook = async (
   });
 
   await createConversationMessage(conversation.id, 'ai', messageText, false);
+  await updateConversationState(conversation.id, { current_intent: 'greeted' });
   await updateConversationLastMessageAt(conversation.id);
 };
 
@@ -1073,7 +1076,6 @@ export const processIncomingMessage = async (
       await handleViewCategories(business.id, customer.id, conversation.id, from, phoneNumberId, 1, true);
     } else {
       await handleViewMenuIntent(business.id, customer.id, conversation.id);
-      await updateConversationState(conversation.id, { current_intent: 'greeted' });
     }
     return;
   }

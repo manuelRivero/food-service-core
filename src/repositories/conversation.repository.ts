@@ -15,6 +15,19 @@ export const findOpenConversationByCustomer = async (
   });
 };
 
+export const findLatestConversationByCustomer = async (
+  customerId: string
+): Promise<conversation | null> => {
+  return prisma.conversation.findFirst({
+    where: {
+      customer_id: customerId
+    },
+    orderBy: {
+      last_message_at: 'desc'
+    }
+  });
+};
+
 export const createConversation = async (
   businessId: string,
   customerId: string
@@ -49,6 +62,25 @@ export const createOrGetOpenConversation = async (
         });
         return existing;
       }
+      const latest = await findLatestConversationByCustomer(customerId);
+      if (latest) {
+        console.info('Reabriendo conversación existente', {
+          conversationId: latest.id,
+          customerId
+        });
+        return prisma.$transaction(async (tx) => {
+          const reopened = await tx.conversation.update({
+            where: { id: latest.id },
+            data: { status: 'open', last_message_at: new Date() }
+          });
+          await tx.conversation_state.upsert({
+            where: { conversation_id: latest.id },
+            update: { current_intent: null },
+            create: { conversation_id: latest.id }
+          });
+          return reopened;
+        });
+      }
     }
 
     throw error;
@@ -67,8 +99,16 @@ export const updateConversationLastMessageAt = async (
 export const closeConversation = async (
   conversationId: string
 ): Promise<conversation> => {
-  return prisma.conversation.update({
-    where: { id: conversationId },
-    data: { status: 'closed', last_message_at: new Date() }
+  return prisma.$transaction(async (tx) => {
+    const closed = await tx.conversation.update({
+      where: { id: conversationId },
+      data: { status: 'closed', last_message_at: new Date() }
+    });
+    await tx.conversation_state.upsert({
+      where: { conversation_id: conversationId },
+      update: { current_intent: null },
+      create: { conversation_id: conversationId }
+    });
+    return closed;
   });
 };
