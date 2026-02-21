@@ -401,6 +401,26 @@ export const handleAskQuestionFromWebhook = async (
   await updateConversationLastMessageAt(conversation.id);
 };
 
+const sendAskQuestionPrompt = async (
+  conversationId: string,
+  to: string,
+  phoneNumberId: string
+): Promise<void> => {
+  const sender = new WhatsAppSenderService();
+  const messageText =
+    'Claro, estoy aqui para ayudarte. Escribe tu duda con total confianza y la reviso enseguida.';
+
+  await sender.sendTextMessage({
+    phoneNumberId,
+    to,
+    message: messageText
+  });
+
+  await createConversationMessage(conversationId, 'ai', messageText, false);
+  await updateConversationLastMessageAt(conversationId);
+  await updateConversationState(conversationId, { current_intent: 'greeted' });
+};
+
 export const handleCancelOrderFromWebhook = async (
   payload: WhatsAppWebhookPayload
 ): Promise<void> => {
@@ -1078,6 +1098,29 @@ export const processIncomingMessage = async (
     } else {
       await handleViewMenuIntent(business.id, customer.id, conversation.id);
     }
+    return;
+  }
+  if (intent === ConversationIntent.ASK_QUESTION) {
+    await sendAskQuestionPrompt(conversation.id, from, phoneNumberId);
+    return;
+  }
+  if (intent === ConversationIntent.UNKNOWN) {
+    const sender = new WhatsAppSenderService();
+    const messageText =
+      'No estoy seguro de haber entendido. ¿Quieres ver el menu o necesitas informacion?';
+
+    await sender.sendInteractiveMenu({
+      phoneNumberId,
+      to: from,
+      text: messageText,
+      buttons: [
+        { title: 'Ver menu', payload: 'VIEW_MENU_RETURN' },
+        { title: 'Necesito info', payload: 'ASK_QUESTION' }
+      ]
+    });
+
+    await createConversationMessage(conversation.id, 'ai', messageText, false);
+    await updateConversationLastMessageAt(conversation.id);
     return;
   }
   if (intent === ConversationIntent.VIEW_ORDER) {

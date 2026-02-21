@@ -11,19 +11,21 @@ const INTENT_SYSTEM_PROMPT =
   "SMALL_TALK,\n" +
   "VIEW_MENU,\n" +
   "VIEW_ORDER,\n" +
+  "ASK_QUESTION,\n" +
   "ORDER_FOOD,\n" +
   "TRACK_ORDER,\n" +
   "PAYMENT_REQUEST,\n" +
   "SUPPORT,\n" +
   "UNKNOWN.\n\n" +
-  "Food service context:\n" +
-  "- VIEW_MENU: user wants to see menu, food list, prices, categories.\n" +
-  "- VIEW_ORDER: user wants to see current order, cart, or order summary.\n" +
-  "- ORDER_FOOD: user wants to order something.\n" +
-  "- TRACK_ORDER: user asks about order status.\n" +
-  "- PAYMENT_REQUEST: user asks how to pay or requests payment link.\n" +
-  "- SUPPORT: complaints or human assistance.\n" +
-  "- SMALL_TALK: greetings or casual talk.\n" +
+  "Food service context (English + Spanish examples):\n" +
+  "- VIEW_MENU: user wants to see menu, food list, prices, categories. (\"menu\", \"ver menu\", \"categorias\")\n" +
+  "- VIEW_ORDER: user wants to see current order, cart, or order summary. (\"mi pedido\", \"ver pedido\")\n" +
+  "- ASK_QUESTION: user says they have a question or need information. (\"tengo una duda\", \"consulta\", \"informacion\")\n" +
+  "- ORDER_FOOD: user wants to order something. (\"quiero pedir\", \"ordenar\")\n" +
+  "- TRACK_ORDER: user asks about order status. (\"donde esta mi pedido\", \"estado\")\n" +
+  "- PAYMENT_REQUEST: user asks how to pay or requests payment link. (\"como pago\", \"link de pago\")\n" +
+  "- SUPPORT: complaints or human assistance. (\"soporte\", \"ayuda\", \"reclamo\", \"problema\", \"duda\")\n" +
+  "- SMALL_TALK: greetings or casual talk. (\"hola\", \"buenas\")\n" +
   "- UNKNOWN: unclear intent.\n\n" +
   'Return ONLY the intent keyword.';
 
@@ -34,6 +36,7 @@ const normalizeIntent = (value: string): ConversationIntent => {
     case ConversationIntent.SMALL_TALK:
     case ConversationIntent.VIEW_MENU:
     case ConversationIntent.VIEW_ORDER:
+    case ConversationIntent.ASK_QUESTION:
     case ConversationIntent.ORDER_FOOD:
     case ConversationIntent.TRACK_ORDER:
     case ConversationIntent.PAYMENT_REQUEST:
