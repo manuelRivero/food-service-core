@@ -35,19 +35,20 @@ UNKNOWN
 Rules:
 
 1. A message can contain multiple intents.
-2. If greeting + another intent → ignore greeting.
-3. If asking about opening/closing times → BUSINESS_HOURS.
-4. If asking where the business is located → BUSINESS_LOCATION.
-5. If asking about delivery areas, shipping cost, or delivery time → DELIVERY_INFO.
-6. If asking about payment options → PAYMENT_METHODS.
-7. If asking for menu or categories → VIEW_MENU.
-8. If asking about cart or current order → VIEW_ORDER.
-9. If user wants to order → ORDER_FOOD.
-10. If asking about order status → TRACK_ORDER.
-11. If reporting problem or requesting human help → SUPPORT.
-12. Any question about a specific product (availability, ingredients, price, variants, preparation, dietary questions) → PRODUCT_QUERY.
-13. If general informational question not covered above → GENERAL_QUESTION.
-14. If completely unclear → UNKNOWN.
+2. If the message contains ONLY greeting words (examples: "hola", "buenas", "buenos dias", "hey", "hello") and no product, order, or business-related request → SMALL_TALK.
+3. If greeting is combined with another intent → ignore greeting and classify by main intent.
+4. If asking about opening/closing times → BUSINESS_HOURS.
+5. If asking where the business is located → BUSINESS_LOCATION.
+6. If asking about delivery areas, shipping cost, or delivery time → DELIVERY_INFO.
+7. If asking about payment options → PAYMENT_METHODS.
+8. If asking for menu or categories → VIEW_MENU.
+9. If asking about cart or current order → VIEW_ORDER.
+10. If user wants to order → ORDER_FOOD.
+11. If asking about order status → TRACK_ORDER.
+12. If reporting problem or requesting human help → SUPPORT.
+13. Any question about a specific product (availability, ingredients, price, variants, preparation, dietary questions) → PRODUCT_QUERY.
+14. If general informational question not covered above → GENERAL_QUESTION.
+15. If completely unclear → UNKNOWN.
 
 Entity extraction rules:
 
@@ -84,7 +85,7 @@ const normalizeIntent = (value: string): ConversationIntent => {
     case ConversationIntent.BUSINESS_LOCATION:
     case ConversationIntent.DELIVERY_INFO:
     case ConversationIntent.PAYMENT_METHODS:
-    case ConversationIntent.MENU_INGREDIENTS:
+    case ConversationIntent.PRODUCT_QUERY:
     case ConversationIntent.GENERAL_QUESTION:
     case ConversationIntent.UNKNOWN:
       return trimmed as ConversationIntent;
@@ -110,6 +111,7 @@ export const detectIntent = async (
   });
 
   const content = response.choices[0]?.message?.content ?? '';
+  console.log('Intent classifier raw response:', content);
   try {
     const parsed = JSON.parse(content) as {
       intents?: string[];
@@ -125,8 +127,16 @@ export const detectIntent = async (
     if (normalized.length > 0) {
       return normalized[0];
     }
+    console.log('Intent classifier parsed JSON has no intents:', parsed);
     return ConversationIntent.UNKNOWN;
-  } catch {
-    return normalizeIntent(content);
+  } catch (error) {
+    console.error('Intent classifier JSON parse error:', error);
+    const trimmed = content.trim().toUpperCase();
+    const isSingleKeyword = /^[A-Z_]+$/.test(trimmed);
+    if (isSingleKeyword) {
+      return normalizeIntent(trimmed);
+    }
+    console.warn('Intent classifier fallback to UNKNOWN for content:', content);
+    return ConversationIntent.UNKNOWN;
   }
 };
