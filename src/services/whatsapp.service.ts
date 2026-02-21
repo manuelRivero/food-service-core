@@ -20,6 +20,13 @@ import { detectIntent } from './conversationOrchestrator.service';
 import { MenuService } from './menu.service';
 import { ConversationIntent } from '../types/conversationIntent';
 import { WhatsAppSenderService } from './whatsappSender.service';
+import { Prisma } from '@prisma/client';
+import type {
+  business as Business,
+  conversation as Conversation,
+  customer as Customer
+} from '@prisma/client';
+import { prisma } from '../lib/prisma';
 
 const chunkButtons = <T>(items: T[], size: number): T[][] => {
   const chunks: T[][] = [];
@@ -81,6 +88,61 @@ export const handleCategorySelectionFromWebhook = async (
   const from = message?.from;
   const phoneNumberId = value?.metadata?.phone_number_id;
 
+  if (!phoneNumberId || !from || !categoryId) {
+    return;
+  }
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) {
+    return;
+  }
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+
+  await findOrCreateConversationState(conversation.id);
+  await handleCategorySelection(business, conversation, categoryId, from, phoneNumberId);
+};
+
+export const handleAddItemFromWebhook = async (
+  payload: WhatsAppWebhookPayload,
+  menuItemId: string
+): Promise<void> => {
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
+  if (!phoneNumberId || !from || !menuItemId) {
+    return;
+  }
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) {
+    return;
+  }
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+
+  await findOrCreateConversationState(conversation.id);
+  await handleAddItemToDraftOrder(business, conversation, customer, menuItemId, from, phoneNumberId);
+};
+
+export const handleCheckoutFromWebhook = async (
+  payload: WhatsAppWebhookPayload
+): Promise<void> => {
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
   if (!phoneNumberId || !from) {
     return;
   }
@@ -94,41 +156,372 @@ export const handleCategorySelectionFromWebhook = async (
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
   await findOrCreateConversationState(conversation.id);
-  await handleCategorySelection(business.id, customer.id, conversation.id, categoryId);
+  await handleCheckout(business, conversation, customer, from, phoneNumberId);
 };
 
 export const handleCategorySelection = async (
-  businessId: string,
-  customerId: string,
-  conversationId: string,
-  categoryId: string
+  business: Business,
+  conversation: Conversation,
+  categoryId: string,
+  to: string,
+  phoneNumberId: string
 ): Promise<void> => {
-  const [business, customer, itemsResponse] = await Promise.all([
-    findBusinessById(businessId),
-    findCustomerById(customerId),
-    MenuService.getItemsByCategory({ businessId, customerId, categoryId })
-  ]);
+  const category = await prisma.menu_category.findFirst({
+    where: { id: categoryId, business_id: business.id, is_active: true },
+    select: { id: true, name: true }
+  });
 
-  if (!business) {
-    throw new Error('Business no encontrado');
-  }
-  if (!customer) {
-    throw new Error('Customer no encontrado');
-  }
-  if (!business.whatsapp_phone_id) {
-    throw new Error('Business sin whatsapp_phone_id');
+  if (!category) {
+    const sender = new WhatsAppSenderService();
+    await sender.sendTextMessage({
+      phoneNumberId,
+      to,
+      message: 'Categoría no encontrada'
+    });
+    await createConversationMessage(conversation.id, 'ai', 'Categoría no encontrada', false);
+    await updateConversationLastMessageAt(conversation.id);
+    return;
   }
 
-  await createConversationMessage(conversationId, 'ai', itemsResponse.text, true);
-  await updateConversationLastMessageAt(conversationId);
+  const businessCurrency = await prisma.business.findUnique({
+    where: { id: business.id },
+    select: { currency_code: true }
+  });
+  const currency = businessCurrency?.currency_code;
+  const now = new Date();
+  const priceWhere = {
+    currency_code: currency ?? undefined,
+    is_active: true,
+    valid_from: { lte: now },
+    OR: [{ valid_to: null }, { valid_to: { gte: now } }]
+  };
+
+  const items = await prisma.menu_item.findMany({
+    where: {
+      business_id: business.id,
+      category_id: categoryId,
+      is_available: true,
+      menu_item_price: {
+        some: priceWhere
+      }
+    },
+    orderBy: { created_at: 'asc' },
+    include: {
+      menu_item_price: {
+        where: priceWhere,
+        orderBy: { valid_from: 'desc' },
+        take: 1
+      }
+    }
+  });
+
+  if (items.length === 0) {
+    const sender = new WhatsAppSenderService();
+    await sender.sendTextMessage({
+      phoneNumberId,
+      to,
+      message: 'No hay productos disponibles en esta categoría.'
+    });
+    await createConversationMessage(
+      conversation.id,
+      'ai',
+      'No hay productos disponibles en esta categoría.',
+      false
+    );
+    await updateConversationLastMessageAt(conversation.id);
+    return;
+  }
+
+  const lines: string[] = [`🧾 ${category.name}`];
+  for (const item of items) {
+    const price = item.menu_item_price[0];
+    const priceText = price
+      ? `${price.amount.toFixed(2)} ${price.currency_code}`
+      : 'N/A';
+    lines.push(`- ${item.name} — ${priceText}`);
+  }
+
+  const buttons = items.slice(0, 3).map((item) => ({
+    title: item.name.slice(0, 20),
+    payload: `ADD_ITEM:${item.id}`
+  }));
 
   const sender = new WhatsAppSenderService();
   await sender.sendInteractiveMenu({
-    phoneNumberId: business.whatsapp_phone_id,
-    to: customer.phone_number,
-    text: itemsResponse.text,
-    buttons: itemsResponse.buttons
+    phoneNumberId,
+    to,
+    text: lines.join('\n'),
+    buttons
   });
+
+  await createConversationMessage(conversation.id, 'ai', lines.join('\n'), false);
+  await updateConversationLastMessageAt(conversation.id);
+};
+
+export const handleAddItemToDraftOrder = async (
+  business: Business,
+  conversation: Conversation,
+  customer: Customer,
+  menuItemId: string,
+  to: string,
+  phoneNumberId: string
+): Promise<void> => {
+  const businessCurrency = await prisma.business.findUnique({
+    where: { id: business.id },
+    select: { currency_code: true }
+  });
+  const currency = businessCurrency?.currency_code ?? customer.preferred_currency;
+  if (!currency) {
+    const sender = new WhatsAppSenderService();
+    await sender.sendTextMessage({
+      phoneNumberId,
+      to,
+      message: 'No tengo tu moneda preferida registrada para procesar el pedido.'
+    });
+    await createConversationMessage(
+      conversation.id,
+      'ai',
+      'No tengo tu moneda preferida registrada para procesar el pedido.',
+      false
+    );
+    await updateConversationLastMessageAt(conversation.id);
+    return;
+  }
+
+  const now = new Date();
+  const priceWhere = {
+    currency_code: currency,
+    is_active: true,
+    valid_from: { lte: now },
+    OR: [{ valid_to: null }, { valid_to: { gte: now } }]
+  };
+
+  const result = await prisma.$transaction(async (tx) => {
+    let draftOrder = await tx.draft_order.findFirst({
+      where: {
+        business_id: business.id,
+        customer_phone: customer.phone_number,
+        status: 'active'
+      }
+    });
+
+    if (!draftOrder) {
+      draftOrder = await tx.draft_order.create({
+        data: {
+          business_id: business.id,
+          customer_phone: customer.phone_number,
+          status: 'active',
+          currency
+        }
+      });
+    }
+
+    const existingItem = await tx.draft_order_item.findFirst({
+      where: {
+        draft_order_id: draftOrder.id,
+        product_id: menuItemId
+      }
+    });
+
+    let itemName = '';
+
+    if (existingItem) {
+      const newQuantity = existingItem.quantity + 1;
+      const totalPrice = existingItem.unit_price.mul(newQuantity);
+      await tx.draft_order_item.update({
+        where: { id: existingItem.id },
+        data: {
+          quantity: newQuantity,
+          total_price: totalPrice
+        }
+      });
+
+      const menuItem = await tx.menu_item.findUnique({
+        where: { id: menuItemId },
+        select: { name: true }
+      });
+      itemName = menuItem?.name ?? '';
+    } else {
+      const menuItem = await tx.menu_item.findUnique({
+        where: { id: menuItemId },
+        select: { name: true }
+      });
+      itemName = menuItem?.name ?? '';
+
+      const price = await tx.menu_item_price.findFirst({
+        where: {
+          menu_item_id: menuItemId,
+          ...priceWhere
+        },
+        orderBy: { valid_from: 'desc' }
+      });
+
+      if (!price) {
+        throw new Error('Precio no encontrado para el producto');
+      }
+
+      await tx.draft_order_item.create({
+        data: {
+          draft_order_id: draftOrder.id,
+          product_id: menuItemId,
+          quantity: 1,
+          unit_price: price.amount,
+          total_price: price.amount
+        }
+      });
+    }
+
+    const items = await tx.draft_order_item.findMany({
+      where: { draft_order_id: draftOrder.id }
+    });
+
+    const totalAmount = items.reduce(
+      (acc, item) => acc.add(item.total_price),
+      new Prisma.Decimal(0)
+    );
+
+    const updatedOrder = await tx.draft_order.update({
+      where: { id: draftOrder.id },
+      data: { total_amount: totalAmount }
+    });
+
+    return {
+      items,
+      total: updatedOrder.total_amount,
+      currency
+    };
+  });
+
+  const menuItemIds = result.items.flatMap((item) =>
+    item.product_id ? [item.product_id] : []
+  );
+  const menuItems =
+    menuItemIds.length > 0
+      ? await prisma.menu_item.findMany({
+          where: { id: { in: menuItemIds } },
+          select: { id: true, name: true }
+        })
+      : [];
+  const menuItemMap = new Map(menuItems.map((item) => [item.id, item.name]));
+
+  const lines: string[] = ['🛒 Pedido actual:', ''];
+  for (const item of result.items) {
+    const name = item.product_id ? menuItemMap.get(item.product_id) ?? 'Producto' : 'Producto';
+    lines.push(`- ${item.quantity}x ${name}`);
+  }
+  lines.push('', `Total: $${result.total.toFixed(2)} ${result.currency}`);
+
+  const sender = new WhatsAppSenderService();
+  await sender.sendInteractiveMenu({
+    phoneNumberId,
+    to,
+    text: lines.join('\n'),
+    buttons: [
+      { title: 'Agregar más', payload: 'VIEW_MENU' },
+      { title: 'Finalizar pedido', payload: 'CHECKOUT' }
+    ]
+  });
+
+  await createConversationMessage(conversation.id, 'ai', lines.join('\n'), false);
+  await updateConversationLastMessageAt(conversation.id);
+};
+
+export const handleCheckout = async (
+  business: Business,
+  conversation: Conversation,
+  customer: Customer,
+  to: string,
+  phoneNumberId: string
+): Promise<void> => {
+  const result = await prisma.$transaction(async (tx) => {
+    const draftOrder = await tx.draft_order.findFirst({
+      where: {
+        business_id: business.id,
+        customer_phone: customer.phone_number,
+        status: 'active'
+      }
+    });
+
+    if (!draftOrder) {
+      return { status: 'no_active' as const };
+    }
+
+    const items = await tx.draft_order_item.findMany({
+      where: { draft_order_id: draftOrder.id }
+    });
+
+    if (items.length === 0) {
+      return { status: 'empty' as const };
+    }
+
+    const totalAmount = items.reduce(
+      (acc, item) => acc.add(item.total_price),
+      new Prisma.Decimal(0)
+    );
+
+    const order = await tx.orders.create({
+      data: {
+        status: 'pending_payment',
+        currency_code: draftOrder.currency,
+        total_amount: totalAmount,
+        conversation_id: conversation.id,
+        customer_id: customer.id,
+        business_id: business.id
+      }
+    });
+
+    const orderItems = items.flatMap((item) =>
+      item.product_id
+        ? [
+            {
+              order_id: order.id,
+              menu_item_id: item.product_id,
+              quantity: item.quantity,
+              unit_price: item.unit_price
+            }
+          ]
+        : []
+    );
+
+    if (orderItems.length > 0) {
+      await tx.order_item.createMany({ data: orderItems });
+    }
+
+    await tx.draft_order.update({
+      where: { id: draftOrder.id },
+      data: { status: 'converted' }
+    });
+
+    return {
+      status: 'ok' as const,
+      total: totalAmount,
+      currency: draftOrder.currency
+    };
+  });
+
+  const sender = new WhatsAppSenderService();
+
+  if (result.status === 'no_active') {
+    const message = 'No tienes un pedido activo.';
+    await sender.sendTextMessage({ phoneNumberId, to, message });
+    await createConversationMessage(conversation.id, 'ai', message, false);
+    await updateConversationLastMessageAt(conversation.id);
+    return;
+  }
+
+  if (result.status === 'empty') {
+    const message = 'Tu pedido está vacío.';
+    await sender.sendTextMessage({ phoneNumberId, to, message });
+    await createConversationMessage(conversation.id, 'ai', message, false);
+    await updateConversationLastMessageAt(conversation.id);
+    return;
+  }
+
+  const totalText = `$${result.total.toFixed(2)} ${result.currency}`;
+  const message = `🧾 Pedido confirmado\n\nTotal: ${totalText}\n\nEn breve recibirás el link de pago.`;
+  await sender.sendTextMessage({ phoneNumberId, to, message });
+  await createConversationMessage(conversation.id, 'ai', message, false);
+  await updateConversationLastMessageAt(conversation.id);
 };
 
 export class ValidationError extends Error {

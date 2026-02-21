@@ -214,7 +214,7 @@ export class MenuService {
 
     const buttons: ItemButton[] = items.slice(0, 3).map((item) => ({
       title: toButtonTitle(`Agregar: ${item.name}`),
-      payload: `ADD_ITEM_${item.id}`
+      payload: `ADD_ITEM:${item.id}`
     }));
 
     buttons.push({ title: 'Volver a categorías', payload: 'VIEW_MENU' });

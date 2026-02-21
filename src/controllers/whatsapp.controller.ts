@@ -5,7 +5,9 @@ import {
   WhatsAppWebhookPayload
 } from '../types/whatsapp';
 import {
+  handleAddItemFromWebhook,
   handleCategorySelectionFromWebhook,
+  handleCheckoutFromWebhook,
   processIncomingMessage,
   sendTextMessage,
   ValidationError,
@@ -55,15 +57,28 @@ export const handleWebhook = async (
   const change = entry?.changes?.[0];
   const value = change?.value;
   const message = value?.messages?.[0];
-  const interactive = message?.interactive;
-  const payloadId = interactive?.button_reply?.id ?? interactive?.list_reply?.id;
-
-  if (payloadId?.startsWith('VIEW_CATEGORY_')) {
-    const categoryId = payloadId.replace('VIEW_CATEGORY_', '');
-    void handleCategorySelectionFromWebhook(req.body, categoryId).catch((error: unknown) => {
-      console.error('Async webhook processing error:', error);
-    });
-    return;
+  if (message?.type === 'interactive' && message?.interactive?.button_reply?.id) {
+    const payloadId = message.interactive.button_reply.id;
+    if (payloadId.startsWith('CATEGORY:')) {
+      const categoryId = payloadId.split(':')[1] ?? '';
+      void handleCategorySelectionFromWebhook(req.body, categoryId).catch((error: unknown) => {
+        console.error('Async webhook processing error:', error);
+      });
+      return;
+    }
+    if (payloadId.startsWith('ADD_ITEM:')) {
+      const menuItemId = payloadId.split(':')[1] ?? '';
+      void handleAddItemFromWebhook(req.body, menuItemId).catch((error: unknown) => {
+        console.error('Async webhook processing error:', error);
+      });
+      return;
+    }
+    if (payloadId === 'CHECKOUT') {
+      void handleCheckoutFromWebhook(req.body).catch((error: unknown) => {
+        console.error('Async webhook processing error:', error);
+      });
+      return;
+    }
   }
 
   void processIncomingMessage(req.body).catch((error: unknown) => {
