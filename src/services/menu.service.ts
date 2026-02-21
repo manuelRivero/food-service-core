@@ -55,6 +55,41 @@ export class MenuService {
     businessId: string;
     customerId: string;
   }): Promise<MenuResponse> {
+    const { customerId } = params;
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { preferred_currency: true }
+    });
+
+    const currency = customer?.preferred_currency ?? null;
+    const lines: string[] = [
+      '🍽️ Menú peruano',
+      '',
+      'Descubre entradas, platos fuertes, marinos, bebidas, postres y vinos.',
+      'Presiona el botón para ver las categorías disponibles.'
+    ];
+
+    if (!currency) {
+      lines.push('', 'ℹ️ No tengo tu moneda preferida, los precios pueden omitirse.');
+    }
+
+    const buttons: MenuButton[] = [
+      {
+        title: 'Ver categorías',
+        payload: 'VIEW_CATEGORIES'
+      }
+    ];
+
+    return {
+      text: lines.join('\n'),
+      buttons
+    };
+  }
+
+  static async getCategoryListForCustomer(params: {
+    businessId: string;
+    customerId: string;
+  }): Promise<MenuResponse> {
     const { businessId, customerId } = params;
     const customer = await prisma.customer.findUnique({
       where: { id: customerId },
@@ -64,26 +99,6 @@ export class MenuService {
     const currency = customer?.preferred_currency ?? null;
     const now = new Date();
     const priceWhere = buildPriceWhere(currency, now);
-
-    const featuredItems = await prisma.menu_item.findMany({
-      where: {
-        business_id: businessId,
-        is_available: true,
-        is_featured: true,
-        menu_item_price: {
-          some: priceWhere
-        }
-      },
-      take: 5,
-      orderBy: { created_at: 'desc' },
-      include: {
-        menu_item_price: {
-          where: priceWhere,
-          orderBy: { valid_from: 'desc' },
-          take: 1
-        }
-      }
-    });
 
     const categories = await prisma.menu_category.findMany({
       where: {
@@ -99,43 +114,25 @@ export class MenuService {
               some: priceWhere
             }
           },
-          orderBy: { created_at: 'desc' },
-          include: {
-            menu_item_price: {
-              where: priceWhere,
-              orderBy: { valid_from: 'desc' },
-              take: 1
-            }
-          }
+          select: { id: true }
         }
       }
     });
-
-    const lines: string[] = ['🍽️ Menú'];
-
-    if (featuredItems.length > 0) {
-      lines.push('', '⭐ Destacados:');
-      for (const item of featuredItems) {
-        const price = item.menu_item_price[0];
-        const priceText = price ? ` — ${formatPrice(price)}` : '';
-        lines.push(`- ${item.name}${priceText}`);
-      }
-    }
 
     const visibleCategories = categories.filter(
       (category) => category.menu_item.length > 0
     );
 
-    lines.push('', '📋 Categorías:');
-    for (const category of visibleCategories) {
-      lines.push(`- ${category.name}`);
+    const lines: string[] = ['📋 Categorías disponibles', '', 'Selecciona una categoría.'];
+
+    if (visibleCategories.length === 0) {
+      return {
+        text: 'No hay categorías disponibles en este momento.',
+        buttons: []
+      };
     }
 
-    if (!currency) {
-      lines.push('', 'ℹ️ No tengo tu moneda preferida, los precios pueden omitirse.');
-    }
-
-    const buttons: MenuButton[] = visibleCategories.slice(0, 3).map((category) => ({
+    const buttons: MenuButton[] = visibleCategories.map((category) => ({
       title: toButtonTitle(category.name),
       payload: `CATEGORY:${category.id}`
     }));
@@ -214,7 +211,7 @@ export class MenuService {
 
     const buttons: ItemButton[] = items.slice(0, 3).map((item) => ({
       title: toButtonTitle(`Agregar: ${item.name}`),
-      payload: `ADD_ITEM:${item.id}`
+      payload: `ADD_ITEM_${item.id}`
     }));
 
     buttons.push({ title: 'Volver a categorías', payload: 'VIEW_MENU' });

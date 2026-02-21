@@ -8,6 +8,7 @@ import {
   handleAddItemFromWebhook,
   handleCategorySelectionFromWebhook,
   handleCheckoutFromWebhook,
+  handleViewCategoriesFromWebhook,
   processIncomingMessage,
   sendTextMessage,
   ValidationError,
@@ -57,8 +58,12 @@ export const handleWebhook = async (
   const change = entry?.changes?.[0];
   const value = change?.value;
   const message = value?.messages?.[0];
-  if (message?.type === 'interactive' && message?.interactive?.button_reply?.id) {
-    const payloadId = message.interactive.button_reply.id;
+  const payloadId =
+    message?.type === 'interactive'
+      ? message.interactive?.button_reply?.id ?? message.interactive?.list_reply?.id
+      : undefined;
+
+  if (payloadId) {
     if (payloadId.startsWith('CATEGORY_PAGE:')) {
       const [, categoryId, pageValue] = payloadId.split(':');
       const page = Number(pageValue);
@@ -87,6 +92,12 @@ export const handleWebhook = async (
     }
     if (payloadId === 'CHECKOUT') {
       void handleCheckoutFromWebhook(req.body).catch((error: unknown) => {
+        console.error('Async webhook processing error:', error);
+      });
+      return;
+    }
+    if (payloadId === 'VIEW_CATEGORIES') {
+      void handleViewCategoriesFromWebhook(req.body).catch((error: unknown) => {
         console.error('Async webhook processing error:', error);
       });
       return;

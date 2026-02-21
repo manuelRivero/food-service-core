@@ -76,6 +76,69 @@ export const handleViewMenuIntent = async (
   }
 };
 
+export const handleViewCategoriesFromWebhook = async (
+  payload: WhatsAppWebhookPayload
+): Promise<void> => {
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
+  if (!phoneNumberId || !from) {
+    return;
+  }
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) {
+    return;
+  }
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+
+  await findOrCreateConversationState(conversation.id);
+  await handleViewCategories(business.id, customer.id, conversation.id, from, phoneNumberId);
+};
+
+const handleViewCategories = async (
+  businessId: string,
+  customerId: string,
+  conversationId: string,
+  to: string,
+  phoneNumberId: string
+): Promise<void> => {
+  const menuResponse = await MenuService.getCategoryListForCustomer({
+    businessId,
+    customerId
+  });
+
+  const sender = new WhatsAppSenderService();
+
+  if (menuResponse.buttons.length === 0) {
+    await sender.sendTextMessage({
+      phoneNumberId,
+      to,
+      message: menuResponse.text
+    });
+    await createConversationMessage(conversationId, 'ai', menuResponse.text, true);
+    await updateConversationLastMessageAt(conversationId);
+    return;
+  }
+
+  await sender.sendInteractiveMenu({
+    phoneNumberId,
+    to,
+    text: menuResponse.text,
+    buttons: menuResponse.buttons
+  });
+
+  await createConversationMessage(conversationId, 'ai', menuResponse.text, true);
+  await updateConversationLastMessageAt(conversationId);
+};
+
 export const handleCategorySelectionFromWebhook = async (
   payload: WhatsAppWebhookPayload,
   categoryId: string,
