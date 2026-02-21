@@ -6,28 +6,67 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-const INTENT_SYSTEM_PROMPT =
-  "Classify the user's intent strictly as one of:\n" +
-  "SMALL_TALK,\n" +
-  "VIEW_MENU,\n" +
-  "VIEW_ORDER,\n" +
-  "ASK_QUESTION,\n" +
-  "ORDER_FOOD,\n" +
-  "TRACK_ORDER,\n" +
-  "PAYMENT_REQUEST,\n" +
-  "SUPPORT,\n" +
-  "UNKNOWN.\n\n" +
-  "Food service context (English + Spanish examples):\n" +
-  "- VIEW_MENU: user wants to see menu, food list, prices, categories. (\"menu\", \"ver menu\", \"categorias\")\n" +
-  "- VIEW_ORDER: user wants to see current order, cart, or order summary. (\"mi pedido\", \"ver pedido\")\n" +
-  "- ASK_QUESTION: user says they have a question or need information. (\"tengo una duda\", \"consulta\", \"informacion\")\n" +
-  "- ORDER_FOOD: user wants to order something. (\"quiero pedir\", \"ordenar\")\n" +
-  "- TRACK_ORDER: user asks about order status. (\"donde esta mi pedido\", \"estado\")\n" +
-  "- PAYMENT_REQUEST: user asks how to pay or requests payment link. (\"como pago\", \"link de pago\")\n" +
-  "- SUPPORT: complaints or human assistance. (\"soporte\", \"ayuda\", \"reclamo\", \"problema\", \"duda\")\n" +
-  "- SMALL_TALK: greetings or casual talk. (\"hola\", \"buenas\")\n" +
-  "- UNKNOWN: unclear intent.\n\n" +
-  'Return ONLY the intent keyword.';
+const INTENT_CLASSIFIER_PROMPT = `
+You are an intent classification engine for a WhatsApp food ordering SaaS system.
+
+Your job is to analyze a user's message and return structured JSON.
+
+The user may express multiple intents in one message.
+
+You must return ONLY valid JSON. No explanations. No extra text.
+
+Available intents:
+
+SMALL_TALK
+VIEW_MENU
+VIEW_ORDER
+ORDER_FOOD
+TRACK_ORDER
+PAYMENT_REQUEST
+SUPPORT
+BUSINESS_HOURS
+BUSINESS_LOCATION
+DELIVERY_INFO
+PAYMENT_METHODS
+MENU_INGREDIENTS
+GENERAL_QUESTION
+UNKNOWN
+
+Rules:
+
+1. A message can contain multiple intents.
+2. If greeting + another intent → ignore greeting.
+3. If asking about opening/closing times → BUSINESS_HOURS.
+4. If asking where the business is located → BUSINESS_LOCATION.
+5. If asking about delivery areas, shipping cost, or delivery time → DELIVERY_INFO.
+6. If asking about payment options → PAYMENT_METHODS.
+7. If asking about ingredients of a specific dish → MENU_INGREDIENTS.
+8. If asking for menu or categories → VIEW_MENU.
+9. If asking about cart or current order → VIEW_ORDER.
+10. If user wants to order → ORDER_FOOD.
+11. If asking about order status → TRACK_ORDER.
+12. If reporting problem or requesting human help → SUPPORT.
+13. If general informational question not covered above → GENERAL_QUESTION.
+14. If completely unclear → UNKNOWN.
+
+Entity extraction rules:
+
+- If a specific product is mentioned, extract it as:
+  "product_name": "<normalized lower case name>"
+- If no product is mentioned, set product_name to null.
+
+Output format:
+
+{
+  "intents": ["INTENT_1", "INTENT_2"],
+  "entities": {
+    "product_name": string | null
+  },
+  "confidence": number (0 to 1)
+}
+
+Return only JSON.
+`;
 
 const normalizeIntent = (value: string): ConversationIntent => {
   const trimmed = value.trim().toUpperCase();
@@ -41,6 +80,12 @@ const normalizeIntent = (value: string): ConversationIntent => {
     case ConversationIntent.TRACK_ORDER:
     case ConversationIntent.PAYMENT_REQUEST:
     case ConversationIntent.SUPPORT:
+    case ConversationIntent.BUSINESS_HOURS:
+    case ConversationIntent.BUSINESS_LOCATION:
+    case ConversationIntent.DELIVERY_INFO:
+    case ConversationIntent.PAYMENT_METHODS:
+    case ConversationIntent.MENU_INGREDIENTS:
+    case ConversationIntent.GENERAL_QUESTION:
     case ConversationIntent.UNKNOWN:
       return trimmed as ConversationIntent;
     default:
@@ -54,16 +99,34 @@ export const detectIntent = async (
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     temperature: 0,
-    max_tokens: 10,
+    max_tokens: 150,
     messages: [
       {
         role: 'system',
-        content: INTENT_SYSTEM_PROMPT
+        content: INTENT_CLASSIFIER_PROMPT
       },
       ...messages
     ]
   });
 
   const content = response.choices[0]?.message?.content ?? '';
-  return normalizeIntent(content);
+  try {
+    const parsed = JSON.parse(content) as {
+      intents?: string[];
+      entities?: { product_name?: string | null };
+      confidence?: number;
+    };
+    const intents = Array.isArray(parsed.intents) ? parsed.intents : [];
+    const normalized = intents.map((intent) => normalizeIntent(intent));
+    const nonGreeting = normalized.filter((intent) => intent !== ConversationIntent.SMALL_TALK);
+    if (nonGreeting.length > 0) {
+      return nonGreeting[0];
+    }
+    if (normalized.length > 0) {
+      return normalized[0];
+    }
+    return ConversationIntent.UNKNOWN;
+  } catch {
+    return normalizeIntent(content);
+  }
 };

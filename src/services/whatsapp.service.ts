@@ -41,6 +41,7 @@ const chunkButtons = <T>(items: T[], size: number): T[][] => {
 const toRowTitle = (value: string, maxLength = 24): string => value.slice(0, maxLength);
 const toRowDescription = (value: string, maxLength = 72): string => value.slice(0, maxLength);
 
+
 const buildCategoryListPages = (
   buttons: { title: string; payload: string; description?: string; sectionTitle?: string }[],
   pageSize = 10

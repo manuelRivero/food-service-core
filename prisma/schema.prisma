@@ -8,25 +8,26 @@ datasource db {
 }
 
 model business {
-  id                     String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                     String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                   String
   description            String?
-  timezone               String          @default("America/Argentina/Buenos_Aires")
-  is_active              Boolean         @default(true)
-  created_at             DateTime        @default(now()) @db.Timestamptz(6)
+  timezone               String           @default("America/Argentina/Buenos_Aires")
+  is_active              Boolean          @default(true)
+  created_at             DateTime         @default(now()) @db.Timestamptz(6)
   openai_api_key         String?
-  openai_model           String?         @default("gpt-3.5-turbo")
-  openai_active          Boolean?        @default(true)
+  openai_model           String?          @default("gpt-3.5-turbo")
+  openai_active          Boolean?         @default(true)
   whatsapp_phone_number  String?
   whatsapp_phone_id      String?
   whatsapp_access_token  String?
-  ai_monthly_tokens_used Int             @default(0)
-  ai_monthly_token_limit Int             @default(100000)
-  ai_plan                String          @default("basic")
-  ai_reset_at            DateTime        @default(now()) @db.Timestamptz(6)
-  ai_blocked             Boolean         @default(false)
-  currency_code          String?         @db.Char(3)
-  currency               currency?       @relation(fields: [currency_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  ai_monthly_tokens_used Int              @default(0)
+  ai_monthly_token_limit Int              @default(100000)
+  ai_plan                String           @default("basic")
+  ai_reset_at            DateTime         @default(now()) @db.Timestamptz(6)
+  ai_blocked             Boolean          @default(false)
+  currency_code          String?          @db.Char(3)
+  currency               currency?        @relation(fields: [currency_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  business_hours         business_hours[]
   conversation           conversation[]
   customer               customer[]
   draft_order            draft_order[]
@@ -51,19 +52,19 @@ model conversation {
 }
 
 model conversation_message {
-  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  conversation_id String       @db.Uuid
-  externalMessageId String?    @unique
-  whatsapp_message_id String?  @unique
-  sender          String
-  message         String
-  is_ai_generated Boolean      @default(false)
-  ai_prompt_tokens     Int?
-  ai_completion_tokens Int?
-  ai_total_tokens      Int?
-  ai_estimated_cost_usd Decimal? @db.Decimal(10, 6)
-  created_at      DateTime     @default(now()) @db.Timestamptz(6)
-  conversation    conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                    String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversation_id       String       @db.Uuid
+  sender                String
+  message               String
+  is_ai_generated       Boolean      @default(false)
+  created_at            DateTime     @default(now()) @db.Timestamptz(6)
+  externalMessageId     String?      @unique
+  ai_prompt_tokens      Int?
+  ai_completion_tokens  Int?
+  ai_total_tokens       Int?
+  ai_estimated_cost_usd Decimal?     @db.Decimal(10, 6)
+  whatsapp_message_id   String?      @unique
+  conversation          conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 model conversation_state {
@@ -137,22 +138,36 @@ model menu_category {
 }
 
 model menu_item {
-  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  business_id      String             @db.Uuid
-  category_id      String             @db.Uuid
-  name             String
-  description      String?
-  ingredients      String?
-  preparation      String?
-  is_available     Boolean            @default(true)
-  is_featured      Boolean            @default(false)
-  created_at       DateTime           @default(now()) @db.Timestamptz(6)
-  serves_people    Int?
-  draft_order_item draft_order_item[]
-  business         business           @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  menu_category    menu_category      @relation(fields: [category_id], references: [id], onUpdate: NoAction)
-  menu_item_price  menu_item_price[]
-  order_item       order_item[]
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id       String             @db.Uuid
+  category_id       String             @db.Uuid
+  name              String
+  description       String?
+  ingredients       String?
+  preparation       String?
+  is_available      Boolean            @default(true)
+  created_at        DateTime           @default(now()) @db.Timestamptz(6)
+  serves_people     Int?
+  is_featured       Boolean            @default(false)
+  ingredients_notes String?
+  draft_order_item  draft_order_item[]
+  business          business           @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  menu_category     menu_category      @relation(fields: [category_id], references: [id], onUpdate: NoAction)
+  menu_item_price   menu_item_price[]
+  order_item        order_item[]
+}
+
+model business_hours {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id String   @db.Uuid
+  day_of_week Int
+  opens_at    String
+  closes_at   String
+  is_closed   Boolean  @default(false)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  business    business @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([business_id, day_of_week])
 }
 
 model menu_item_price {
