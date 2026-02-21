@@ -397,7 +397,7 @@ export const handleAskQuestionFromWebhook = async (
 
   const sender = new WhatsAppSenderService();
   const messageText =
-    'Claro! Estoy aqui para ayudarte. Escribe tu duda y la reviso enseguida.';
+    'Claro, estoy aqui para ayudarte. Escribe tu duda con total confianza y la reviso enseguida.';
 
   await sender.sendTextMessage({
     phoneNumberId,
@@ -827,7 +827,7 @@ const handleCancelOrder = async (
     text: message,
     buttons: [
       { title: 'Empezar de nuevo', payload: 'VIEW_MENU_RETURN' },
-      { title: 'Terminar conversacion', payload: 'END_CONVERSATION' }
+      { title: 'Terminar chat', payload: 'END_CONVERSATION' }
     ]
   });
 
@@ -1052,9 +1052,30 @@ export const processIncomingMessage = async (
       role: recentMessage.is_ai_generated ? 'assistant' : 'user',
       content: recentMessage.message
     }));
+  const isFirstMessage = recentMessages.length === 1;
 
   const intent = await detectIntent(formattedMessages);
   console.info('Detected intent:', intent);
+
+  if (intent === ConversationIntent.SMALL_TALK && isFirstMessage) {
+    const sender = new WhatsAppSenderService();
+    const messageText =
+      'Hola! Bienvenido/a 👋\nEstoy aqui para ayudarte. Elige una opcion para comenzar.';
+
+    await sender.sendInteractiveMenu({
+      phoneNumberId,
+      to: from,
+      text: messageText,
+      buttons: [
+        { title: 'Ver menu', payload: 'VIEW_MENU_RETURN' },
+        { title: 'Necesito informacion', payload: 'ASK_QUESTION' }
+      ]
+    });
+
+    await createConversationMessage(conversation.id, 'ai', messageText, false);
+    await updateConversationLastMessageAt(conversation.id);
+    return;
+  }
 
   if (intent === ConversationIntent.VIEW_MENU) {
     await handleViewMenuIntent(business.id, customer.id, conversation.id);

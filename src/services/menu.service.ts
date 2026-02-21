@@ -72,31 +72,6 @@ export class MenuService {
 
     const businessName = business?.name ?? 'nuestro local';
     const currency = customer?.preferred_currency ?? null;
-    const now = new Date();
-    const priceWhere = buildPriceWhere(currency, now);
-
-    const categories = await prisma.menu_category.findMany({
-      where: {
-        business_id: businessId,
-        is_active: true
-      },
-      orderBy: { position: 'asc' },
-      include: {
-        menu_item: {
-          where: {
-            is_available: true,
-            menu_item_price: {
-              some: priceWhere
-            }
-          },
-          select: { id: true }
-        }
-      }
-    });
-
-    const visibleCategories = categories.filter(
-      (category) => category.menu_item.length > 0
-    );
 
     const lines: string[] = [
       `🍽️ Menú de ${businessName}`,
@@ -109,19 +84,16 @@ export class MenuService {
       lines.push('', 'ℹ️ No tengo tu moneda preferida, los precios pueden omitirse.');
     }
 
-    if (visibleCategories.length === 0) {
-      return {
-        text: 'No hay categorías disponibles en este momento.',
-        buttons: []
-      };
-    }
-
-    const buttons: MenuButton[] = visibleCategories.map((category) => ({
-      title: toButtonTitle(category.name),
-      payload: `CATEGORY:${category.id}`,
-      description: toRowDescription(category.description ?? 'Opciones disponibles'),
-      sectionTitle: 'Categorías'
-    }));
+    const buttons: MenuButton[] = [
+      {
+        title: 'Ver categorias',
+        payload: 'VIEW_CATEGORIES'
+      },
+      {
+        title: 'Tengo una duda',
+        payload: 'ASK_QUESTION'
+      }
+    ];
 
     return {
       text: lines.join('\n'),
