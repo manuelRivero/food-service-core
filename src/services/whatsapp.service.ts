@@ -132,7 +132,8 @@ export const handleViewMenuIntent = async (
 
 export const handleViewCategoriesFromWebhook = async (
   payload: WhatsAppWebhookPayload,
-  page = 1
+  page = 1,
+  isReturn = false
 ): Promise<void> => {
   const entry = payload.entry?.[0];
   const change = entry?.changes?.[0];
@@ -161,7 +162,8 @@ export const handleViewCategoriesFromWebhook = async (
     conversation.id,
     from,
     phoneNumberId,
-    page
+    page,
+    isReturn
   );
 };
 
@@ -171,7 +173,8 @@ const handleViewCategories = async (
   conversationId: string,
   to: string,
   phoneNumberId: string,
-  page = 1
+  page = 1,
+  isReturn = false
 ): Promise<void> => {
   const menuResponse = await MenuService.getCategoryListForCustomer({
     businessId,
@@ -196,7 +199,7 @@ const handleViewCategories = async (
   const safePage = Math.min(Math.max(page, 1), totalPages || 1);
   const currentPage = pages[safePage - 1];
   let pageText = `📋 Categorías (pagina ${safePage} de ${totalPages})\n\nSelecciona una categoría o usa las opciones para navegar.`;
-  if (safePage === 1) {
+  if (safePage === 1 && !isReturn) {
     const menuHeader = await MenuService.getMenuForCustomer({
       businessId,
       customerId

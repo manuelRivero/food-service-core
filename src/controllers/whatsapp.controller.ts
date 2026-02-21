@@ -81,7 +81,8 @@ export const handleWebhook = async (
       const page = Number(pageValue);
       void handleViewCategoriesFromWebhook(
         req.body,
-        Number.isFinite(page) ? page : 1
+        Number.isFinite(page) ? page : 1,
+        true
       ).catch((error: unknown) => {
         console.error('Async webhook processing error:', error);
       });
