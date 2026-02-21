@@ -44,7 +44,7 @@ const buildCategoryListPages = (
   buttons: { title: string; payload: string; description?: string; sectionTitle?: string }[],
   pageSize = 10
 ): { buttons: typeof buttons; page: number; totalPages: number }[] => {
-  const itemsPerPage = Math.max(pageSize - 3, 1);
+  const itemsPerPage = Math.max(pageSize - 2, 1);
   const totalPages = Math.ceil(buttons.length / itemsPerPage);
   const pages: { buttons: typeof buttons; page: number; totalPages: number }[] = [];
 
@@ -79,13 +79,6 @@ const buildCategoryListPages = (
         sectionTitle: 'Categorías'
       });
     }
-
-    pageButtons.push({
-      title: 'Tengo una duda',
-      payload: 'ASK_QUESTION',
-      description: 'Escribe tu consulta',
-      sectionTitle: 'Ayuda'
-    });
 
     pages.push({ buttons: pageButtons, page, totalPages });
   }
@@ -181,17 +174,11 @@ export const handleViewMenuIntent = async (
     return;
   }
 
-  const pages = buildCategoryListPages(menuResponse.buttons);
-  const firstPage = pages[0];
-
   await sender.sendInteractiveMenu({
     phoneNumberId: business.whatsapp_phone_id,
     to: customer.phone_number,
     text: menuResponse.text,
-    buttons: firstPage?.buttons ?? [],
-    forceList: true,
-    page: firstPage && firstPage.totalPages > 1 ? 1 : undefined,
-    totalPages: firstPage && firstPage.totalPages > 1 ? firstPage.totalPages : undefined
+    buttons: menuResponse.buttons
   });
 };
 
@@ -278,6 +265,7 @@ const handleViewCategories = async (
     text: pageText,
     buttons: currentPage?.buttons ?? [],
     forceList: true,
+    actionButtonLabel: 'Selecciona una categoria',
     page: totalPages > 1 ? safePage : undefined,
     totalPages: totalPages > 1 ? totalPages : undefined
   });
