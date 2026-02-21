@@ -49,6 +49,8 @@ export class WhatsAppSenderService {
     page?: number;
     totalPages?: number;
   }): Promise<void> {
+    console.log('sendInteractiveMenu', params);
+    console.log('sendInteractiveMenu to', params.to);
     const { phoneNumberId, to, text, buttons, page, totalPages } = params;
     const isButton = buttons.length <= 3;
     const bodyText =
