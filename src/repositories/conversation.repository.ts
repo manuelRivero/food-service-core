@@ -37,8 +37,16 @@ export const createOrGetOpenConversation = async (
     return await createConversation(businessId, customerId);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      console.warn('P2002 al crear conversación, buscando abierta existente', {
+        businessId,
+        customerId
+      });
       const existing = await findOpenConversationByCustomer(customerId);
       if (existing) {
+        console.info('Conversación abierta encontrada', {
+          conversationId: existing.id,
+          customerId
+        });
         return existing;
       }
     }
