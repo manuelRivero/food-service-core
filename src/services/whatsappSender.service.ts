@@ -79,13 +79,23 @@ export class WhatsAppSenderService {
       description?: string;
       sectionTitle?: string;
     }[];
+    actionButtonLabel?: string;
     forceList?: boolean;
     page?: number;
     totalPages?: number;
   }): Promise<void> {
     console.log('sendInteractiveMenu', params);
     console.log('sendInteractiveMenu to', params.to);
-    const { phoneNumberId, to, text, buttons, forceList, page, totalPages } = params;
+    const {
+      phoneNumberId,
+      to,
+      text,
+      buttons,
+      actionButtonLabel,
+      forceList,
+      page,
+      totalPages
+    } = params;
     const normalizedTo = this.normalizeRecipient(to);
     const isButton = !forceList && buttons.length <= 3;
     const bodyText =
@@ -124,7 +134,7 @@ export class WhatsAppSenderService {
           type: 'list',
           body: { text: bodyText },
           action: {
-            button: 'Ver categorias',
+            button: actionButtonLabel ?? 'Ver categorias',
             sections: Array.from(sections.entries()).map(([title, rows]) => ({
               title,
               rows

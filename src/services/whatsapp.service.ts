@@ -36,6 +36,9 @@ const chunkButtons = <T>(items: T[], size: number): T[][] => {
   return chunks;
 };
 
+const toRowTitle = (value: string, maxLength = 24): string => value.slice(0, maxLength);
+const toRowDescription = (value: string, maxLength = 72): string => value.slice(0, maxLength);
+
 const buildCategoryListPages = (
   buttons: { title: string; payload: string; description?: string; sectionTitle?: string }[],
   pageSize = 10
@@ -71,8 +74,55 @@ const buildCategoryListPages = (
       pageButtons.push({
         title: 'Ver mas categorias',
         payload: `CATEGORY_LIST_PAGE:${nextPage}`,
-        description: nextTitles.slice(0, 72),
+        description: toRowDescription(nextTitles),
         sectionTitle: 'Categorías'
+      });
+    }
+
+    pages.push({ buttons: pageButtons, page, totalPages });
+  }
+
+  return pages;
+};
+
+const buildProductListPages = (
+  items: { title: string; payload: string; description?: string; sectionTitle?: string }[],
+  categoryId: string,
+  pageSize = 10
+): { buttons: typeof items; page: number; totalPages: number }[] => {
+  const itemsPerPage = Math.max(pageSize - 2, 1);
+  const totalPages = Math.ceil(items.length / itemsPerPage);
+  const pages: { buttons: typeof items; page: number; totalPages: number }[] = [];
+
+  for (let page = 1; page <= totalPages; page += 1) {
+    const start = (page - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    const pageButtons = items.slice(start, end);
+    const prevPage = page - 1;
+    const nextPage = page + 1;
+
+    if (prevPage >= 1) {
+      pageButtons.push({
+        title: 'Pagina anterior',
+        payload: `CATEGORY_PAGE:${categoryId}:${prevPage}`,
+        description: 'Regresar a la pagina anterior',
+        sectionTitle: 'Productos'
+      });
+    }
+
+    if (nextPage <= totalPages) {
+      const nextStart = (nextPage - 1) * itemsPerPage;
+      const nextEnd = nextStart + itemsPerPage;
+      const nextTitles = items
+        .slice(nextStart, nextEnd)
+        .map((item) => item.title)
+        .join(', ');
+
+      pageButtons.push({
+        title: 'Ver mas productos',
+        payload: `CATEGORY_PAGE:${categoryId}:${nextPage}`,
+        description: toRowDescription(nextTitles),
+        sectionTitle: 'Productos'
       });
     }
 
@@ -386,78 +436,34 @@ export const handleCategorySelection = async (
       ? `${price.amount.toFixed(2)} ${price.currency_code}`
       : 'N/A';
     return {
-      id: item.id,
-      name: item.name,
-      line: `- ${item.name} — ${priceText}`
+      title: toRowTitle(item.name),
+      payload: `ADD_ITEM:${item.id}`,
+      description: toRowDescription(priceText),
+      sectionTitle: 'Productos'
     };
   });
 
-  const pages = chunkButtons(itemSummaries, 8);
+  const pages = buildProductListPages(itemSummaries, categoryId);
   const totalPages = pages.length;
   const safePage = Math.min(Math.max(page, 1), totalPages || 1);
-  const pageIndex = safePage - 1;
-  const pageItems = pages[pageIndex] ?? [];
-
-  const pageButtons = pageItems.map((item) => ({
-    title: item.name.slice(0, 20),
-    payload: `ADD_ITEM:${item.id}`
-  }));
-  const lines: string[] = [`🧾 ${category.name}`];
-  for (const item of pageItems) {
-    lines.push(item.line);
-  }
+  const currentPage = pages[safePage - 1];
+  const text =
+    totalPages > 1
+      ? `Excelente eleccion! Estos son los productos de ${category.name}. Selecciona uno para continuar.`
+      : `Excelente eleccion! Estos son los productos de ${category.name}. Selecciona uno para continuar.`;
 
   await sender.sendInteractiveMenu({
     phoneNumberId,
     to,
-    text: lines.join('\n'),
-    buttons: pageButtons,
+    text,
+    buttons: currentPage?.buttons ?? [],
+    forceList: true,
+    actionButtonLabel: 'Ver productos',
     page: totalPages > 1 ? safePage : undefined,
     totalPages: totalPages > 1 ? totalPages : undefined
   });
 
-  await createConversationMessage(conversation.id, 'ai', lines.join('\n'), false);
-
-  const navButtons = [];
-  if (safePage > 1) {
-    navButtons.push({
-      title: 'Anterior',
-      payload: `CATEGORY_PAGE:${categoryId}:${safePage - 1}`
-    });
-  }
-  if (safePage < totalPages) {
-    navButtons.push({
-      title: 'Siguiente',
-      payload: `CATEGORY_PAGE:${categoryId}:${safePage + 1}`
-    });
-  }
-
-  if (navButtons.length > 0) {
-    await sender.sendInteractiveMenu({
-      phoneNumberId,
-      to,
-      text: 'Navegación de productos',
-      buttons: navButtons
-    });
-  }
-
-  const actionButtons = [
-    {
-      title: 'Volver a categorías',
-      payload: 'VIEW_MENU'
-    },
-    {
-      title: 'Agregar más',
-      payload: `CATEGORY_PAGE:${categoryId}:${safePage}`
-    }
-  ];
-
-  await sender.sendInteractiveMenu({
-    phoneNumberId,
-    to,
-    text: 'Opciones',
-    buttons: actionButtons
-  });
+  await createConversationMessage(conversation.id, 'ai', text, false);
 
   await updateConversationLastMessageAt(conversation.id);
 };
