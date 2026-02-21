@@ -59,9 +59,21 @@ export const handleWebhook = async (
   const message = value?.messages?.[0];
   if (message?.type === 'interactive' && message?.interactive?.button_reply?.id) {
     const payloadId = message.interactive.button_reply.id;
+    if (payloadId.startsWith('CATEGORY_PAGE:')) {
+      const [, categoryId, pageValue] = payloadId.split(':');
+      const page = Number(pageValue);
+      void handleCategorySelectionFromWebhook(
+        req.body,
+        categoryId ?? '',
+        Number.isFinite(page) ? page : 1
+      ).catch((error: unknown) => {
+        console.error('Async webhook processing error:', error);
+      });
+      return;
+    }
     if (payloadId.startsWith('CATEGORY:')) {
       const categoryId = payloadId.split(':')[1] ?? '';
-      void handleCategorySelectionFromWebhook(req.body, categoryId).catch((error: unknown) => {
+      void handleCategorySelectionFromWebhook(req.body, categoryId, 1).catch((error: unknown) => {
         console.error('Async webhook processing error:', error);
       });
       return;

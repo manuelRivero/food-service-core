@@ -78,7 +78,8 @@ export const handleViewMenuIntent = async (
 
 export const handleCategorySelectionFromWebhook = async (
   payload: WhatsAppWebhookPayload,
-  categoryId: string
+  categoryId: string,
+  page = 1
 ): Promise<void> => {
   const entry = payload.entry?.[0];
   const change = entry?.changes?.[0];
@@ -101,7 +102,7 @@ export const handleCategorySelectionFromWebhook = async (
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
   await findOrCreateConversationState(conversation.id);
-  await handleCategorySelection(business, conversation, categoryId, from, phoneNumberId);
+  await handleCategorySelection(business, conversation, categoryId, from, phoneNumberId, page);
 };
 
 export const handleAddItemFromWebhook = async (
@@ -164,7 +165,8 @@ export const handleCategorySelection = async (
   conversation: Conversation,
   categoryId: string,
   to: string,
-  phoneNumberId: string
+  phoneNumberId: string,
+  page = 1
 ): Promise<void> => {
   const category = await prisma.menu_category.findFirst({
     where: { id: categoryId, business_id: business.id, is_active: true },
@@ -232,29 +234,86 @@ export const handleCategorySelection = async (
     return;
   }
 
-  const lines: string[] = [`🧾 ${category.name}`];
-  for (const item of items) {
+  const sender = new WhatsAppSenderService();
+  const itemSummaries = items.map((item) => {
     const price = item.menu_item_price[0];
     const priceText = price
       ? `${price.amount.toFixed(2)} ${price.currency_code}`
       : 'N/A';
-    lines.push(`- ${item.name} — ${priceText}`);
-  }
+    return {
+      id: item.id,
+      name: item.name,
+      line: `- ${item.name} — ${priceText}`
+    };
+  });
 
-  const buttons = items.slice(0, 3).map((item) => ({
+  const pages = chunkButtons(itemSummaries, 8);
+  const totalPages = pages.length;
+  const safePage = Math.min(Math.max(page, 1), totalPages || 1);
+  const pageIndex = safePage - 1;
+  const pageItems = pages[pageIndex] ?? [];
+
+  const pageButtons = pageItems.map((item) => ({
     title: item.name.slice(0, 20),
     payload: `ADD_ITEM:${item.id}`
   }));
+  const lines: string[] = [`🧾 ${category.name}`];
+  for (const item of pageItems) {
+    lines.push(item.line);
+  }
 
-  const sender = new WhatsAppSenderService();
   await sender.sendInteractiveMenu({
     phoneNumberId,
     to,
     text: lines.join('\n'),
-    buttons
+    buttons: pageButtons,
+    page: totalPages > 1 ? safePage : undefined,
+    totalPages: totalPages > 1 ? totalPages : undefined
   });
 
   await createConversationMessage(conversation.id, 'ai', lines.join('\n'), false);
+
+  const navButtons = [];
+  if (safePage > 1) {
+    navButtons.push({
+      title: 'Anterior',
+      payload: `CATEGORY_PAGE:${categoryId}:${safePage - 1}`
+    });
+  }
+  if (safePage < totalPages) {
+    navButtons.push({
+      title: 'Siguiente',
+      payload: `CATEGORY_PAGE:${categoryId}:${safePage + 1}`
+    });
+  }
+
+  if (navButtons.length > 0) {
+    await sender.sendInteractiveMenu({
+      phoneNumberId,
+      to,
+      text: 'Navegación de productos',
+      buttons: navButtons
+    });
+  }
+
+  const actionButtons = [
+    {
+      title: 'Volver a categorías',
+      payload: 'VIEW_MENU'
+    },
+    {
+      title: 'Agregar más',
+      payload: `CATEGORY_PAGE:${categoryId}:${safePage}`
+    }
+  ];
+
+  await sender.sendInteractiveMenu({
+    phoneNumberId,
+    to,
+    text: 'Opciones',
+    buttons: actionButtons
+  });
+
   await updateConversationLastMessageAt(conversation.id);
 };
 
