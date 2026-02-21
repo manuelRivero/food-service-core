@@ -6,6 +6,11 @@ export const findOrCreateCustomer = async (
   phoneNumber: string,
   name?: string
 ): Promise<customer> => {
+  const business = await prisma.business.findUnique({
+    where: { id: businessId },
+    select: { currency_code: true }
+  });
+
   return prisma.customer.upsert({
     where: {
       business_id_phone_number: {
@@ -19,7 +24,8 @@ export const findOrCreateCustomer = async (
     create: {
       business_id: businessId,
       phone_number: phoneNumber,
-      name: name ?? undefined
+      name: name ?? undefined,
+      preferred_currency: business?.currency_code ?? undefined
     }
   });
 };

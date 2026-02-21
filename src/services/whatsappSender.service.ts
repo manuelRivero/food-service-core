@@ -91,7 +91,7 @@ export class WhatsAppSenderService {
         `${this.baseUrl}/${phoneNumberId}/messages`,
         {
           messaging_product: 'whatsapp',
-          to: `+${to}`,
+          to,
           type: 'interactive',
           interactive
         },

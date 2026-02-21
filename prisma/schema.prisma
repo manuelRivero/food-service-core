@@ -25,6 +25,8 @@ model business {
   ai_plan                String          @default("basic")
   ai_reset_at            DateTime        @default(now()) @db.Timestamptz(6)
   ai_blocked             Boolean         @default(false)
+  currency_code          String?         @db.Char(3)
+  currency               currency?       @relation(fields: [currency_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
   conversation           conversation[]
   customer               customer[]
   draft_order            draft_order[]
@@ -77,6 +79,7 @@ model currency {
   name            String
   symbol          String
   is_active       Boolean           @default(true)
+  business        business[]
   customer        customer[]
   menu_item_price menu_item_price[]
   orders          orders[]
