@@ -52,6 +52,7 @@ model conversation_message {
   id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   conversation_id String       @db.Uuid
   externalMessageId String?    @unique
+  whatsapp_message_id String?  @unique
   sender          String
   message         String
   is_ai_generated Boolean      @default(false)

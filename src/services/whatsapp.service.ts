@@ -7,6 +7,7 @@ import {
   createConversationMessage,
   findBusinessByPhoneNumberId,
   findBusinessById,
+  findByWhatsappMessageId,
   getRecentMessagesByConversationId,
   findOrCreateConversationState,
   findOrCreateCustomer,
@@ -197,6 +198,13 @@ export const processIncomingMessage = async (
 
   await findOrCreateConversationState(conversation.id);
 
+  if (messageId) {
+    const existingMessage = await findByWhatsappMessageId(messageId);
+    if (existingMessage) {
+      return;
+    }
+  }
+
   const messageContent = text ?? `[${message.type ?? 'unknown'}]`;
 
   const persistedMessage = await createConversationMessage(
@@ -204,6 +212,7 @@ export const processIncomingMessage = async (
     'customer',
     messageContent,
     false,
+    messageId,
     messageId
   );
 
@@ -231,7 +240,7 @@ export const processIncomingMessage = async (
 
   const aiResponse = await generateAIResponse(business, formattedMessages);
 
-  await createConversationMessage(conversation.id, 'ai', aiResponse.content, true, undefined, {
+  await createConversationMessage(conversation.id, 'ai', aiResponse.content, true, undefined, undefined, {
     promptTokens: aiResponse.usage.promptTokens,
     completionTokens: aiResponse.usage.completionTokens,
     totalTokens: aiResponse.usage.totalTokens,

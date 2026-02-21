@@ -7,6 +7,7 @@ export const createConversationMessage = async (
   message: string,
   isAiGenerated = false,
   externalMessageId?: string,
+  whatsappMessageId?: string,
   metrics?: {
     promptTokens?: number;
     completionTokens?: number;
@@ -22,6 +23,7 @@ export const createConversationMessage = async (
         message,
         is_ai_generated: isAiGenerated,
         externalMessageId,
+        whatsapp_message_id: whatsappMessageId,
         ai_prompt_tokens: metrics?.promptTokens,
         ai_completion_tokens: metrics?.completionTokens,
         ai_total_tokens: metrics?.totalTokens,
@@ -38,6 +40,14 @@ export const createConversationMessage = async (
 
     throw error;
   }
+};
+
+export const findByWhatsappMessageId = async (
+  whatsappMessageId: string
+): Promise<conversation_message | null> => {
+  return prisma.conversation_message.findUnique({
+    where: { whatsapp_message_id: whatsappMessageId }
+  });
 };
 
 export const getRecentMessagesByConversationId = async (
