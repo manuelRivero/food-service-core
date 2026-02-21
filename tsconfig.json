@@ -11,6 +11,10 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": {
+      "@prisma/client": ["node_modules/.prisma/client"]
+    },
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true

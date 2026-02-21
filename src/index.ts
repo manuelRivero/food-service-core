@@ -1,9 +1,6 @@
-import dotenv from 'dotenv';
+import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import whatsappRoutes from './routes/whatsapp.routes';
-
-// Cargar variables de entorno
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
