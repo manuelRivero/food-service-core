@@ -36,6 +36,52 @@ const chunkButtons = <T>(items: T[], size: number): T[][] => {
   return chunks;
 };
 
+const buildCategoryListPages = (
+  buttons: { title: string; payload: string; description?: string; sectionTitle?: string }[],
+  pageSize = 10
+): { buttons: typeof buttons; page: number; totalPages: number }[] => {
+  const itemsPerPage = Math.max(pageSize - 2, 1);
+  const totalPages = Math.ceil(buttons.length / itemsPerPage);
+  const pages: { buttons: typeof buttons; page: number; totalPages: number }[] = [];
+
+  for (let page = 1; page <= totalPages; page += 1) {
+    const start = (page - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    const pageButtons = buttons.slice(start, end);
+    const prevPage = page - 1;
+    const nextPage = page + 1;
+
+    if (prevPage >= 1) {
+      pageButtons.push({
+        title: 'Pagina anterior',
+        payload: `CATEGORY_LIST_PAGE:${prevPage}`,
+        description: 'Regresar a la pagina anterior',
+        sectionTitle: 'Categorías'
+      });
+    }
+
+    if (nextPage <= totalPages) {
+      const nextStart = (nextPage - 1) * itemsPerPage;
+      const nextEnd = nextStart + itemsPerPage;
+      const nextTitles = buttons
+        .slice(nextStart, nextEnd)
+        .map((button) => button.title)
+        .join(', ');
+
+      pageButtons.push({
+        title: 'Ver mas categorias',
+        payload: `CATEGORY_LIST_PAGE:${nextPage}`,
+        description: nextTitles.slice(0, 72),
+        sectionTitle: 'Categorías'
+      });
+    }
+
+    pages.push({ buttons: pageButtons, page, totalPages });
+  }
+
+  return pages;
+};
+
 export const handleViewMenuIntent = async (
   businessId: string,
   customerId: string,
@@ -61,23 +107,32 @@ export const handleViewMenuIntent = async (
   await updateConversationLastMessageAt(conversationId);
 
   const sender = new WhatsAppSenderService();
-  const pages = chunkButtons(menuResponse.buttons, 10);
-  const totalPages = pages.length;
-
-  for (let i = 0; i < pages.length; i += 1) {
-    await sender.sendInteractiveMenu({
+  if (menuResponse.buttons.length === 0) {
+    await sender.sendTextMessage({
       phoneNumberId: business.whatsapp_phone_id,
       to: customer.phone_number,
-      text: menuResponse.text,
-      buttons: pages[i],
-      page: totalPages > 1 ? i + 1 : undefined,
-      totalPages: totalPages > 1 ? totalPages : undefined
+      message: menuResponse.text
     });
+    return;
   }
+
+  const pages = buildCategoryListPages(menuResponse.buttons);
+  const firstPage = pages[0];
+
+  await sender.sendInteractiveMenu({
+    phoneNumberId: business.whatsapp_phone_id,
+    to: customer.phone_number,
+    text: menuResponse.text,
+    buttons: firstPage?.buttons ?? [],
+    forceList: true,
+    page: firstPage && firstPage.totalPages > 1 ? 1 : undefined,
+    totalPages: firstPage && firstPage.totalPages > 1 ? firstPage.totalPages : undefined
+  });
 };
 
 export const handleViewCategoriesFromWebhook = async (
-  payload: WhatsAppWebhookPayload
+  payload: WhatsAppWebhookPayload,
+  page = 1
 ): Promise<void> => {
   const entry = payload.entry?.[0];
   const change = entry?.changes?.[0];
@@ -100,7 +155,14 @@ export const handleViewCategoriesFromWebhook = async (
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
   await findOrCreateConversationState(conversation.id);
-  await handleViewCategories(business.id, customer.id, conversation.id, from, phoneNumberId);
+  await handleViewCategories(
+    business.id,
+    customer.id,
+    conversation.id,
+    from,
+    phoneNumberId,
+    page
+  );
 };
 
 const handleViewCategories = async (
@@ -108,7 +170,8 @@ const handleViewCategories = async (
   customerId: string,
   conversationId: string,
   to: string,
-  phoneNumberId: string
+  phoneNumberId: string,
+  page = 1
 ): Promise<void> => {
   const menuResponse = await MenuService.getCategoryListForCustomer({
     businessId,
@@ -128,11 +191,27 @@ const handleViewCategories = async (
     return;
   }
 
+  const pages = buildCategoryListPages(menuResponse.buttons);
+  const totalPages = pages.length;
+  const safePage = Math.min(Math.max(page, 1), totalPages || 1);
+  const currentPage = pages[safePage - 1];
+  let pageText = `📋 Categorías (pagina ${safePage} de ${totalPages})\n\nSelecciona una categoría o usa las opciones para navegar.`;
+  if (safePage === 1) {
+    const menuHeader = await MenuService.getMenuForCustomer({
+      businessId,
+      customerId
+    });
+    pageText = menuHeader.text;
+  }
+
   await sender.sendInteractiveMenu({
     phoneNumberId,
     to,
-    text: menuResponse.text,
-    buttons: menuResponse.buttons
+    text: pageText,
+    buttons: currentPage?.buttons ?? [],
+    forceList: true,
+    page: totalPages > 1 ? safePage : undefined,
+    totalPages: totalPages > 1 ? totalPages : undefined
   });
 
   await createConversationMessage(conversationId, 'ai', menuResponse.text, true);

@@ -76,6 +76,17 @@ export const handleWebhook = async (
       });
       return;
     }
+    if (payloadId.startsWith('CATEGORY_LIST_PAGE:')) {
+      const [, pageValue] = payloadId.split(':');
+      const page = Number(pageValue);
+      void handleViewCategoriesFromWebhook(
+        req.body,
+        Number.isFinite(page) ? page : 1
+      ).catch((error: unknown) => {
+        console.error('Async webhook processing error:', error);
+      });
+      return;
+    }
     if (payloadId.startsWith('CATEGORY:')) {
       const categoryId = payloadId.split(':')[1] ?? '';
       void handleCategorySelectionFromWebhook(req.body, categoryId, 1).catch((error: unknown) => {

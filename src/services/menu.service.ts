@@ -4,6 +4,8 @@ import { prisma } from '../lib/prisma';
 export type MenuButton = {
   title: string;
   payload: string;
+  description?: string;
+  sectionTitle?: string;
 };
 
 export type MenuResponse = {
@@ -49,36 +51,77 @@ const buildPriceWhere = (currency: string | null, now: Date) => {
 };
 
 const toButtonTitle = (value: string): string => value.slice(0, 20);
+const toRowDescription = (value: string): string => value.slice(0, 72);
 
 export class MenuService {
   static async getMenuForCustomer(params: {
     businessId: string;
     customerId: string;
   }): Promise<MenuResponse> {
-    const { customerId } = params;
-    const customer = await prisma.customer.findUnique({
-      where: { id: customerId },
-      select: { preferred_currency: true }
+    const { businessId, customerId } = params;
+    const [customer, business] = await Promise.all([
+      prisma.customer.findUnique({
+        where: { id: customerId },
+        select: { preferred_currency: true }
+      }),
+      prisma.business.findUnique({
+        where: { id: businessId },
+        select: { name: true }
+      })
+    ]);
+
+    const businessName = business?.name ?? 'nuestro local';
+    const currency = customer?.preferred_currency ?? null;
+    const now = new Date();
+    const priceWhere = buildPriceWhere(currency, now);
+
+    const categories = await prisma.menu_category.findMany({
+      where: {
+        business_id: businessId,
+        is_active: true
+      },
+      orderBy: { position: 'asc' },
+      include: {
+        menu_item: {
+          where: {
+            is_available: true,
+            menu_item_price: {
+              some: priceWhere
+            }
+          },
+          select: { id: true }
+        }
+      }
     });
 
-    const currency = customer?.preferred_currency ?? null;
+    const visibleCategories = categories.filter(
+      (category) => category.menu_item.length > 0
+    );
+
     const lines: string[] = [
-      '🍽️ Menú peruano',
+      `🍽️ Menú de ${businessName}`,
       '',
-      'Descubre entradas, platos fuertes, marinos, bebidas, postres y vinos.',
-      'Presiona el botón para ver las categorías disponibles.'
+      `Bienvenido/a a ${businessName}! Gracias por escribirnos.`,
+      'Para realizar tu pedido, toca "Ver categorias", elige la que prefieras y selecciona tus productos.'
     ];
 
     if (!currency) {
       lines.push('', 'ℹ️ No tengo tu moneda preferida, los precios pueden omitirse.');
     }
 
-    const buttons: MenuButton[] = [
-      {
-        title: 'Ver categorías',
-        payload: 'VIEW_CATEGORIES'
-      }
-    ];
+    if (visibleCategories.length === 0) {
+      return {
+        text: 'No hay categorías disponibles en este momento.',
+        buttons: []
+      };
+    }
+
+    const buttons: MenuButton[] = visibleCategories.map((category) => ({
+      title: toButtonTitle(category.name),
+      payload: `CATEGORY:${category.id}`,
+      description: toRowDescription(category.description ?? 'Opciones disponibles'),
+      sectionTitle: 'Categorías'
+    }));
 
     return {
       text: lines.join('\n'),
@@ -134,7 +177,9 @@ export class MenuService {
 
     const buttons: MenuButton[] = visibleCategories.map((category) => ({
       title: toButtonTitle(category.name),
-      payload: `CATEGORY:${category.id}`
+      payload: `CATEGORY:${category.id}`,
+      description: toRowDescription(category.description ?? 'Opciones disponibles'),
+      sectionTitle: 'Categorías'
     }));
 
     return {
