@@ -23,3 +23,9 @@ export const findOrCreateCustomer = async (
     }
   });
 };
+
+export const findCustomerById = async (customerId: string): Promise<customer | null> => {
+  return prisma.customer.findUnique({
+    where: { id: customerId }
+  });
+};

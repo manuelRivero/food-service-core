@@ -1,0 +1,2 @@
+ALTER TABLE "business"
+ADD COLUMN IF NOT EXISTS "ai_blocked" BOOLEAN NOT NULL DEFAULT false;

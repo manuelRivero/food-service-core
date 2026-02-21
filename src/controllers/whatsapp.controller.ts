@@ -5,6 +5,7 @@ import {
   WhatsAppWebhookPayload
 } from '../types/whatsapp';
 import {
+  handleCategorySelectionFromWebhook,
   processIncomingMessage,
   sendTextMessage,
   ValidationError,
@@ -49,13 +50,25 @@ export const handleWebhook = async (
   req: Request<{}, {}, WhatsAppWebhookPayload>,
   res: Response
 ): Promise<void> => {
-  try {
-    await processIncomingMessage(req.body);
-    res.sendStatus(200);
-  } catch (error) {
-    console.error('Error al procesar webhook:', error);
-    res.sendStatus(500);
+  res.sendStatus(200);
+  const entry = req.body.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+  const interactive = message?.interactive;
+  const payloadId = interactive?.button_reply?.id ?? interactive?.list_reply?.id;
+
+  if (payloadId?.startsWith('VIEW_CATEGORY_')) {
+    const categoryId = payloadId.replace('VIEW_CATEGORY_', '');
+    void handleCategorySelectionFromWebhook(req.body, categoryId).catch((error: unknown) => {
+      console.error('Async webhook processing error:', error);
+    });
+    return;
   }
+
+  void processIncomingMessage(req.body).catch((error: unknown) => {
+    console.error('Async webhook processing error:', error);
+  });
 };
 
 /**
