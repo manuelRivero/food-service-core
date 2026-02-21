@@ -63,3 +63,12 @@ export const updateConversationLastMessageAt = async (
     data: { last_message_at: new Date() }
   });
 };
+
+export const closeConversation = async (
+  conversationId: string
+): Promise<conversation> => {
+  return prisma.conversation.update({
+    where: { id: conversationId },
+    data: { status: 'closed', last_message_at: new Date() }
+  });
+};

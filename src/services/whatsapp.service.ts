@@ -5,6 +5,7 @@ import {
 import {
   createOrGetOpenConversation,
   createConversationMessage,
+  closeConversation,
   findBusinessByPhoneNumberId,
   findBusinessById,
   findByWhatsappMessageId,
@@ -90,7 +91,7 @@ const buildProductListPages = (
   categoryId: string,
   pageSize = 10
 ): { buttons: typeof items; page: number; totalPages: number }[] => {
-  const itemsPerPage = Math.max(pageSize - 2, 1);
+  const itemsPerPage = Math.max(pageSize - 3, 1);
   const totalPages = Math.ceil(items.length / itemsPerPage);
   const pages: { buttons: typeof items; page: number; totalPages: number }[] = [];
 
@@ -119,12 +120,19 @@ const buildProductListPages = (
         .join(', ');
 
       pageButtons.push({
-        title: 'Ver mas productos',
+        title: 'Ver mas platillos',
         payload: `CATEGORY_PAGE:${categoryId}:${nextPage}`,
         description: toRowDescription(nextTitles),
-        sectionTitle: 'Productos'
+        sectionTitle: 'Platillos'
       });
     }
+
+    pageButtons.push({
+      title: 'Volver a categorias',
+      payload: 'VIEW_MENU_RETURN',
+      description: 'Elegir otra categoria',
+      sectionTitle: 'Platillos'
+    });
 
     pages.push({ buttons: pageButtons, page, totalPages });
   }
@@ -355,6 +363,60 @@ export const handleCheckoutFromWebhook = async (
   await handleCheckout(business, conversation, customer, from, phoneNumberId);
 };
 
+export const handleCancelOrderFromWebhook = async (
+  payload: WhatsAppWebhookPayload
+): Promise<void> => {
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
+  if (!phoneNumberId || !from) {
+    return;
+  }
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) {
+    return;
+  }
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+
+  await findOrCreateConversationState(conversation.id);
+  await handleCancelOrder(business, conversation, customer, from, phoneNumberId);
+};
+
+export const handleEndConversationFromWebhook = async (
+  payload: WhatsAppWebhookPayload
+): Promise<void> => {
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
+  if (!phoneNumberId || !from) {
+    return;
+  }
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) {
+    return;
+  }
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+
+  await findOrCreateConversationState(conversation.id);
+  await handleEndConversation(conversation, from, phoneNumberId);
+};
+
 export const handleCategorySelection = async (
   business: Business,
   conversation: Conversation,
@@ -439,7 +501,7 @@ export const handleCategorySelection = async (
       title: toRowTitle(item.name),
       payload: `ADD_ITEM:${item.id}`,
       description: toRowDescription(priceText),
-      sectionTitle: 'Productos'
+      sectionTitle: 'Platillos'
     };
   });
 
@@ -449,8 +511,8 @@ export const handleCategorySelection = async (
   const currentPage = pages[safePage - 1];
   const text =
     totalPages > 1
-      ? `Excelente eleccion! Estos son los productos de ${category.name}. Selecciona uno para continuar.`
-      : `Excelente eleccion! Estos son los productos de ${category.name}. Selecciona uno para continuar.`;
+      ? `Excelente eleccion! Estos son los platillos de ${category.name}. Selecciona uno para continuar.`
+      : `Excelente eleccion! Estos son los platillos de ${category.name}. Selecciona uno para continuar.`;
 
   await sender.sendInteractiveMenu({
     phoneNumberId,
@@ -628,12 +690,84 @@ export const handleAddItemToDraftOrder = async (
     text: lines.join('\n'),
     buttons: [
       { title: 'Agregar más', payload: 'VIEW_MENU_RETURN' },
+      { title: 'Cancelar pedido', payload: 'CANCEL_ORDER' },
       { title: 'Finalizar pedido', payload: 'CHECKOUT' }
     ]
   });
 
   await createConversationMessage(conversation.id, 'ai', lines.join('\n'), false);
   await updateConversationLastMessageAt(conversation.id);
+};
+
+const handleCancelOrder = async (
+  business: Business,
+  conversation: Conversation,
+  customer: Customer,
+  to: string,
+  phoneNumberId: string
+): Promise<void> => {
+  await prisma.$transaction(async (tx) => {
+    const draftOrder = await tx.draft_order.findFirst({
+      where: {
+        business_id: business.id,
+        customer_phone: to,
+        status: 'active'
+      }
+    });
+
+    if (!draftOrder) {
+      return;
+    }
+
+    await tx.draft_order_item.deleteMany({
+      where: { draft_order_id: draftOrder.id }
+    });
+
+    await tx.draft_order.update({
+      where: { id: draftOrder.id },
+      data: {
+        status: 'cancelled',
+        total_amount: new Prisma.Decimal(0)
+      }
+    });
+  });
+
+  const sender = new WhatsAppSenderService();
+  const message =
+    'Tu pedido fue cancelado correctamente. ¿Quieres hacer otro pedido o terminar la conversacion?';
+
+  await sender.sendInteractiveMenu({
+    phoneNumberId,
+    to,
+    text: message,
+    buttons: [
+      { title: 'Empezar de nuevo', payload: 'VIEW_MENU_RETURN' },
+      { title: 'Terminar conversacion', payload: 'END_CONVERSATION' }
+    ]
+  });
+
+  await createConversationMessage(conversation.id, 'ai', message, false);
+  await updateConversationLastMessageAt(conversation.id);
+};
+
+const handleEndConversation = async (
+  conversation: Conversation,
+  to: string,
+  phoneNumberId: string
+): Promise<void> => {
+  await closeConversation(conversation.id);
+
+  const sender = new WhatsAppSenderService();
+  const message =
+    'Gracias por escribirnos. Fue un gusto ayudarte. Cuando quieras, puedes volver a escribirnos y con gusto te atenderemos.';
+
+  await sender.sendTextMessage({
+    phoneNumberId,
+    to,
+    message
+  });
+
+  await createConversationMessage(conversation.id, 'ai', message, false);
 };
 
 export const handleCheckout = async (

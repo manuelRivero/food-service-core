@@ -6,8 +6,10 @@ import {
 } from '../types/whatsapp';
 import {
   handleAddItemFromWebhook,
+  handleCancelOrderFromWebhook,
   handleCategorySelectionFromWebhook,
   handleCheckoutFromWebhook,
+  handleEndConversationFromWebhook,
   handleViewCategoriesFromWebhook,
   processIncomingMessage,
   sendTextMessage,
@@ -104,6 +106,18 @@ export const handleWebhook = async (
     }
     if (payloadId === 'CHECKOUT') {
       void handleCheckoutFromWebhook(req.body).catch((error: unknown) => {
+        console.error('Async webhook processing error:', error);
+      });
+      return;
+    }
+    if (payloadId === 'CANCEL_ORDER') {
+      void handleCancelOrderFromWebhook(req.body).catch((error: unknown) => {
+        console.error('Async webhook processing error:', error);
+      });
+      return;
+    }
+    if (payloadId === 'END_CONVERSATION') {
+      void handleEndConversationFromWebhook(req.body).catch((error: unknown) => {
         console.error('Async webhook processing error:', error);
       });
       return;
