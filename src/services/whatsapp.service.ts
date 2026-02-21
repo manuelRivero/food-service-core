@@ -11,6 +11,7 @@ import {
   findByWhatsappMessageId,
   getRecentMessagesByConversationId,
   findOrCreateConversationState,
+  updateConversationState,
   findOrCreateCustomer,
   findCustomerById,
   updateConversationLastMessageAt
@@ -207,7 +208,7 @@ export const handleViewCategoriesFromWebhook = async (
   const customer = await findOrCreateCustomer(business.id, from);
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
-  await findOrCreateConversationState(conversation.id);
+  const conversationState = await findOrCreateConversationState(conversation.id);
   await handleViewCategories(
     business.id,
     customer.id,
@@ -299,7 +300,7 @@ export const handleCategorySelectionFromWebhook = async (
   const customer = await findOrCreateCustomer(business.id, from);
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
-  await findOrCreateConversationState(conversation.id);
+  const conversationState = await findOrCreateConversationState(conversation.id);
   await handleCategorySelection(business, conversation, categoryId, from, phoneNumberId, page);
 };
 
@@ -327,7 +328,7 @@ export const handleAddItemFromWebhook = async (
   const customer = await findOrCreateCustomer(business.id, from);
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
-  await findOrCreateConversationState(conversation.id);
+  const conversationState = await findOrCreateConversationState(conversation.id);
   await handleAddItemToDraftOrder(business, conversation, customer, menuItemId, from, phoneNumberId);
 };
 
@@ -354,7 +355,7 @@ export const handleCheckoutFromWebhook = async (
   const customer = await findOrCreateCustomer(business.id, from);
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
-  await findOrCreateConversationState(conversation.id);
+  const conversationState = await findOrCreateConversationState(conversation.id);
   await handleCheckout(business, conversation, customer, from, phoneNumberId);
 };
 
@@ -381,7 +382,7 @@ export const handleAskQuestionFromWebhook = async (
   const customer = await findOrCreateCustomer(business.id, from);
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
-  await findOrCreateConversationState(conversation.id);
+  const conversationState = await findOrCreateConversationState(conversation.id);
 
   const sender = new WhatsAppSenderService();
   const messageText =
@@ -1007,7 +1008,7 @@ export const processIncomingMessage = async (
   const customer = await findOrCreateCustomer(business.id, from);
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
-  await findOrCreateConversationState(conversation.id);
+  const conversationState = await findOrCreateConversationState(conversation.id);
 
   if (messageId) {
     const existingMessage = await findByWhatsappMessageId(messageId);
@@ -1041,11 +1042,12 @@ export const processIncomingMessage = async (
       content: recentMessage.message
     }));
   const isFirstMessage = recentMessages.length === 1;
+  const hasGreeted = conversationState.current_intent === 'greeted';
 
   const intent = await detectIntent(formattedMessages);
   console.info('Detected intent:', intent);
 
-  if (intent === ConversationIntent.SMALL_TALK && isFirstMessage) {
+  if (intent === ConversationIntent.SMALL_TALK && isFirstMessage && !hasGreeted) {
     const sender = new WhatsAppSenderService();
     const messageText =
       'Hola! Bienvenido/a 👋\nEstoy aqui para ayudarte. Elige una opcion para comenzar.';
@@ -1061,12 +1063,18 @@ export const processIncomingMessage = async (
     });
 
     await createConversationMessage(conversation.id, 'ai', messageText, false);
+    await updateConversationState(conversation.id, { current_intent: 'greeted' });
     await updateConversationLastMessageAt(conversation.id);
     return;
   }
 
   if (intent === ConversationIntent.VIEW_MENU) {
-    await handleViewMenuIntent(business.id, customer.id, conversation.id);
+    if (hasGreeted) {
+      await handleViewCategories(business.id, customer.id, conversation.id, from, phoneNumberId, 1, true);
+    } else {
+      await handleViewMenuIntent(business.id, customer.id, conversation.id);
+      await updateConversationState(conversation.id, { current_intent: 'greeted' });
+    }
     return;
   }
   if (intent === ConversationIntent.VIEW_ORDER) {

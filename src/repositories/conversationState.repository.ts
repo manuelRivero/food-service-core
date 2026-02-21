@@ -10,3 +10,13 @@ export const findOrCreateConversationState = async (
     create: { conversation_id: conversationId }
   });
 };
+
+export const updateConversationState = async (
+  conversationId: string,
+  data: Partial<conversation_state>
+): Promise<conversation_state> => {
+  return prisma.conversation_state.update({
+    where: { conversation_id: conversationId },
+    data
+  });
+};
