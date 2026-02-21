@@ -3,19 +3,29 @@ import axios, { AxiosError } from 'axios';
 export class WhatsAppSenderService {
   private readonly baseUrl = 'https://graph.facebook.com/v18.0';
 
+  private normalizeRecipient(to: string): string {
+    // Ajuste para AR: remover el "9" después del "54" si existe (ej: 549... -> 54...)
+    if (to.startsWith('549')) {
+      return `54${to.slice(3)}`;
+    }
+
+    return to;
+  }
+
   async sendTextMessage(params: {
     phoneNumberId: string;
     to: string;
     message: string;
   }): Promise<void> {
     const { phoneNumberId, to, message } = params;
+    const normalizedTo = this.normalizeRecipient(to);
 
     try {
       await axios.post(
         `${this.baseUrl}/${phoneNumberId}/messages`,
         {
           messaging_product: 'whatsapp',
-          to,
+          to: normalizedTo,
           type: 'text',
           text: {
             body: message
@@ -52,6 +62,7 @@ export class WhatsAppSenderService {
     console.log('sendInteractiveMenu', params);
     console.log('sendInteractiveMenu to', params.to);
     const { phoneNumberId, to, text, buttons, page, totalPages } = params;
+    const normalizedTo = this.normalizeRecipient(to);
     const isButton = buttons.length <= 3;
     const bodyText =
       page && totalPages
@@ -91,7 +102,7 @@ export class WhatsAppSenderService {
         `${this.baseUrl}/${phoneNumberId}/messages`,
         {
           messaging_product: 'whatsapp',
-          to,
+          to: normalizedTo,
           type: 'interactive',
           interactive
         },
