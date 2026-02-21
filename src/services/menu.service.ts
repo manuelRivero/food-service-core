@@ -77,7 +77,7 @@ export class MenuService {
       `🍽️ Menú de ${businessName}`,
       '',
       `Bienvenido/a a ${businessName}! Gracias por escribirnos.`,
-      'Para realizar tu pedido, toca "Ver categorias", elige la que prefieras y selecciona tus productos.'
+      'Para realizar tu pedido, toca "Ver categorias", elige la que prefieras y selecciona tus platillos.'
     ];
 
     if (!currency) {

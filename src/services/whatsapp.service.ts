@@ -260,13 +260,13 @@ const handleViewCategories = async (
     pageText = menuHeader.text;
   }
 
-  await sender.sendInteractiveMenu({
+    await sender.sendInteractiveMenu({
     phoneNumberId,
     to,
     text: pageText,
     buttons: currentPage?.buttons ?? [],
     forceList: true,
-    actionButtonLabel: 'Selecciona una categoria',
+      actionButtonLabel: 'Elige categoria',
     page: totalPages > 1 ? safePage : undefined,
     totalPages: totalPages > 1 ? totalPages : undefined
   });
@@ -1058,7 +1058,7 @@ export const processIncomingMessage = async (
       text: messageText,
       buttons: [
         { title: 'Ver menu', payload: 'VIEW_MENU_RETURN' },
-        { title: 'Necesito informacion', payload: 'ASK_QUESTION' }
+        { title: 'Necesito info', payload: 'ASK_QUESTION' }
       ]
     });
 
