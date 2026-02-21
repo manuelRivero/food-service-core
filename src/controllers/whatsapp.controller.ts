@@ -108,6 +108,12 @@ export const handleWebhook = async (
       });
       return;
     }
+    if (payloadId === 'VIEW_MENU_RETURN') {
+      void handleViewCategoriesFromWebhook(req.body, 1, true).catch((error: unknown) => {
+        console.error('Async webhook processing error:', error);
+      });
+      return;
+    }
     if (payloadId === 'VIEW_CATEGORIES') {
       void handleViewCategoriesFromWebhook(req.body).catch((error: unknown) => {
         console.error('Async webhook processing error:', error);

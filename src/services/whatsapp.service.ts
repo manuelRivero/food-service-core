@@ -627,7 +627,7 @@ export const handleAddItemToDraftOrder = async (
     to,
     text: lines.join('\n'),
     buttons: [
-      { title: 'Agregar más', payload: 'VIEW_MENU' },
+      { title: 'Agregar más', payload: 'VIEW_MENU_RETURN' },
       { title: 'Finalizar pedido', payload: 'CHECKOUT' }
     ]
   });
