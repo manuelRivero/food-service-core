@@ -664,7 +664,47 @@ export const handleAddItemToDraftOrder = async (
     };
   });
 
-  const menuItemIds = result.items.flatMap((item) =>
+  await sendCurrentOrderSummary(business, conversation, customer, to, phoneNumberId);
+};
+
+const sendCurrentOrderSummary = async (
+  business: Business,
+  conversation: Conversation,
+  customer: Customer,
+  to: string,
+  phoneNumberId: string
+): Promise<void> => {
+  const draftOrder = await prisma.draft_order.findFirst({
+    where: {
+      business_id: business.id,
+      customer_phone: to,
+      status: 'active'
+    }
+  });
+
+  const sender = new WhatsAppSenderService();
+
+  if (!draftOrder) {
+    const message = 'No tienes un pedido activo.';
+    await sender.sendTextMessage({ phoneNumberId, to, message });
+    await createConversationMessage(conversation.id, 'ai', message, false);
+    await updateConversationLastMessageAt(conversation.id);
+    return;
+  }
+
+  const items = await prisma.draft_order_item.findMany({
+    where: { draft_order_id: draftOrder.id }
+  });
+
+  if (items.length === 0) {
+    const message = 'Tu pedido esta vacio.';
+    await sender.sendTextMessage({ phoneNumberId, to, message });
+    await createConversationMessage(conversation.id, 'ai', message, false);
+    await updateConversationLastMessageAt(conversation.id);
+    return;
+  }
+
+  const menuItemIds = items.flatMap((item) =>
     item.product_id ? [item.product_id] : []
   );
   const menuItems =
@@ -677,13 +717,12 @@ export const handleAddItemToDraftOrder = async (
   const menuItemMap = new Map(menuItems.map((item) => [item.id, item.name]));
 
   const lines: string[] = ['🛒 Pedido actual:', ''];
-  for (const item of result.items) {
-    const name = item.product_id ? menuItemMap.get(item.product_id) ?? 'Producto' : 'Producto';
+  for (const item of items) {
+    const name = item.product_id ? menuItemMap.get(item.product_id) ?? 'Platillo' : 'Platillo';
     lines.push(`- ${item.quantity}x ${name}`);
   }
-  lines.push('', `Total: $${result.total.toFixed(2)} ${result.currency}`);
+  lines.push('', `Total: $${draftOrder.total_amount.toFixed(2)} ${draftOrder.currency}`);
 
-  const sender = new WhatsAppSenderService();
   await sender.sendInteractiveMenu({
     phoneNumberId,
     to,
@@ -972,6 +1011,10 @@ export const processIncomingMessage = async (
 
   if (intent === ConversationIntent.VIEW_MENU) {
     await handleViewMenuIntent(business.id, customer.id, conversation.id);
+    return;
+  }
+  if (intent === ConversationIntent.VIEW_ORDER) {
+    await sendCurrentOrderSummary(business, conversation, customer, from, phoneNumberId);
     return;
   }
 

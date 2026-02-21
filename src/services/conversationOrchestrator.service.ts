@@ -10,6 +10,7 @@ const INTENT_SYSTEM_PROMPT =
   "Classify the user's intent strictly as one of:\n" +
   "SMALL_TALK,\n" +
   "VIEW_MENU,\n" +
+  "VIEW_ORDER,\n" +
   "ORDER_FOOD,\n" +
   "TRACK_ORDER,\n" +
   "PAYMENT_REQUEST,\n" +
@@ -17,6 +18,7 @@ const INTENT_SYSTEM_PROMPT =
   "UNKNOWN.\n\n" +
   "Food service context:\n" +
   "- VIEW_MENU: user wants to see menu, food list, prices, categories.\n" +
+  "- VIEW_ORDER: user wants to see current order, cart, or order summary.\n" +
   "- ORDER_FOOD: user wants to order something.\n" +
   "- TRACK_ORDER: user asks about order status.\n" +
   "- PAYMENT_REQUEST: user asks how to pay or requests payment link.\n" +
@@ -31,6 +33,7 @@ const normalizeIntent = (value: string): ConversationIntent => {
   switch (trimmed) {
     case ConversationIntent.SMALL_TALK:
     case ConversationIntent.VIEW_MENU:
+    case ConversationIntent.VIEW_ORDER:
     case ConversationIntent.ORDER_FOOD:
     case ConversationIntent.TRACK_ORDER:
     case ConversationIntent.PAYMENT_REQUEST:
