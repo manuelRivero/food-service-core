@@ -28,7 +28,7 @@ BUSINESS_HOURS
 BUSINESS_LOCATION
 DELIVERY_INFO
 PAYMENT_METHODS
-MENU_INGREDIENTS
+PRODUCT_QUERY
 GENERAL_QUESTION
 UNKNOWN
 
@@ -40,12 +40,12 @@ Rules:
 4. If asking where the business is located → BUSINESS_LOCATION.
 5. If asking about delivery areas, shipping cost, or delivery time → DELIVERY_INFO.
 6. If asking about payment options → PAYMENT_METHODS.
-7. If asking about ingredients of a specific dish → MENU_INGREDIENTS.
-8. If asking for menu or categories → VIEW_MENU.
-9. If asking about cart or current order → VIEW_ORDER.
-10. If user wants to order → ORDER_FOOD.
-11. If asking about order status → TRACK_ORDER.
-12. If reporting problem or requesting human help → SUPPORT.
+7. If asking for menu or categories → VIEW_MENU.
+8. If asking about cart or current order → VIEW_ORDER.
+9. If user wants to order → ORDER_FOOD.
+10. If asking about order status → TRACK_ORDER.
+11. If reporting problem or requesting human help → SUPPORT.
+12. Any question about a specific product (availability, ingredients, price, variants, preparation, dietary questions) → PRODUCT_QUERY.
 13. If general informational question not covered above → GENERAL_QUESTION.
 14. If completely unclear → UNKNOWN.
 
