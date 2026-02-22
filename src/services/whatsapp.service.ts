@@ -17,7 +17,7 @@ import {
   updateConversationLastMessageAt
 } from '../repositories';
 import type { OpenAI as OpenAITypes } from 'openai';
-import { generateAIResponse } from './ai/openai.service';
+import { generateAIResponse, generateProductAwareResponse } from './ai/openai.service';
 import { detectIntentWithConfidence } from './conversationOrchestrator.service';
 import { MenuService } from './menu.service';
 import { ConversationIntent } from '../types/conversationIntent';
@@ -1069,6 +1069,18 @@ const buildListMessageFromButtons = (
   });
 };
 
+const getLastUserMessage = (
+  messages: OpenAITypes.Chat.ChatCompletionMessageParam[]
+): string => {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message.role === 'user' && typeof message.content === 'string') {
+      return message.content;
+    }
+  }
+  return '';
+};
+
 const buildSmallTalkResponse = async (
   conversationId: string,
   isFirstMessage: boolean,
@@ -1324,6 +1336,83 @@ const buildResponse = async ({
 
   if (intent === ConversationIntent.VIEW_ORDER) {
     return buildViewOrderResponse(business, conversation, customer, from);
+  }
+
+  if (intent === ConversationIntent.PRODUCT_QUERY) {
+    const userQuestion = getLastUserMessage(formattedMessages);
+    const normalizedQuestion = userQuestion.toLowerCase();
+    const now = new Date();
+    const currency = customer.preferred_currency ?? business.currency_code ?? null;
+    const priceWhere = {
+      is_active: true,
+      valid_from: { lte: now },
+      OR: [{ valid_to: null }, { valid_to: { gte: now } }],
+      ...(currency ? { currency_code: currency } : {})
+    };
+
+    const items = await prisma.menu_item.findMany({
+      where: { business_id: business.id },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        ingredients: true,
+        serves_people: true,
+        is_available: true
+      }
+    });
+
+    const matchedItem = items.find((item) =>
+      normalizedQuestion.includes(item.name.toLowerCase())
+    );
+
+    if (!matchedItem) {
+      const messageText = 'No encontré ese producto en el menú.';
+      await createConversationMessage(conversation.id, 'ai', messageText, false);
+      await updateConversationLastMessageAt(conversation.id);
+      return messageText;
+    }
+
+    if (!matchedItem.is_available) {
+      const messageText = `El producto "${matchedItem.name}" no está disponible en este momento.`;
+      await createConversationMessage(conversation.id, 'ai', messageText, false);
+      await updateConversationLastMessageAt(conversation.id);
+      return messageText;
+    }
+
+    const activePrice = await prisma.menu_item_price.findFirst({
+      where: {
+        menu_item_id: matchedItem.id,
+        ...priceWhere
+      },
+      orderBy: { valid_from: 'desc' }
+    });
+
+    if (!activePrice) {
+      const messageText = `No tengo el precio actual de "${matchedItem.name}".`;
+      await createConversationMessage(conversation.id, 'ai', messageText, false);
+      await updateConversationLastMessageAt(conversation.id);
+      return messageText;
+    }
+
+    const aiResponse = await generateProductAwareResponse({
+      product: {
+        name: matchedItem.name,
+        description: matchedItem.description,
+        ingredients: matchedItem.ingredients,
+        serves_people: matchedItem.serves_people,
+        is_available: matchedItem.is_available,
+        price: {
+          amount: activePrice.amount,
+          currency_code: activePrice.currency_code
+        }
+      },
+      userQuestion
+    });
+
+    await createConversationMessage(conversation.id, 'ai', aiResponse, true);
+    await updateConversationLastMessageAt(conversation.id);
+    return aiResponse;
   }
 
   const aiResponse = await generateAIResponse(business, formattedMessages);

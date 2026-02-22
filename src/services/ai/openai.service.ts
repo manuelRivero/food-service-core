@@ -99,3 +99,52 @@ export const generateAIResponse = async (
     throw new Error(`Error al generar respuesta de OpenAI: ${message}`);
   }
 };
+
+export const generateProductAwareResponse = async (params: {
+  product: {
+    name: string;
+    description?: string | null;
+    ingredients?: string | null;
+    serves_people?: number | null;
+    is_available: boolean;
+    price?: {
+      amount: unknown;
+      currency_code: string;
+    } | null;
+  };
+  userQuestion: string;
+}): Promise<string> => {
+  const { product, userQuestion } = params;
+
+  const priceText =
+    product.price?.amount != null
+      ? `${String(product.price.amount)} ${product.price.currency_code}`
+      : 'N/A';
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0.2,
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You answer questions about a restaurant product. Use ONLY the provided product data. Do NOT invent price, availability, or characteristics. If information is not available, say you do not have that information. Be concise and natural.'
+      },
+      {
+        role: 'user',
+        content: `PRODUCT DATA:
+Name: ${product.name}
+Available: ${product.is_available ? 'yes' : 'no'}
+Price: ${priceText}
+Serves people: ${product.serves_people ?? 'N/A'}
+Description: ${product.description ?? 'N/A'}
+Ingredients: ${product.ingredients ?? 'N/A'}
+
+USER QUESTION:
+${userQuestion}`
+      }
+    ]
+  });
+
+  return response.choices[0]?.message?.content ?? '';
+};
