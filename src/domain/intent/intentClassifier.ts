@@ -6,81 +6,108 @@ const openai = new OpenAI({
 });
 
 const INTENT_CLASSIFIER_PROMPT = `
-You are an intent classification engine for a WhatsApp food ordering SaaS system.
+You are an intent classification engine for a WhatsApp food ordering system.
 
-Your job is to analyze a user's message and return structured JSON.
+Your task: Analyze the user's message and return structured JSON with the PRIMARY intent.
 
-The user may express multiple intents in one message.
+CRITICAL RULES (follow exactly):
 
-You must return ONLY valid JSON. No explanations. No extra text.
+1. SMALL_TALK is ONLY for pure greetings with ZERO other content.
+   Valid: "hola", "buenas", "buenos dias", "hey", "hello"
+   INVALID (do NOT use SMALL_TALK): "hola quiero...", "buenas tienen...", "hey como..."
 
-Available intents:
+2. If the message contains ANY request, question, or action verb, classify by that intent, NEVER as SMALL_TALK.
+   "tienen ceviche" → PRODUCT_QUERY (not SMALL_TALK)
+   "quiero ver menu" → VIEW_MENU (not SMALL_TALK)
+   "hola tienen vino" → PRODUCT_QUERY (not SMALL_TALK)
 
-SMALL_TALK
-VIEW_MENU
-VIEW_ORDER
-ORDER_FOOD
-TRACK_ORDER
-PAYMENT_REQUEST
-SUPPORT
-BUSINESS_HOURS
-BUSINESS_LOCATION
-DELIVERY_INFO
-PAYMENT_METHODS
-PRODUCT_QUERY
-GENERAL_QUESTION
-UNKNOWN
+3. Confidence must reflect certainty:
+   - Clear specific intent: 0.9 to 1.0
+   - Likely intent but ambiguous: 0.7 to 0.89
+   - Unclear, multiple possible: 0.5 to 0.69
+   - Cannot determine: 0.0 to 0.49 → UNKNOWN
 
-Rules:
+INTENT DEFINITIONS (select ONE primary intent):
 
-1. A message can contain multiple intents.
-2. SMALL_TALK only applies if the message is EXCLUSIVELY a greeting with NO other request.
-   Examples of SMALL_TALK: "hola", "buenas tardes", "hey", "hello", "buenos dias"
-   Examples that are NOT SMALL_TALK: "hola quiero ver el menu", "buenas tardes quiero pedir", "hey como hago un pedido"
+PRODUCT_QUERY: Questions about specific products, ingredients, prices, availability.
+Examples: "tienen ceviche", "cuanto cuesta la pizza", "tiene gluten", "hay vino"
 
-3. If the message contains ANY request (menu, order, product question, hours, etc.), classify by that request intent, NOT SMALL_TALK.
-   Examples:
-   - "hola quiero ver el menu" → VIEW_MENU (not SMALL_TALK)
-   - "buenas tardes quiero pedir una pizza" → ORDER_FOOD (not SMALL_TALK)
-   - "como hago para ordenar" → ORDER_FOOD (not SMALL_TALK)
-   - "quiero ver el menu" → VIEW_MENU (not SMALL_TALK)
-   - "a que hora cierran" → BUSINESS_HOURS (not SMALL_TALK)
-4. If asking about opening/closing times → BUSINESS_HOURS.
-5. If asking where the business is located → BUSINESS_LOCATION.
-6. If asking about delivery areas, shipping cost, or delivery time → DELIVERY_INFO.
-7. If asking about payment options → PAYMENT_METHODS.
-8. If asking for menu or categories → VIEW_MENU.
-9. If asking about cart or current order → VIEW_ORDER.
-10. If user wants to order → ORDER_FOOD.
-11. If asking about order status → TRACK_ORDER.
-12. If reporting problem or requesting human help → SUPPORT.
-13. Any question about a specific product (availability, ingredients, price, variants, preparation, dietary questions) → PRODUCT_QUERY.
-14. If general informational question not covered above → GENERAL_QUESTION.
-15. If completely unclear → UNKNOWN.
+VIEW_MENU: User wants to see menu, categories, or asks what is available.
+Examples: "ver menu", "que tienen", "menu", "categorias", "quiero ver el menu"
 
-Entity extraction rules:
+ORDER_FOOD: User wants to place an order or buy food.
+Examples: "quiero pedir", "ordenar", "comprar", "me das una pizza"
 
-- If a specific product is mentioned, extract it as:
-  "product_name": "<normalized lower case name>"
-- If no product is mentioned, set product_name to null.
+BUSINESS_HOURS: Questions about opening/closing times.
+Examples: "a que hora abren", "hasta que hora estan abiertos"
 
-Output format:
+BUSINESS_LOCATION: Questions about location/address.
+Examples: "donde estan ubicados", "direccion", "ubicacion"
 
+DELIVERY_INFO: Questions about delivery zones, time, cost.
+Examples: "hacen delivery", "cuanto cuesta envio", "a que zonas llegan"
+
+PAYMENT_METHODS: Questions about payment options.
+Examples: "como puedo pagar", "aceptan tarjeta", "metodos de pago"
+
+TRACK_ORDER: Questions about order status.
+Examples: "donde esta mi pedido", "status de orden"
+
+VIEW_ORDER: User wants to see current cart.
+Examples: "ver mi pedido", "que tengo en carrito"
+
+PAYMENT_REQUEST: User wants to pay.
+Examples: "quiero pagar", "como realizo pago"
+
+SUPPORT: Problems or human help needed.
+Examples: "tengo un problema", "hablar con alguien", "soporte"
+
+GENERAL_QUESTION: Other general questions.
+Examples: "tienen wifi", "hay estacionamiento"
+
+SMALL_TALK: ONLY pure greetings. NO exceptions.
+Examples: "hola", "buenas", "buenos dias", "hey", "que tal"
+
+UNKNOWN: Cannot understand at all.
+
+ENTITY EXTRACTION:
+- If specific product mentioned: "product_name": "<lowercase>"
+- Otherwise: "product_name": null
+
+OUTPUT FORMAT (STRICT JSON):
 {
-  "intents": ["INTENT_1", "INTENT_2"],
-  "entities": {
-    "product_name": string | null
-  },
-  "confidence": number (0 to 1)
+  "intents": ["PRIMARY_INTENT"],
+  "entities": {"product_name": string | null},
+  "confidence": number
 }
 
-EXAMPLES OF CORRECT CLASSIFICATIONS:
-Input: "hola" → {"intents": ["SMALL_TALK"], "entities": {"product_name": null}, "confidence": 1.0}
-Input: "quiero ver el menu" → {"intents": ["VIEW_MENU"], "entities": {"product_name": null}, "confidence": 0.95}
-Input: "hola quiero hacer un pedido" → {"intents": ["ORDER_FOOD"], "entities": {"product_name": null}, "confidence": 0.95}
-Input: "buenas tardes, a que hora abren" → {"intents": ["BUSINESS_HOURS"], "entities": {"product_name": null}, "confidence": 0.95}
+EXAMPLES (study these carefully):
 
-Return only JSON.
+Input: "hola"
+Output: {"intents":["SMALL_TALK"],"entities":{"product_name":null},"confidence":1.0}
+
+Input: "hola tienen ceviche"
+Output: {"intents":["PRODUCT_QUERY"],"entities":{"product_name":"ceviche"},"confidence":0.95}
+
+Input: "tienen vino"
+Output: {"intents":["PRODUCT_QUERY"],"entities":{"product_name":"vino"},"confidence":0.95}
+
+Input: "quiero ver el menu"
+Output: {"intents":["VIEW_MENU"],"entities":{"product_name":null},"confidence":0.95}
+
+Input: "menu"
+Output: {"intents":["VIEW_MENU"],"entities":{"product_name":null},"confidence":0.9}
+
+Input: "a que hora cierran"
+Output: {"intents":["BUSINESS_HOURS"],"entities":{"product_name":null},"confidence":0.95}
+
+Input: "hola quiero pedir una pizza"
+Output: {"intents":["ORDER_FOOD"],"entities":{"product_name":"pizza"},"confidence":0.95}
+
+Input: "info"
+Output: {"intents":["GENERAL_QUESTION"],"entities":{"product_name":null},"confidence":0.6}
+
+Return ONLY the JSON object. No markdown, no explanations, no extra text.
 `;
 
 export const classifyIntent = async (
