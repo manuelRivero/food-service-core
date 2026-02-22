@@ -1504,7 +1504,7 @@ export const processIncomingMessage = async (
     }
   }
 
-  const detectionResult = await detectIntentWithConfidence(formattedMessages);
+  const detectionResult = await detectIntentWithConfidence(messageContent);
 
   if (detectionResult.type === 'UNCERTAIN') {
     const confirmationState: ConfirmationState = {

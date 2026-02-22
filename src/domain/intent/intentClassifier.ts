@@ -172,7 +172,7 @@ JSON:
 const INTENT_PROMPT_VERSION = 'intent-classifier-v3';
 
 export const classifyIntent = async (
-  messages: OpenAITypes.Chat.ChatCompletionMessageParam[]
+  lastUserMessage: string
 ): Promise<string> => {
   console.log('Intent classifier prompt version:', INTENT_PROMPT_VERSION);
   const response = await openai.chat.completions.create({
@@ -185,7 +185,10 @@ export const classifyIntent = async (
         role: 'system',
         content: INTENT_CLASSIFIER_PROMPT
       },
-      ...messages
+      {
+        role: 'user',
+        content: lastUserMessage
+      }
     ]
   });
 
