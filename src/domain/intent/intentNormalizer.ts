@@ -17,6 +17,8 @@ export const INTENT_ENUM_VALUES = [
   'UNKNOWN'
 ] as const;
 
+export type IntentString = typeof INTENT_ENUM_VALUES[number];
+
 export const INTENT_PRIORITY: ConversationIntent[] = [
   ConversationIntent.ORDER_FOOD,
   ConversationIntent.PRODUCT_QUERY,
@@ -59,13 +61,13 @@ export const normalizeIntent = (value: string): ConversationIntent => {
   }
 };
 
-export const mapUnknownIntents = (intents: string[]): ConversationIntent[] => {
+export const mapUnknownIntents = (intents: string[]): IntentString[] => {
   const allowed = new Set<string>(INTENT_ENUM_VALUES);
   return intents.map((intent) => {
     const trimmed = intent.trim().toUpperCase();
     return allowed.has(trimmed)
-      ? (trimmed as ConversationIntent)
-      : ConversationIntent.UNKNOWN;
+      ? (trimmed as IntentString)
+      : 'UNKNOWN';
   });
 };
 

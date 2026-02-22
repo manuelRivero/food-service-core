@@ -4,7 +4,7 @@ import {
   IntentDetectionResult,
   CONFIDENCE_THRESHOLDS
 } from './types';
-import { INTENT_PRIORITY } from './intentNormalizer';
+import { INTENT_PRIORITY, normalizeIntent } from './intentNormalizer';
 import {
   createIntentConfirmationList,
   type WhatsAppListMessage,
@@ -17,7 +17,8 @@ export function evaluateConfidence(
 ): IntentDetectionResult {
   const { intents, confidence } = intentResult;
 
-  const sortedIntents = sortIntentsByPriority(intents);
+  const normalizedIntents = intents.map((intent) => normalizeIntent(intent));
+  const sortedIntents = sortIntentsByPriority(normalizedIntents);
 
   if (confidence >= CONFIDENCE_THRESHOLDS.HIGH) {
     return {

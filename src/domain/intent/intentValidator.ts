@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { formatZodIssues, truncateValue } from '../../utils/zodHelpers';
-import { ConversationIntent } from '../../types/conversationIntent';
 import { INTENT_ENUM_VALUES, mapUnknownIntents } from './intentNormalizer';
 
 export const IntentEnumSchema = z.enum(INTENT_ENUM_VALUES);
