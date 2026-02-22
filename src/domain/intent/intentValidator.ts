@@ -5,7 +5,7 @@ import { INTENT_ENUM_VALUES, mapUnknownIntents } from './intentNormalizer';
 export const IntentEnumSchema = z.enum(INTENT_ENUM_VALUES);
 export const IntentEntitiesSchema = z
   .object({
-    product_name: z.string().optional(),
+    product_name: z.union([z.string(), z.null()]).optional(),
     quantity: z.number().optional(),
     modifiers: z.array(z.string()).optional(),
     size: z.string().optional()

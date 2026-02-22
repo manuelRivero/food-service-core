@@ -34,8 +34,17 @@ UNKNOWN
 Rules:
 
 1. A message can contain multiple intents.
-2. If the message contains ONLY greeting words (examples: "hola", "buenas", "buenos dias", "hey", "hello") and no product, order, or business-related request → SMALL_TALK.
-3. If greeting is combined with another intent → ignore greeting and classify by main intent.
+2. SMALL_TALK only applies if the message is EXCLUSIVELY a greeting with NO other request.
+   Examples of SMALL_TALK: "hola", "buenas tardes", "hey", "hello", "buenos dias"
+   Examples that are NOT SMALL_TALK: "hola quiero ver el menu", "buenas tardes quiero pedir", "hey como hago un pedido"
+
+3. If the message contains ANY request (menu, order, product question, hours, etc.), classify by that request intent, NOT SMALL_TALK.
+   Examples:
+   - "hola quiero ver el menu" → VIEW_MENU (not SMALL_TALK)
+   - "buenas tardes quiero pedir una pizza" → ORDER_FOOD (not SMALL_TALK)
+   - "como hago para ordenar" → ORDER_FOOD (not SMALL_TALK)
+   - "quiero ver el menu" → VIEW_MENU (not SMALL_TALK)
+   - "a que hora cierran" → BUSINESS_HOURS (not SMALL_TALK)
 4. If asking about opening/closing times → BUSINESS_HOURS.
 5. If asking where the business is located → BUSINESS_LOCATION.
 6. If asking about delivery areas, shipping cost, or delivery time → DELIVERY_INFO.
@@ -64,6 +73,12 @@ Output format:
   },
   "confidence": number (0 to 1)
 }
+
+EXAMPLES OF CORRECT CLASSIFICATIONS:
+Input: "hola" → {"intents": ["SMALL_TALK"], "entities": {"product_name": null}, "confidence": 1.0}
+Input: "quiero ver el menu" → {"intents": ["VIEW_MENU"], "entities": {"product_name": null}, "confidence": 0.95}
+Input: "hola quiero hacer un pedido" → {"intents": ["ORDER_FOOD"], "entities": {"product_name": null}, "confidence": 0.95}
+Input: "buenas tardes, a que hora abren" → {"intents": ["BUSINESS_HOURS"], "entities": {"product_name": null}, "confidence": 0.95}
 
 Return only JSON.
 `;
