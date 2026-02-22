@@ -18,17 +18,47 @@ import {
 } from '../repositories';
 import type { OpenAI as OpenAITypes } from 'openai';
 import { generateAIResponse } from './ai/openai.service';
-import { detectIntent } from './conversationOrchestrator.service';
+import { detectIntentWithConfidence } from './conversationOrchestrator.service';
 import { MenuService } from './menu.service';
 import { ConversationIntent } from '../types/conversationIntent';
 import { WhatsAppSenderService } from './whatsappSender.service';
 import { Prisma } from '@prisma/client';
+import type { ConfirmationState } from '../domain/intent/types';
+import type { WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
+import { INTENT_SELECTION_ID_PREFIX } from '../domain/intent/whatsappTemplates';
 import type {
   business as Business,
   conversation as Conversation,
   customer as Customer
 } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+
+const confirmationStates = new Map<string, ConfirmationState>();
+const CONFIRMATION_TTL_MS = 5 * 60 * 1000;
+const CONFIRMATION_CLEANUP_MS = 10 * 60 * 1000;
+const LIST_CONFIRMATION_REGEX = new RegExp(`^${INTENT_SELECTION_ID_PREFIX}([A-Z_]+)$`);
+
+setInterval(() => {
+  const now = new Date();
+  for (const [phone, state] of confirmationStates.entries()) {
+    if (state.status === 'awaiting_confirmation' && now > state.expiresAt) {
+      confirmationStates.delete(phone);
+    }
+  }
+}, CONFIRMATION_CLEANUP_MS);
+
+const isListConfirmation = (
+  messageText: string
+): { isConfirmation: boolean; intent?: ConversationIntent } => {
+  const match = messageText.match(LIST_CONFIRMATION_REGEX);
+  if (match) {
+    const intent = match[1] as ConversationIntent;
+    if (Object.values(ConversationIntent).includes(intent)) {
+      return { isConfirmation: true, intent };
+    }
+  }
+  return { isConfirmation: false };
+};
 
 const chunkButtons = <T>(items: T[], size: number): T[][] => {
   const chunks: T[][] = [];
@@ -991,9 +1021,346 @@ export const sendTextMessage = async (
   return { messageId };
 };
 
+const buildListMessage = (params: {
+  headerText: string;
+  bodyText: string;
+  footerText: string;
+  actionButtonLabel: string;
+  sections: Array<{ title: string; rows: Array<{ id: string; title: string; description: string }> }>;
+}): WhatsAppListMessage => ({
+  type: 'list',
+  header: { type: 'text', text: params.headerText },
+  body: { text: params.bodyText },
+  footer: { text: params.footerText },
+  action: {
+    button: params.actionButtonLabel,
+    sections: params.sections
+  }
+});
+
+const buildListMessageFromButtons = (
+  bodyText: string,
+  buttons: { title: string; payload: string; description?: string; sectionTitle?: string }[],
+  actionButtonLabel = 'Ver opciones disponibles',
+  headerText = 'Opciones',
+  footerText = 'Toca el botón de abajo para ver las opciones'
+): WhatsAppListMessage => {
+  const sections = new Map<string, Array<{ id: string; title: string; description: string }>>();
+  for (const button of buttons) {
+    const sectionTitle = button.sectionTitle ?? 'Opciones';
+    const rows = sections.get(sectionTitle) ?? [];
+    rows.push({
+      id: button.payload,
+      title: button.title,
+      description: button.description ?? 'Selecciona esta opción'
+    });
+    sections.set(sectionTitle, rows);
+  }
+
+  return buildListMessage({
+    headerText,
+    bodyText,
+    footerText,
+    actionButtonLabel,
+    sections: Array.from(sections.entries()).map(([title, rows]) => ({
+      title,
+      rows
+    }))
+  });
+};
+
+const buildSmallTalkResponse = async (
+  conversationId: string,
+  isFirstMessage: boolean,
+  hasGreeted: boolean
+): Promise<WhatsAppListMessage> => {
+  const messageText = isFirstMessage && !hasGreeted
+    ? 'Hola! Bienvenido/a 👋\nEstoy aqui para ayudarte. Elige una opcion para comenzar.'
+    : 'Hola de nuevo! 😊\n¿Quieres ver el menu o tienes una duda?';
+
+  await createConversationMessage(conversationId, 'ai', messageText, false);
+  await updateConversationState(conversationId, { current_intent: 'greeted' });
+  await updateConversationLastMessageAt(conversationId);
+
+  return buildListMessage({
+    headerText: '¿Cómo te ayudo?',
+    bodyText: messageText,
+    footerText: 'Toca el botón de abajo para ver las opciones',
+    actionButtonLabel: 'Ver opciones',
+    sections: [
+      {
+        title: 'Opciones',
+        rows: [
+          {
+            id: 'VIEW_MENU_RETURN',
+            title: 'Ver menú',
+            description: 'Explorar categorías y platillos'
+          },
+          {
+            id: 'ASK_QUESTION',
+            title: 'Necesito info',
+            description: 'Hacer una consulta'
+          }
+        ]
+      }
+    ]
+  });
+};
+
+const buildUnknownResponse = async (
+  conversationId: string
+): Promise<WhatsAppListMessage> => {
+  const messageText =
+    'No estoy seguro de haber entendido. ¿Quieres ver el menu o necesitas informacion?';
+
+  await createConversationMessage(conversationId, 'ai', messageText, false);
+  await updateConversationLastMessageAt(conversationId);
+
+  return buildListMessage({
+    headerText: '¿Cómo te ayudo?',
+    bodyText: messageText,
+    footerText: 'Toca el botón de abajo para ver las opciones',
+    actionButtonLabel: 'Ver opciones',
+    sections: [
+      {
+        title: 'Opciones',
+        rows: [
+          {
+            id: 'VIEW_MENU_RETURN',
+            title: 'Ver menú',
+            description: 'Explorar categorías y platillos'
+          },
+          {
+            id: 'ASK_QUESTION',
+            title: 'Necesito info',
+            description: 'Hacer una consulta'
+          }
+        ]
+      }
+    ]
+  });
+};
+
+const buildViewMenuResponse = async (
+  businessId: string,
+  customerId: string,
+  conversationId: string,
+  hasGreeted: boolean
+): Promise<string | WhatsAppListMessage> => {
+  if (!hasGreeted) {
+    const menuResponse = await MenuService.getMenuForCustomer({ businessId, customerId });
+    await createConversationMessage(conversationId, 'ai', menuResponse.text, true);
+    await updateConversationLastMessageAt(conversationId);
+    await updateConversationState(conversationId, { current_intent: 'greeted' });
+
+    if (menuResponse.buttons.length === 0) {
+      return menuResponse.text;
+    }
+
+    return buildListMessageFromButtons(
+      menuResponse.text,
+      menuResponse.buttons,
+      'Ver opciones disponibles',
+      'Menú'
+    );
+  }
+
+  const menuResponse = await MenuService.getCategoryListForCustomer({
+    businessId,
+    customerId
+  });
+
+  const pages = buildCategoryListPages(menuResponse.buttons);
+  const totalPages = pages.length;
+  const safePage = Math.min(Math.max(1, 1), totalPages || 1);
+  const currentPage = pages[safePage - 1];
+  let pageText = `📋 Categorías (pagina ${safePage} de ${totalPages})\n\nSelecciona una categoría o usa las opciones para navegar.`;
+
+  if (safePage === 1) {
+    const menuHeader = await MenuService.getMenuForCustomer({
+      businessId,
+      customerId
+    });
+    pageText = menuHeader.text;
+  }
+
+  await createConversationMessage(conversationId, 'ai', menuResponse.text, true);
+  await updateConversationLastMessageAt(conversationId);
+  await updateConversationState(conversationId, { current_intent: 'greeted' });
+
+  return buildListMessageFromButtons(
+    pageText,
+    currentPage?.buttons ?? [],
+    'Elige categoria',
+    'Categorías'
+  );
+};
+
+const buildViewOrderResponse = async (
+  business: Business,
+  conversation: Conversation,
+  customer: Customer,
+  to: string
+): Promise<string | WhatsAppListMessage> => {
+  const draftOrder = await prisma.draft_order.findFirst({
+    where: {
+      business_id: business.id,
+      customer_phone: to,
+      status: 'active'
+    }
+  });
+
+  if (!draftOrder) {
+    const message = 'No tienes un pedido activo.';
+    await createConversationMessage(conversation.id, 'ai', message, false);
+    await updateConversationLastMessageAt(conversation.id);
+    return message;
+  }
+
+  const items = await prisma.draft_order_item.findMany({
+    where: { draft_order_id: draftOrder.id }
+  });
+
+  if (items.length === 0) {
+    const message = 'Tu pedido esta vacio.';
+    await createConversationMessage(conversation.id, 'ai', message, false);
+    await updateConversationLastMessageAt(conversation.id);
+    return message;
+  }
+
+  const menuItemIds = items.flatMap((item) =>
+    item.product_id ? [item.product_id] : []
+  );
+  const menuItems =
+    menuItemIds.length > 0
+      ? await prisma.menu_item.findMany({
+          where: { id: { in: menuItemIds } },
+          select: { id: true, name: true }
+        })
+      : [];
+  const menuItemMap = new Map(menuItems.map((item) => [item.id, item.name]));
+
+  const lines: string[] = ['🛒 Pedido actual:', ''];
+  for (const item of items) {
+    const name = item.product_id ? menuItemMap.get(item.product_id) ?? 'Platillo' : 'Platillo';
+    lines.push(`- ${item.quantity}x ${name}`);
+  }
+  lines.push('', `Total: $${draftOrder.total_amount.toFixed(2)} ${draftOrder.currency}`);
+
+  const bodyText = lines.join('\n');
+
+  await createConversationMessage(conversation.id, 'ai', bodyText, false);
+  await updateConversationLastMessageAt(conversation.id);
+
+  return buildListMessage({
+    headerText: 'Pedido actual',
+    bodyText,
+    footerText: 'Toca el botón de abajo para ver las opciones',
+    actionButtonLabel: 'Acciones',
+    sections: [
+      {
+        title: 'Acciones',
+        rows: [
+          {
+            id: 'VIEW_MENU_RETURN',
+            title: 'Agregar más',
+            description: 'Ver más platillos'
+          },
+          {
+            id: 'CANCEL_ORDER',
+            title: 'Cancelar pedido',
+            description: 'Cancelar el pedido actual'
+          },
+          {
+            id: 'CHECKOUT',
+            title: 'Finalizar pedido',
+            description: 'Continuar al pago'
+          }
+        ]
+      }
+    ]
+  });
+};
+
+const buildResponse = async ({
+  intent,
+  business,
+  customer,
+  conversation,
+  from,
+  isFirstMessage,
+  hasGreeted,
+  formattedMessages
+}: {
+  intent: ConversationIntent;
+  business: Business;
+  customer: Customer;
+  conversation: Conversation;
+  from: string;
+  isFirstMessage: boolean;
+  hasGreeted: boolean;
+  formattedMessages: OpenAITypes.Chat.ChatCompletionMessageParam[];
+}): Promise<string | WhatsAppListMessage> => {
+  if (intent === ConversationIntent.SMALL_TALK) {
+    return buildSmallTalkResponse(conversation.id, isFirstMessage, hasGreeted);
+  }
+
+  if (intent === ConversationIntent.VIEW_MENU) {
+    return buildViewMenuResponse(business.id, customer.id, conversation.id, hasGreeted);
+  }
+
+  if (intent === ConversationIntent.ASK_QUESTION) {
+    const messageText =
+      'Claro, estoy aqui para ayudarte. Escribe tu duda con total confianza y la reviso enseguida.';
+    await createConversationMessage(conversation.id, 'ai', messageText, false);
+    await updateConversationLastMessageAt(conversation.id);
+    await updateConversationState(conversation.id, { current_intent: 'greeted' });
+    return messageText;
+  }
+
+  if (intent === ConversationIntent.UNKNOWN) {
+    return buildUnknownResponse(conversation.id);
+  }
+
+  if (intent === ConversationIntent.VIEW_ORDER) {
+    return buildViewOrderResponse(business, conversation, customer, from);
+  }
+
+  const aiResponse = await generateAIResponse(business, formattedMessages);
+  await createConversationMessage(conversation.id, 'ai', aiResponse.content, true, undefined, undefined, {
+    promptTokens: aiResponse.usage.promptTokens,
+    completionTokens: aiResponse.usage.completionTokens,
+    totalTokens: aiResponse.usage.totalTokens,
+    estimatedCostUsd: aiResponse.usage.estimatedCostUsd
+  });
+  await updateConversationLastMessageAt(conversation.id);
+  return aiResponse.content;
+};
+
+const processConfirmationResponse = (
+  response: string,
+  candidates: Array<{ intent: ConversationIntent; label: string }>
+): ConversationIntent | null => {
+  const normalized = response.trim().toLowerCase();
+
+  const numMatch = normalized.match(/^[1-9]$/);
+  if (numMatch) {
+    const index = parseInt(numMatch[0], 10) - 1;
+    if (index >= 0 && index < candidates.length) {
+      return candidates[index].intent;
+    }
+  }
+
+  if (['sí', 'si', 'yes', 'ok', 'vale', 'correcto'].includes(normalized)) {
+    return candidates[0].intent;
+  }
+
+  return null;
+};
+
 export const processIncomingMessage = async (
   payload: WhatsAppWebhookPayload
-): Promise<void> => {
+): Promise<string | WhatsAppListMessage> => {
   console.log('📩 Webhook recibido RAW');
   console.dir(payload, { depth: null });
 
@@ -1006,11 +1373,14 @@ export const processIncomingMessage = async (
 
   if (!message) {
     await processStatus(payload);
-    return;
+    return '';
   }
 
   const from = message.from;
   const text = message.text?.body;
+  const interactiveId =
+    message.interactive?.button_reply?.id ??
+    message.interactive?.list_reply?.id;
   const phoneNumberId = value?.metadata?.phone_number_id;
 
   console.log('📩 Mensaje recibido');
@@ -1020,13 +1390,13 @@ export const processIncomingMessage = async (
 
   if (!phoneNumberId || !from) {
     console.log('ℹ️ Mensaje sin phoneNumberId o from');
-    return;
+    return '';
   }
 
   const business = await findBusinessByPhoneNumberId(phoneNumberId);
   if (!business) {
     console.log('ℹ️ No se encontró business para phoneNumberId');
-    return;
+    return '';
   }
 
   const customer = await findOrCreateCustomer(business.id, from);
@@ -1037,11 +1407,11 @@ export const processIncomingMessage = async (
   if (messageId) {
     const existingMessage = await findByWhatsappMessageId(messageId);
     if (existingMessage) {
-      return;
+      return '';
     }
   }
 
-  const messageContent = text ?? `[${message.type ?? 'unknown'}]`;
+  const messageContent = text ?? interactiveId ?? `[${message.type ?? 'unknown'}]`;
 
   const persistedMessage = await createConversationMessage(
     conversation.id,
@@ -1054,7 +1424,7 @@ export const processIncomingMessage = async (
 
   if (!persistedMessage) {
     console.log('Duplicate webhook ignored');
-    return;
+    return '';
   }
 
   await updateConversationLastMessageAt(conversation.id);
@@ -1068,76 +1438,109 @@ export const processIncomingMessage = async (
   const isFirstMessage = recentMessages.length === 1;
   const hasGreeted = conversationState.current_intent === 'greeted';
 
-  const intent = await detectIntent(formattedMessages);
-  console.info('Detected intent:', intent);
+  const existingState = confirmationStates.get(from);
+  const listCheck = isListConfirmation(messageContent);
+  if (listCheck.isConfirmation && listCheck.intent) {
+    if (existingState?.status === 'awaiting_confirmation') {
+      if (new Date() > existingState.expiresAt) {
+        confirmationStates.delete(from);
+      } else {
+        const isValidCandidate = existingState.candidates.some(
+          (candidate) => candidate.intent === listCheck.intent
+        );
 
-  if (intent === ConversationIntent.SMALL_TALK) {
-    const sender = new WhatsAppSenderService();
-    const messageText = isFirstMessage && !hasGreeted
-      ? 'Hola! Bienvenido/a 👋\nEstoy aqui para ayudarte. Elige una opcion para comenzar.'
-      : 'Hola de nuevo! 😊\n¿Quieres ver el menu o tienes una duda?';
-
-    await sender.sendInteractiveMenu({
-      phoneNumberId,
-      to: from,
-      text: messageText,
-      buttons: [
-        { title: 'Ver menu', payload: 'VIEW_MENU_RETURN' },
-        { title: 'Necesito info', payload: 'ASK_QUESTION' }
-      ]
-    });
-
-    await createConversationMessage(conversation.id, 'ai', messageText, false);
-    await updateConversationState(conversation.id, { current_intent: 'greeted' });
-    await updateConversationLastMessageAt(conversation.id);
-    return;
-  }
-
-  if (intent === ConversationIntent.VIEW_MENU) {
-    if (hasGreeted) {
-      await handleViewCategories(business.id, customer.id, conversation.id, from, phoneNumberId, 1, true);
-    } else {
-      await handleViewMenuIntent(business.id, customer.id, conversation.id);
+        if (isValidCandidate) {
+          confirmationStates.delete(from);
+        console.info('Detected intent:', listCheck.intent);
+        const responseContent = await buildResponse({
+          intent: listCheck.intent,
+          business,
+          customer,
+          conversation,
+          from,
+          isFirstMessage,
+          hasGreeted,
+          formattedMessages
+        });
+        return responseContent;
+        }
+        confirmationStates.delete(from);
+      }
     }
-    return;
   }
-  if (intent === ConversationIntent.ASK_QUESTION) {
-    await sendAskQuestionPrompt(conversation.id, from, phoneNumberId);
-    return;
+
+  if (!listCheck.isConfirmation && existingState?.status === 'awaiting_confirmation') {
+    if (new Date() > existingState.expiresAt) {
+      confirmationStates.delete(from);
+    } else {
+      const confirmationInput = text ?? messageContent;
+      const confirmationResult = processConfirmationResponse(
+        confirmationInput,
+        existingState.candidates
+      );
+
+      confirmationStates.delete(from);
+
+      if (confirmationResult) {
+        console.info('Detected intent:', confirmationResult);
+        const responseContent = await buildResponse({
+          intent: confirmationResult,
+          business,
+          customer,
+          conversation,
+          from,
+          isFirstMessage,
+          hasGreeted,
+          formattedMessages
+        });
+        return responseContent;
+      }
+
+      const messageText =
+        'Disculpa, no entendí tu respuesta. ¿Puedes escribirme qué necesitas de otra forma?';
+      await createConversationMessage(conversation.id, 'ai', messageText, false);
+      await updateConversationLastMessageAt(conversation.id);
+      return messageText;
+    }
   }
-  if (intent === ConversationIntent.UNKNOWN) {
-    const sender = new WhatsAppSenderService();
-    const messageText =
-      'No estoy seguro de haber entendido. ¿Quieres ver el menu o necesitas informacion?';
 
-    await sender.sendInteractiveMenu({
-      phoneNumberId,
-      to: from,
-      text: messageText,
-      buttons: [
-        { title: 'Ver menu', payload: 'VIEW_MENU_RETURN' },
-        { title: 'Necesito info', payload: 'ASK_QUESTION' }
-      ]
-    });
+  const detectionResult = await detectIntentWithConfidence(formattedMessages);
 
-    await createConversationMessage(conversation.id, 'ai', messageText, false);
+  if (detectionResult.type === 'UNCERTAIN') {
+    const confirmationState: ConfirmationState = {
+      status: 'awaiting_confirmation',
+      candidates: detectionResult.candidates.map((candidate) => ({
+        intent: candidate.intent,
+        label: candidate.intent
+      })),
+      originalMessage: detectionResult.originalMessage,
+      expiresAt: new Date(Date.now() + CONFIRMATION_TTL_MS)
+    };
+
+    confirmationStates.set(from, confirmationState);
+
+    await createConversationMessage(
+      conversation.id,
+      'ai',
+      detectionResult.listContent.body.text,
+      false
+    );
     await updateConversationLastMessageAt(conversation.id);
-    return;
-  }
-  if (intent === ConversationIntent.VIEW_ORDER) {
-    await sendCurrentOrderSummary(business, conversation, customer, from, phoneNumberId);
-    return;
+    return detectionResult.listContent;
   }
 
-  const aiResponse = await generateAIResponse(business, formattedMessages);
-
-  await createConversationMessage(conversation.id, 'ai', aiResponse.content, true, undefined, undefined, {
-    promptTokens: aiResponse.usage.promptTokens,
-    completionTokens: aiResponse.usage.completionTokens,
-    totalTokens: aiResponse.usage.totalTokens,
-    estimatedCostUsd: aiResponse.usage.estimatedCostUsd
+  console.info('Detected intent:', detectionResult.intent);
+  const responseContent = await buildResponse({
+    intent: detectionResult.intent,
+    business,
+    customer,
+    conversation,
+    from,
+    isFirstMessage,
+    hasGreeted,
+    formattedMessages
   });
-  await updateConversationLastMessageAt(conversation.id);
+  return responseContent;
 };
 
 export const processStatus = async (

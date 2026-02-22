@@ -1,4 +1,5 @@
 import axios, { AxiosError } from 'axios';
+import type { WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
 
 export class WhatsAppSenderService {
   private readonly baseUrl = 'https://graph.facebook.com/v18.0';
@@ -173,6 +174,45 @@ console.log("payload", {
       throw new Error(
         `Error al enviar mensaje WhatsApp: ${status ?? 'sin_status'} ${messageDetail}`
       );
+    }
+  }
+
+  async sendResponse(params: {
+    phoneNumberId: string;
+    to: string;
+    content: string | WhatsAppListMessage;
+  }): Promise<void> {
+    const { phoneNumberId, to, content } = params;
+    if (typeof content === 'string') {
+      await this.sendTextMessage({ phoneNumberId, to, message: content });
+      return;
+    }
+
+    if (content.type === 'list') {
+      const textParts = [
+        content.header?.text,
+        content.body?.text,
+        content.footer?.text
+      ].filter(Boolean);
+      const text = textParts.join('\n\n');
+
+      const buttons = content.action.sections.flatMap((section) =>
+        section.rows.map((row) => ({
+          title: row.title,
+          payload: row.id,
+          description: row.description,
+          sectionTitle: section.title
+        }))
+      );
+
+      await this.sendInteractiveMenu({
+        phoneNumberId,
+        to,
+        text,
+        buttons,
+        actionButtonLabel: content.action.button,
+        forceList: true
+      });
     }
   }
 }

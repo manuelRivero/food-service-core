@@ -17,6 +17,7 @@ import {
   ValidationError,
   verifyWebhook as verifyWebhookService
 } from '../services/whatsapp.service';
+import { WhatsAppSenderService } from '../services/whatsappSender.service';
 
 /**
  * Envía un mensaje de WhatsApp
@@ -143,7 +144,25 @@ export const handleWebhook = async (
     }
   }
 
-  void processIncomingMessage(req.body).catch((error: unknown) => {
+  void (async () => {
+    const response = await processIncomingMessage(req.body);
+    if (!response) {
+      return;
+    }
+
+    const phoneNumberId = value?.metadata?.phone_number_id;
+    const to = message?.from;
+    if (!phoneNumberId || !to) {
+      return;
+    }
+
+    const sender = new WhatsAppSenderService();
+    await sender.sendResponse({
+      phoneNumberId,
+      to,
+      content: response
+    });
+  })().catch((error: unknown) => {
     console.error('Async webhook processing error:', error);
   });
 };
