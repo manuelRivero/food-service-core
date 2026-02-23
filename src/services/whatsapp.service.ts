@@ -1672,6 +1672,23 @@ const buildResponse = async ({
     return aiResponse;
   }
 
+  if (
+    intent === ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION &&
+    lastReferencedProductId
+  ) {
+    const implicitResponse = await buildImplicitProductResponse({
+      business,
+      customer,
+      conversation,
+      lastReferencedProductId,
+      lastUserMessage,
+      logLabel: '---- PRODUCT ATTRIBUTE QUESTION ----'
+    });
+    if (implicitResponse) {
+      return implicitResponse;
+    }
+  }
+
   if (intent === ConversationIntent.ORDER_FOOD) {
     // Sin handler específico: continúa a fallback.
   }

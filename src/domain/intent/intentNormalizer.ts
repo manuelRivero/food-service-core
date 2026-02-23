@@ -3,6 +3,7 @@ import { ConversationIntent } from '../../types/conversationIntent';
 export const INTENT_ENUM_VALUES = [
   'ORDER_FOOD',
   'PRODUCT_QUERY',
+  'PRODUCT_ATTRIBUTE_QUESTION',
   'VIEW_MENU',
   'VIEW_ORDER',
   'TRACK_ORDER',
@@ -22,6 +23,7 @@ export type IntentString = typeof INTENT_ENUM_VALUES[number];
 export const INTENT_PRIORITY: ConversationIntent[] = [
   ConversationIntent.ORDER_FOOD,
   ConversationIntent.PRODUCT_QUERY,
+  ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION,
   ConversationIntent.VIEW_MENU,
   ConversationIntent.VIEW_ORDER,
   ConversationIntent.TRACK_ORDER,
@@ -53,6 +55,7 @@ export const normalizeIntent = (value: string): ConversationIntent => {
     case ConversationIntent.DELIVERY_INFO:
     case ConversationIntent.PAYMENT_METHODS:
     case ConversationIntent.PRODUCT_QUERY:
+    case ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION:
     case ConversationIntent.GENERAL_QUESTION:
     case ConversationIntent.UNKNOWN:
       return trimmed as ConversationIntent;
