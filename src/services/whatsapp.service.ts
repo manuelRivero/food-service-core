@@ -1450,13 +1450,17 @@ const buildImplicitProductResponse = async ({
   customer,
   conversation,
   lastReferencedProductId,
-  lastUserMessage
+  lastUserMessage,
+  logLabel,
+  additionalLogLine
 }: {
   business: Business;
   customer: Customer;
   conversation: Conversation;
   lastReferencedProductId: string;
   lastUserMessage: string;
+  logLabel: string;
+  additionalLogLine?: string;
 }): Promise<string | null> => {
   const product = await prisma.menu_item.findUnique({
     where: { id: lastReferencedProductId },
@@ -1474,10 +1478,13 @@ const buildImplicitProductResponse = async ({
     return null;
   }
 
-  console.log('---- IMPLICIT PRODUCT CONTEXT ----');
+  console.log(logLabel);
+  if (additionalLogLine) {
+    console.log(additionalLogLine);
+  }
   console.log('Using lastReferencedProductId:', product.id);
   console.log('User message:', lastUserMessage);
-  console.log('-----------------------------------');
+  console.log('-------------------------------------');
 
   const currency = customer.preferred_currency ?? business.currency_code ?? null;
   const now = new Date();
@@ -1543,116 +1550,28 @@ const buildResponse = async ({
   lastUserMessage: string;
   lastReferencedProductId: string | null;
 }): Promise<string | WhatsAppListMessage> => {
-  if (intent === ConversationIntent.SMALL_TALK) {
-    return buildSmallTalkResponse(conversation.id, isFirstMessage, hasGreeted);
-  }
-
-  if (intent === ConversationIntent.VIEW_MENU) {
-    return buildViewMenuResponse(business.id, customer.id, conversation.id, hasGreeted);
-  }
-
-  if (intent === ConversationIntent.ASK_QUESTION) {
-    const messageText =
-      'Claro, estoy aqui para ayudarte. Escribe tu duda con total confianza y la reviso enseguida.';
-    await createConversationMessage(conversation.id, 'ai', messageText, false);
-    await updateConversationLastMessageAt(conversation.id);
-    await updateConversationState(conversation.id, { current_intent: 'greeted' });
-    return messageText;
-  }
-
-  if (
-    (intent === ConversationIntent.GENERAL_QUESTION ||
-      intent === ConversationIntent.ORDER_FOOD) &&
-    !detectedProductName &&
-    lastReferencedProductId
-  ) {
-    const implicitResponse = await buildImplicitProductResponse({
-      business,
-      customer,
-      conversation,
-      lastReferencedProductId,
-      lastUserMessage
-    });
-    if (implicitResponse) {
-      return implicitResponse;
-    }
-  }
-
-  if (intent === ConversationIntent.UNKNOWN) {
-    return buildUnknownResponse(conversation.id);
-  }
-
-  if (intent === ConversationIntent.VIEW_ORDER) {
-    return buildViewOrderResponse(business, conversation, customer, from);
-  }
-
   if (detectedProductName) {
     const userQuestion = lastUserMessage;
     const keyword = (detectedProductName ?? '').trim();
-
-    if (lastReferencedProductId) {
-      const focusedProduct = await prisma.menu_item.findUnique({
-        where: { id: lastReferencedProductId },
-        select: {
-          id: true,
-          name: true,
-          description: true,
-          ingredients: true,
-          serves_people: true,
-          is_available: true
-        }
-      });
-
-      if (
-        focusedProduct &&
-        detectedProductName.toLowerCase() !== focusedProduct.name.toLowerCase()
-      ) {
-        console.log('---- CONTEXTUAL ATTRIBUTE QUESTION DETECTED ----');
-
-        const currency = customer.preferred_currency ?? business.currency_code ?? null;
-        const now = new Date();
-        const priceWhere = {
-          is_active: true,
-          valid_from: { lte: now },
-          OR: [{ valid_to: null }, { valid_to: { gte: now } }],
-          ...(currency ? { currency_code: currency } : {})
-        };
-
-        const activePrice = await prisma.menu_item_price.findFirst({
-          where: {
-            menu_item_id: focusedProduct.id,
-            ...priceWhere
-          },
-          orderBy: { valid_from: 'desc' }
-        });
-
-        const aiResponse = await generateProductAwareResponse({
-          product: {
-            name: focusedProduct.name,
-            description: focusedProduct.description,
-            ingredients: focusedProduct.ingredients,
-            serves_people: focusedProduct.serves_people,
-            is_available: focusedProduct.is_available,
-            price: activePrice
-              ? {
-                  amount: activePrice.amount,
-                  currency_code: activePrice.currency_code
-                }
-              : null
-          },
-          userQuestion: lastUserMessage
-        });
-
-        await createConversationMessage(conversation.id, 'ai', aiResponse, true);
-        await updateConversationLastMessageAt(conversation.id);
-        return aiResponse;
-      }
-    }
-
     const items = await MenuService.searchMenuItemsByKeyword({
       businessId: business.id,
       keyword
     });
+
+    if (items.length === 0 && lastReferencedProductId) {
+      const implicitResponse = await buildImplicitProductResponse({
+        business,
+        customer,
+        conversation,
+        lastReferencedProductId,
+        lastUserMessage,
+        logLabel: '---- ATTRIBUTE QUESTION DETECTED ----',
+        additionalLogLine: `Falling back to contextual product: ${lastReferencedProductId}`
+      });
+      if (implicitResponse) {
+        return implicitResponse;
+      }
+    }
 
     if (items.length === 0) {
       const safeKeyword = keyword || 'tu consulta';
@@ -1751,6 +1670,53 @@ const buildResponse = async ({
     });
     console.log('[CONTEXT] Implicit product set:', matchedItem.name, 'for conversation:', conversation.id);
     return aiResponse;
+  }
+
+  if (intent === ConversationIntent.ORDER_FOOD) {
+    // Sin handler específico: continúa a fallback.
+  }
+
+  if (
+    intent === ConversationIntent.GENERAL_QUESTION &&
+    !detectedProductName &&
+    lastReferencedProductId
+  ) {
+    const implicitResponse = await buildImplicitProductResponse({
+      business,
+      customer,
+      conversation,
+      lastReferencedProductId,
+      lastUserMessage,
+      logLabel: '---- CONTEXTUAL PRODUCT QUESTION ----'
+    });
+    if (implicitResponse) {
+      return implicitResponse;
+    }
+  }
+
+  if (intent === ConversationIntent.VIEW_ORDER) {
+    return buildViewOrderResponse(business, conversation, customer, from);
+  }
+
+  if (intent === ConversationIntent.VIEW_MENU) {
+    return buildViewMenuResponse(business.id, customer.id, conversation.id, hasGreeted);
+  }
+
+  if (intent === ConversationIntent.SMALL_TALK) {
+    return buildSmallTalkResponse(conversation.id, isFirstMessage, hasGreeted);
+  }
+
+  if (intent === ConversationIntent.UNKNOWN) {
+    return buildUnknownResponse(conversation.id);
+  }
+
+  if (intent === ConversationIntent.ASK_QUESTION) {
+    const messageText =
+      'Claro, estoy aqui para ayudarte. Escribe tu duda con total confianza y la reviso enseguida.';
+    await createConversationMessage(conversation.id, 'ai', messageText, false);
+    await updateConversationLastMessageAt(conversation.id);
+    await updateConversationState(conversation.id, { current_intent: 'greeted' });
+    return messageText;
   }
 
   const aiResponse = await generateAIResponse(business, formattedMessages);
