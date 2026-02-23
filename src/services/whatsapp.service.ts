@@ -1421,7 +1421,8 @@ const buildResponse = async ({
   isFirstMessage,
   hasGreeted,
   formattedMessages,
-  detectedProductName
+  detectedProductName,
+  lastUserMessage
 }: {
   intent: ConversationIntent;
   business: Business;
@@ -1432,6 +1433,7 @@ const buildResponse = async ({
   hasGreeted: boolean;
   formattedMessages: OpenAITypes.Chat.ChatCompletionMessageParam[];
   detectedProductName: string | null;
+  lastUserMessage: string;
 }): Promise<string | WhatsAppListMessage> => {
   if (intent === ConversationIntent.SMALL_TALK) {
     return buildSmallTalkResponse(conversation.id, isFirstMessage, hasGreeted);
@@ -1459,7 +1461,7 @@ const buildResponse = async ({
   }
 
   if (intent === ConversationIntent.PRODUCT_QUERY) {
-    const userQuestion = getLastUserMessage(formattedMessages);
+    const userQuestion = lastUserMessage;
     const keyword = (detectedProductName ?? '').trim();
     const items = await MenuService.searchMenuItemsByKeyword({
       businessId: business.id,
@@ -1482,10 +1484,11 @@ const buildResponse = async ({
       await updateConversationState(conversation.id, {
         metadata: {
           pendingProductSelection: true,
-          pendingQuestion: userQuestion,
+          pendingQuestion: lastUserMessage,
           candidateProductIds: items.map((item) => item.id)
         }
       });
+      console.log('Correct pendingQuestion saved:', lastUserMessage);
 
       const listMessage = buildListMessage({
         headerText: 'Opciones encontradas',
@@ -1541,7 +1544,7 @@ const buildResponse = async ({
           currency_code: activePrice.currency_code
         }
       },
-      userQuestion
+      userQuestion: lastUserMessage
     });
 
     await createConversationMessage(conversation.id, 'ai', aiResponse, true);
@@ -1625,6 +1628,7 @@ export const processIncomingMessage = async (
   }
 
   const messageContent = text ?? interactiveId ?? `[${message.type ?? 'unknown'}]`;
+  const lastUserMessage = text ?? '';
 
   const persistedMessage = await createConversationMessage(
     conversation.id,
@@ -1673,7 +1677,8 @@ export const processIncomingMessage = async (
           isFirstMessage,
           hasGreeted,
           formattedMessages,
-          detectedProductName: null
+          detectedProductName: null,
+          lastUserMessage
         });
         return responseContent;
         }
@@ -1705,7 +1710,8 @@ export const processIncomingMessage = async (
           isFirstMessage,
           hasGreeted,
           formattedMessages,
-          detectedProductName: null
+          detectedProductName: null,
+          lastUserMessage
         });
         return responseContent;
       }
@@ -1766,7 +1772,8 @@ export const processIncomingMessage = async (
     isFirstMessage,
     hasGreeted,
     formattedMessages,
-    detectedProductName: detectionResult.detectedProductName
+    detectedProductName: detectionResult.detectedProductName,
+    lastUserMessage
   });
   return responseContent;
 };
