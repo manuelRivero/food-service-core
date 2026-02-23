@@ -1,4 +1,4 @@
-import type { conversation_state } from '@prisma/client';
+import type { conversation_state, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 
 export const findOrCreateConversationState = async (
@@ -13,7 +13,7 @@ export const findOrCreateConversationState = async (
 
 export const updateConversationState = async (
   conversationId: string,
-  data: Partial<conversation_state>
+  data: Prisma.conversation_stateUpdateInput
 ): Promise<conversation_state> => {
   return prisma.conversation_state.update({
     where: { conversation_id: conversationId },

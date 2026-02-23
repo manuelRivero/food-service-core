@@ -424,7 +424,7 @@ export const handleProductSelectionFromWebhook = async (
     const messageText = `El producto "${item.name}" no está disponible en este momento.`;
     await createConversationMessage(conversation.id, 'ai', messageText, false);
     await updateConversationLastMessageAt(conversation.id);
-    await updateConversationState(conversation.id, { metadata: null });
+    await updateConversationState(conversation.id, { metadata: Prisma.JsonNull });
     return messageText;
   }
 
@@ -449,7 +449,7 @@ export const handleProductSelectionFromWebhook = async (
     const messageText = `No tengo el precio actual de "${item.name}".`;
     await createConversationMessage(conversation.id, 'ai', messageText, false);
     await updateConversationLastMessageAt(conversation.id);
-    await updateConversationState(conversation.id, { metadata: null });
+    await updateConversationState(conversation.id, { metadata: Prisma.JsonNull });
     return messageText;
   }
 
@@ -470,7 +470,7 @@ export const handleProductSelectionFromWebhook = async (
 
   await createConversationMessage(conversation.id, 'ai', aiResponse, true);
   await updateConversationLastMessageAt(conversation.id);
-  await updateConversationState(conversation.id, { metadata: null });
+  await updateConversationState(conversation.id, { metadata: Prisma.JsonNull });
   return aiResponse;
 };
 
