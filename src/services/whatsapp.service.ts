@@ -1442,6 +1442,79 @@ const buildViewOrderResponse = async (
   });
 };
 
+const buildImplicitProductResponse = async ({
+  business,
+  customer,
+  conversation,
+  lastReferencedProductId,
+  lastUserMessage
+}: {
+  business: Business;
+  customer: Customer;
+  conversation: Conversation;
+  lastReferencedProductId: string;
+  lastUserMessage: string;
+}): Promise<string | null> => {
+  const product = await prisma.menu_item.findUnique({
+    where: { id: lastReferencedProductId },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      ingredients: true,
+      serves_people: true,
+      is_available: true
+    }
+  });
+
+  if (!product) {
+    return null;
+  }
+
+  console.log('---- IMPLICIT PRODUCT CONTEXT ----');
+  console.log('Using lastReferencedProductId:', product.id);
+  console.log('User message:', lastUserMessage);
+  console.log('-----------------------------------');
+
+  const currency = customer.preferred_currency ?? business.currency_code ?? null;
+  const now = new Date();
+  const priceWhere = {
+    is_active: true,
+    valid_from: { lte: now },
+    OR: [{ valid_to: null }, { valid_to: { gte: now } }],
+    ...(currency ? { currency_code: currency } : {})
+  };
+
+  const activePrice = await prisma.menu_item_price.findFirst({
+    where: {
+      menu_item_id: product.id,
+      ...priceWhere
+    },
+    orderBy: { valid_from: 'desc' }
+  });
+
+  const aiResponse = await generateProductAwareResponse({
+    product: {
+      name: product.name,
+      description: product.description,
+      ingredients: product.ingredients,
+      serves_people: product.serves_people,
+      is_available: product.is_available,
+      price: activePrice
+        ? {
+            amount: activePrice.amount,
+            currency_code: activePrice.currency_code
+          }
+        : null
+    },
+    userQuestion: lastUserMessage
+  });
+
+  await createConversationMessage(conversation.id, 'ai', aiResponse, true);
+  await updateConversationLastMessageAt(conversation.id);
+  return aiResponse;
+};
+
 const buildResponse = async ({
   intent,
   business,
@@ -1452,7 +1525,8 @@ const buildResponse = async ({
   hasGreeted,
   formattedMessages,
   detectedProductName,
-  lastUserMessage
+  lastUserMessage,
+  lastReferencedProductId
 }: {
   intent: ConversationIntent;
   business: Business;
@@ -1464,6 +1538,7 @@ const buildResponse = async ({
   formattedMessages: OpenAITypes.Chat.ChatCompletionMessageParam[];
   detectedProductName: string | null;
   lastUserMessage: string;
+  lastReferencedProductId: string | null;
 }): Promise<string | WhatsAppListMessage> => {
   if (intent === ConversationIntent.SMALL_TALK) {
     return buildSmallTalkResponse(conversation.id, isFirstMessage, hasGreeted);
@@ -1480,6 +1555,24 @@ const buildResponse = async ({
     await updateConversationLastMessageAt(conversation.id);
     await updateConversationState(conversation.id, { current_intent: 'greeted' });
     return messageText;
+  }
+
+  if (
+    (intent === ConversationIntent.GENERAL_QUESTION ||
+      intent === ConversationIntent.ORDER_FOOD) &&
+    !detectedProductName &&
+    lastReferencedProductId
+  ) {
+    const implicitResponse = await buildImplicitProductResponse({
+      business,
+      customer,
+      conversation,
+      lastReferencedProductId,
+      lastUserMessage
+    });
+    if (implicitResponse) {
+      return implicitResponse;
+    }
   }
 
   if (intent === ConversationIntent.UNKNOWN) {
@@ -1658,6 +1751,7 @@ export const processIncomingMessage = async (
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
   const conversationState = await findOrCreateConversationState(conversation.id);
+  let currentMetadata = normalizeMetadata(conversationState.metadata);
 
   if (messageId) {
     const existingMessage = await findByWhatsappMessageId(messageId);
@@ -1717,7 +1811,8 @@ export const processIncomingMessage = async (
           hasGreeted,
           formattedMessages,
           detectedProductName: null,
-          lastUserMessage
+          lastUserMessage,
+          lastReferencedProductId: currentMetadata.lastReferencedProductId ?? null
         });
         return responseContent;
         }
@@ -1750,7 +1845,8 @@ export const processIncomingMessage = async (
           hasGreeted,
           formattedMessages,
           detectedProductName: null,
-          lastUserMessage
+          lastUserMessage,
+          lastReferencedProductId: currentMetadata.lastReferencedProductId ?? null
         });
         return responseContent;
       }
@@ -1763,7 +1859,6 @@ export const processIncomingMessage = async (
     }
   }
 
-  let currentMetadata = normalizeMetadata(conversationState.metadata);
   if (
     !listCheck.isConfirmation &&
     (currentMetadata.pendingProductSelection ||
@@ -1821,69 +1916,6 @@ export const processIncomingMessage = async (
     ConversationIntent.UNKNOWN
   ]);
 
-  if (
-    detectionResult.intent === ConversationIntent.GENERAL_QUESTION &&
-    !detectionResult.detectedProductName &&
-    currentMetadata.lastReferencedProductId
-  ) {
-    const product = await prisma.menu_item.findUnique({
-      where: { id: currentMetadata.lastReferencedProductId },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        ingredients: true,
-        serves_people: true,
-        is_available: true
-      }
-    });
-
-    if (product) {
-      console.log('---- IMPLICIT PRODUCT CONTEXT ----');
-      console.log('Using lastReferencedProductId:', product.id);
-      console.log('User message:', lastUserMessage);
-      console.log('-----------------------------------');
-
-      const currency = customer.preferred_currency ?? business.currency_code ?? null;
-      const now = new Date();
-      const priceWhere = {
-        is_active: true,
-        valid_from: { lte: now },
-        OR: [{ valid_to: null }, { valid_to: { gte: now } }],
-        ...(currency ? { currency_code: currency } : {})
-      };
-
-      const activePrice = await prisma.menu_item_price.findFirst({
-        where: {
-          menu_item_id: product.id,
-          ...priceWhere
-        },
-        orderBy: { valid_from: 'desc' }
-      });
-
-      const aiResponse = await generateProductAwareResponse({
-        product: {
-          name: product.name,
-          description: product.description,
-          ingredients: product.ingredients,
-          serves_people: product.serves_people,
-          is_available: product.is_available,
-          price: activePrice
-            ? {
-                amount: activePrice.amount,
-                currency_code: activePrice.currency_code
-              }
-            : null
-        },
-        userQuestion: lastUserMessage
-      });
-
-      await createConversationMessage(conversation.id, 'ai', aiResponse, true);
-      await updateConversationLastMessageAt(conversation.id);
-      return aiResponse;
-    }
-  }
-
   if (intentsToClearContext.has(detectionResult.intent) && currentMetadata.lastReferencedProductId) {
     currentMetadata = clearPendingSelection({ ...currentMetadata, lastReferencedProductId: undefined });
     await updateConversationState(conversation.id, {
@@ -1902,7 +1934,8 @@ export const processIncomingMessage = async (
     hasGreeted,
     formattedMessages,
     detectedProductName: detectionResult.detectedProductName,
-    lastUserMessage
+    lastUserMessage,
+    lastReferencedProductId: currentMetadata.lastReferencedProductId ?? null
   });
   return responseContent;
 };

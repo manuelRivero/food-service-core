@@ -155,3 +155,73 @@ ${userQuestion}`
   console.log('LLM response:', content);
   return content;
 };
+
+export const extractOrderData = async (
+  message: string
+): Promise<{ quantity: number | null; confidence: number }> => {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: `You are a data extraction engine.
+Extract structured order data from the user's message.
+
+Return STRICT JSON:
+
+{
+  "quantity": number | null,
+  "confidence": number
+}
+
+Rules:
+- If user expresses ordering intent but no explicit quantity, assume quantity = 1
+- Recognize numbers written as digits or words in Spanish.
+- Recognize informal expressions.
+- If no quantity can be inferred, return quantity = null.
+- Confidence between 0 and 1.
+Return ONLY JSON.
+
+Examples:
+
+Input: "Te pido 3"
+Output: {"quantity":3,"confidence":0.95}
+
+Input: "Dame uno"
+Output: {"quantity":1,"confidence":0.9}
+
+Input: "Agregame dos mas"
+Output: {"quantity":2,"confidence":0.95}
+
+Input: "Lo quiero"
+Output: {"quantity":1,"confidence":0.8}
+
+Input: "Tal vez luego"
+Output: {"quantity":null,"confidence":0.2}`
+      },
+      {
+        role: 'user',
+        content: message
+      }
+    ]
+  });
+
+  const content = response.choices[0]?.message?.content ?? '';
+  try {
+    const parsed = JSON.parse(content) as {
+      quantity?: number | null;
+      confidence?: number;
+    };
+    const quantity =
+      typeof parsed.quantity === 'number' || parsed.quantity === null
+        ? parsed.quantity
+        : null;
+    const confidence =
+      typeof parsed.confidence === 'number' ? parsed.confidence : 0;
+    return { quantity, confidence };
+  } catch (error) {
+    return { quantity: null, confidence: 0 };
+  }
+};
