@@ -85,8 +85,6 @@ export class WhatsAppSenderService {
     page?: number;
     totalPages?: number;
   }): Promise<void> {
-    console.log('sendInteractiveMenu', params);
-    console.log('sendInteractiveMenu to', params.to);
     const {
       phoneNumberId,
       to,
@@ -142,12 +140,6 @@ export class WhatsAppSenderService {
             }))
           }
         };
-console.log("payload", {
-  messaging_product: 'whatsapp',
-  to: normalizedTo,
-  type: 'interactive',
-  interactive
-},)
     try {
       await axios.post(
         `${this.baseUrl}/${phoneNumberId}/messages`,

@@ -116,6 +116,11 @@ export const generateProductAwareResponse = async (params: {
 }): Promise<string> => {
   const { product, userQuestion } = params;
 
+  console.log('---- LLM PRODUCT CALL ----');
+  console.log('Product name:', product.name);
+  console.log('User question sent to LLM:', userQuestion);
+  console.log('---------------------------');
+
   const priceText =
     product.price?.amount != null
       ? `${String(product.price.amount)} ${product.price.currency_code}`
@@ -146,5 +151,7 @@ ${userQuestion}`
     ]
   });
 
-  return response.choices[0]?.message?.content ?? '';
+  const content = response.choices[0]?.message?.content ?? '';
+  console.log('LLM response:', content);
+  return content;
 };

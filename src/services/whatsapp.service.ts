@@ -453,6 +453,12 @@ export const handleProductSelectionFromWebhook = async (
     return messageText;
   }
 
+  console.log('---- PRODUCT SELECTED ----');
+  console.log('Selected product ID:', productId);
+  console.log('Selected product name:', item.name);
+  console.log('Stored pendingQuestion:', metadata.pendingQuestion);
+  console.log('--------------------------------');
+
   const aiResponse = await generateProductAwareResponse({
     product: {
       name: item.name,
@@ -1469,6 +1475,10 @@ const buildResponse = async ({
     }
 
     if (items.length > 1) {
+      console.log('---- MULTI MATCH TRIGGERED ----');
+      console.log('Saving pendingQuestion:', userQuestion);
+      console.log('Candidate product IDs:', items.map((item) => item.id));
+      console.log('--------------------------------');
       await updateConversationState(conversation.id, {
         metadata: {
           pendingProductSelection: true,
@@ -1574,9 +1584,6 @@ const processConfirmationResponse = (
 export const processIncomingMessage = async (
   payload: WhatsAppWebhookPayload
 ): Promise<string | WhatsAppListMessage> => {
-  console.log('📩 Webhook recibido RAW');
-  console.dir(payload, { depth: null });
-
   const entry = payload.entry?.[0];
   const change = entry?.changes?.[0];
   const value = change?.value;
@@ -1596,19 +1603,12 @@ export const processIncomingMessage = async (
     message.interactive?.list_reply?.id;
   const phoneNumberId = value?.metadata?.phone_number_id;
 
-  console.log('📩 Mensaje recibido');
-  console.log('From:', from);
-  console.log('Text:', text);
-  console.log('PhoneNumberId:', phoneNumberId);
-
   if (!phoneNumberId || !from) {
-    console.log('ℹ️ Mensaje sin phoneNumberId o from');
     return '';
   }
 
   const business = await findBusinessByPhoneNumberId(phoneNumberId);
   if (!business) {
-    console.log('ℹ️ No se encontró business para phoneNumberId');
     return '';
   }
 
@@ -1636,7 +1636,6 @@ export const processIncomingMessage = async (
   );
 
   if (!persistedMessage) {
-    console.log('Duplicate webhook ignored');
     return '';
   }
 
@@ -1724,6 +1723,15 @@ export const processIncomingMessage = async (
   }
 
   const detectionResult = await detectIntentWithConfidence(messageContent);
+  const resolvedIntent =
+    detectionResult.type === 'UNCERTAIN'
+      ? detectionResult.candidates[0]?.intent ?? ConversationIntent.UNKNOWN
+      : detectionResult.intent;
+  console.log('---- INTENT DETECTED ----');
+  console.log('User message:', messageContent);
+  console.log('Intent:', resolvedIntent);
+  console.log('Detected product:', detectionResult.detectedProductName);
+  console.log('-------------------------');
 
   if (detectionResult.type === 'UNCERTAIN') {
     const confirmationState: ConfirmationState = {
@@ -1766,17 +1774,7 @@ export const processIncomingMessage = async (
 export const processStatus = async (
   payload: WhatsAppWebhookPayload
 ): Promise<void> => {
-  const entry = payload.entry?.[0];
-  const change = entry?.changes?.[0];
-  const value = change?.value;
-
-  const statuses = value?.statuses;
-
-  console.log('ℹ️ Evento sin mensaje (status / system)');
-
-  if (statuses?.length) {
-    console.log('Statuses:', statuses);
-  }
+  void payload;
 };
 
 export const verifyWebhook = (

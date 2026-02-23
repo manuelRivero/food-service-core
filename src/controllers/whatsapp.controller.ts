@@ -180,6 +180,10 @@ export const handleWebhook = async (
       return;
     }
 
+    console.log('---- FINAL BOT RESPONSE ----');
+    console.log(response);
+    console.log('----------------------------');
+
     const sender = new WhatsAppSenderService();
     await sender.sendResponse({
       phoneNumberId,
