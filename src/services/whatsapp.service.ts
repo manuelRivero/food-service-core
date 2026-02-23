@@ -390,11 +390,7 @@ export const handleProductSelectionFromWebhook = async (
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
   const conversationState = await findOrCreateConversationState(conversation.id);
-  const metadata = (conversationState.metadata ?? {}) as {
-    pendingProductSelection?: boolean;
-    pendingQuestion?: string;
-    candidateProductIds?: string[];
-  };
+  const metadata = normalizeMetadata(conversationState.metadata);
 
   if (!metadata.pendingProductSelection || !metadata.pendingQuestion) {
     return 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.';
@@ -424,7 +420,9 @@ export const handleProductSelectionFromWebhook = async (
     const messageText = `El producto "${item.name}" no está disponible en este momento.`;
     await createConversationMessage(conversation.id, 'ai', messageText, false);
     await updateConversationLastMessageAt(conversation.id);
-    await updateConversationState(conversation.id, { metadata: Prisma.JsonNull });
+    await updateConversationState(conversation.id, {
+      metadata: buildMetadataValue({ lastReferencedProductId: item.id })
+    });
     return messageText;
   }
 
@@ -449,7 +447,9 @@ export const handleProductSelectionFromWebhook = async (
     const messageText = `No tengo el precio actual de "${item.name}".`;
     await createConversationMessage(conversation.id, 'ai', messageText, false);
     await updateConversationLastMessageAt(conversation.id);
-    await updateConversationState(conversation.id, { metadata: Prisma.JsonNull });
+    await updateConversationState(conversation.id, {
+      metadata: buildMetadataValue({ lastReferencedProductId: item.id })
+    });
     return messageText;
   }
 
@@ -476,7 +476,9 @@ export const handleProductSelectionFromWebhook = async (
 
   await createConversationMessage(conversation.id, 'ai', aiResponse, true);
   await updateConversationLastMessageAt(conversation.id);
-  await updateConversationState(conversation.id, { metadata: Prisma.JsonNull });
+  await updateConversationState(conversation.id, {
+    metadata: buildMetadataValue({ lastReferencedProductId: item.id })
+  });
   return aiResponse;
 };
 
@@ -1187,6 +1189,34 @@ const buildListMessageFromButtons = (
 const truncateDescription = (value: string, maxLength = 60): string =>
   value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
 
+type ConversationMetadata = {
+  pendingProductSelection?: boolean;
+  pendingQuestion?: string;
+  candidateProductIds?: string[];
+  lastReferencedProductId?: string;
+};
+
+const normalizeMetadata = (value: unknown): ConversationMetadata => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as ConversationMetadata;
+  }
+  return {};
+};
+
+const buildMetadataValue = (
+  metadata: ConversationMetadata
+): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput => {
+  return Object.keys(metadata).length === 0
+    ? Prisma.JsonNull
+    : (metadata as Prisma.InputJsonValue);
+};
+
+const clearPendingSelection = (metadata: ConversationMetadata): ConversationMetadata => {
+  return metadata.lastReferencedProductId
+    ? { lastReferencedProductId: metadata.lastReferencedProductId }
+    : {};
+};
+
 const getLastUserMessage = (
   messages: OpenAITypes.Chat.ChatCompletionMessageParam[]
 ): string => {
@@ -1522,6 +1552,9 @@ const buildResponse = async ({
       const messageText = `El producto "${matchedItem.name}" no está disponible en este momento.`;
       await createConversationMessage(conversation.id, 'ai', messageText, false);
       await updateConversationLastMessageAt(conversation.id);
+      await updateConversationState(conversation.id, {
+        metadata: buildMetadataValue({ lastReferencedProductId: matchedItem.id })
+      });
       return messageText;
     }
 
@@ -1529,6 +1562,9 @@ const buildResponse = async ({
       const messageText = `No tengo el precio actual de "${matchedItem.name}".`;
       await createConversationMessage(conversation.id, 'ai', messageText, false);
       await updateConversationLastMessageAt(conversation.id);
+      await updateConversationState(conversation.id, {
+        metadata: buildMetadataValue({ lastReferencedProductId: matchedItem.id })
+      });
       return messageText;
     }
 
@@ -1549,6 +1585,9 @@ const buildResponse = async ({
 
     await createConversationMessage(conversation.id, 'ai', aiResponse, true);
     await updateConversationLastMessageAt(conversation.id);
+    await updateConversationState(conversation.id, {
+      metadata: buildMetadataValue({ lastReferencedProductId: matchedItem.id })
+    });
     return aiResponse;
   }
 
@@ -1724,8 +1763,17 @@ export const processIncomingMessage = async (
     }
   }
 
-  if (!listCheck.isConfirmation) {
-    await updateConversationState(conversation.id, { metadata: Prisma.JsonNull });
+  let currentMetadata = normalizeMetadata(conversationState.metadata);
+  if (
+    !listCheck.isConfirmation &&
+    (currentMetadata.pendingProductSelection ||
+      currentMetadata.pendingQuestion ||
+      (currentMetadata.candidateProductIds?.length ?? 0) > 0)
+  ) {
+    currentMetadata = clearPendingSelection(currentMetadata);
+    await updateConversationState(conversation.id, {
+      metadata: buildMetadataValue(currentMetadata)
+    });
   }
 
   const detectionResult = await detectIntentWithConfidence(messageContent);
@@ -1760,6 +1808,88 @@ export const processIncomingMessage = async (
     );
     await updateConversationLastMessageAt(conversation.id);
     return detectionResult.listContent;
+  }
+
+  const intentsToClearContext = new Set<ConversationIntent>([
+    ConversationIntent.VIEW_MENU,
+    ConversationIntent.SMALL_TALK,
+    ConversationIntent.BUSINESS_HOURS,
+    ConversationIntent.BUSINESS_LOCATION,
+    ConversationIntent.DELIVERY_INFO,
+    ConversationIntent.PAYMENT_METHODS,
+    ConversationIntent.SUPPORT,
+    ConversationIntent.UNKNOWN
+  ]);
+
+  if (
+    detectionResult.intent !== ConversationIntent.PRODUCT_QUERY &&
+    !detectionResult.detectedProductName &&
+    currentMetadata.lastReferencedProductId &&
+    !intentsToClearContext.has(detectionResult.intent)
+  ) {
+    const product = await prisma.menu_item.findUnique({
+      where: { id: currentMetadata.lastReferencedProductId },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        ingredients: true,
+        serves_people: true,
+        is_available: true
+      }
+    });
+
+    if (product) {
+      console.log('---- IMPLICIT PRODUCT CONTEXT ----');
+      console.log('Using lastReferencedProductId:', product.id);
+      console.log('User message:', lastUserMessage);
+      console.log('-----------------------------------');
+
+      const currency = customer.preferred_currency ?? business.currency_code ?? null;
+      const now = new Date();
+      const priceWhere = {
+        is_active: true,
+        valid_from: { lte: now },
+        OR: [{ valid_to: null }, { valid_to: { gte: now } }],
+        ...(currency ? { currency_code: currency } : {})
+      };
+
+      const activePrice = await prisma.menu_item_price.findFirst({
+        where: {
+          menu_item_id: product.id,
+          ...priceWhere
+        },
+        orderBy: { valid_from: 'desc' }
+      });
+
+      const aiResponse = await generateProductAwareResponse({
+        product: {
+          name: product.name,
+          description: product.description,
+          ingredients: product.ingredients,
+          serves_people: product.serves_people,
+          is_available: product.is_available,
+          price: activePrice
+            ? {
+                amount: activePrice.amount,
+                currency_code: activePrice.currency_code
+              }
+            : null
+        },
+        userQuestion: lastUserMessage
+      });
+
+      await createConversationMessage(conversation.id, 'ai', aiResponse, true);
+      await updateConversationLastMessageAt(conversation.id);
+      return aiResponse;
+    }
+  }
+
+  if (intentsToClearContext.has(detectionResult.intent) && currentMetadata.lastReferencedProductId) {
+    currentMetadata = {};
+    await updateConversationState(conversation.id, {
+      metadata: Prisma.JsonNull
+    });
   }
 
   console.info('Detected intent:', detectionResult.intent);
