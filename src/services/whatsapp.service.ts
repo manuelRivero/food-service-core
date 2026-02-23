@@ -1490,7 +1490,7 @@ const buildResponse = async ({
     return buildViewOrderResponse(business, conversation, customer, from);
   }
 
-  if (intent === ConversationIntent.PRODUCT_QUERY) {
+  if (detectedProductName) {
     const userQuestion = lastUserMessage;
     const keyword = (detectedProductName ?? '').trim();
     const items = await MenuService.searchMenuItemsByKeyword({
