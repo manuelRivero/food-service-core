@@ -11,6 +11,8 @@ import {
   handleCategorySelectionFromWebhook,
   handleCheckoutFromWebhook,
   handleEndConversationFromWebhook,
+  handleOrderProductSelectionFromWebhook,
+  handleOrderSearchPageFromWebhook,
   handleProductSelectionFromWebhook,
   handleViewCategoriesFromWebhook,
   processIncomingMessage,
@@ -73,6 +75,56 @@ export const handleWebhook = async (
       const productId = payloadId.replace('SELECT_PRODUCT_', '');
       void (async () => {
         const response = await handleProductSelectionFromWebhook(req.body, productId);
+        if (!response) {
+          return;
+        }
+        const phoneNumberId = value?.metadata?.phone_number_id;
+        const to = message?.from;
+        if (!phoneNumberId || !to) {
+          return;
+        }
+        const sender = new WhatsAppSenderService();
+        await sender.sendResponse({
+          phoneNumberId,
+          to,
+          content: response
+        });
+      })().catch((error: unknown) => {
+        console.error('Async webhook processing error:', error);
+      });
+      return;
+    }
+    if (payloadId.startsWith('SELECT_ORDER_PRODUCT_')) {
+      const productId = payloadId.replace('SELECT_ORDER_PRODUCT_', '');
+      void (async () => {
+        const response = await handleOrderProductSelectionFromWebhook(req.body, productId);
+        if (!response) {
+          return;
+        }
+        const phoneNumberId = value?.metadata?.phone_number_id;
+        const to = message?.from;
+        if (!phoneNumberId || !to) {
+          return;
+        }
+        const sender = new WhatsAppSenderService();
+        await sender.sendResponse({
+          phoneNumberId,
+          to,
+          content: response
+        });
+      })().catch((error: unknown) => {
+        console.error('Async webhook processing error:', error);
+      });
+      return;
+    }
+    if (payloadId.startsWith('ORDER_SEARCH_PAGE:')) {
+      const [, pageValue] = payloadId.split(':');
+      const page = Number(pageValue);
+      void (async () => {
+        const response = await handleOrderSearchPageFromWebhook(
+          req.body,
+          Number.isFinite(page) ? page : 1
+        );
         if (!response) {
           return;
         }

@@ -262,3 +262,61 @@ Responde SOLO en JSON:
     return { quantity: 1 };
   }
 };
+
+export const generateOrderActionAnalysis = async (params: {
+  userMessage: string;
+  currentProductName: string | null;
+}): Promise<{ action: 'add_same' | 'add_other' | 'remove' | 'unclear' }> => {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: `El usuario está interactuando con su pedido.
+
+Producto actualmente en contexto:
+"${params.currentProductName ?? 'NINGUNO'}"
+
+Mensaje del usuario:
+"${params.userMessage}"
+
+Determina qué está intentando hacer el usuario.
+
+Responde SOLO en JSON:
+
+{
+"action": "add_same" | "add_other" | "remove" | "unclear"
+}
+
+Reglas:
+
+"add_same" → quiere agregar más del producto actual.
+
+"add_other" → quiere agregar otro producto distinto.
+
+"remove" → quiere quitar un producto del pedido.
+
+"unclear" → no es claro.
+
+No expliques nada. Solo JSON válido.`
+      }
+    ]
+  });
+
+  const content = response.choices[0]?.message?.content ?? '';
+  try {
+    const parsed = JSON.parse(content) as { action?: string };
+    const action =
+      parsed.action === 'add_same' ||
+      parsed.action === 'add_other' ||
+      parsed.action === 'remove' ||
+      parsed.action === 'unclear'
+        ? parsed.action
+        : 'unclear';
+    return { action };
+  } catch (error) {
+    return { action: 'unclear' };
+  }
+};
