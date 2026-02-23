@@ -225,3 +225,40 @@ Output: {"quantity":null,"confidence":0.2}`
     return { quantity: null, confidence: 0 };
   }
 };
+
+export const generateOrderExtraction = async (params: {
+  userMessage: string;
+}): Promise<{ quantity: number }> => {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: `Extrae la cantidad de productos que el usuario desea pedir.
+Si no se menciona cantidad explícita, devolver 1.
+Si está en palabras ("dos", "tres", "un", "una"), convertir a número.
+Si es ambiguo, devolver 1.
+
+Responde SOLO en JSON:
+{
+"quantity": number
+}`
+      },
+      {
+        role: 'user',
+        content: params.userMessage
+      }
+    ]
+  });
+
+  const content = response.choices[0]?.message?.content ?? '';
+  try {
+    const parsed = JSON.parse(content) as { quantity?: number };
+    const quantity = typeof parsed.quantity === 'number' ? parsed.quantity : 1;
+    return { quantity };
+  } catch (error) {
+    return { quantity: 1 };
+  }
+};
