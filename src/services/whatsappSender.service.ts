@@ -3,6 +3,14 @@ import type { WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
 
 export class WhatsAppSenderService {
   private readonly baseUrl = 'https://graph.facebook.com/v18.0';
+  private readonly buttonLabelMaxLength = 20;
+
+  private truncateLabel(value: string, maxLength = this.buttonLabelMaxLength): string {
+    if (value.length <= maxLength) {
+      return value;
+    }
+    return value.slice(0, maxLength);
+  }
 
   private normalizeRecipient(to: string): string {
     const digits = to.replace(/\D/g, '');
@@ -125,7 +133,10 @@ export class WhatsAppSenderService {
           action: {
             buttons: buttons.map((button) => ({
               type: 'reply',
-              reply: { id: button.payload, title: button.title }
+              reply: {
+                id: button.payload,
+                title: this.truncateLabel(button.title)
+              }
             }))
           }
         }
@@ -133,10 +144,13 @@ export class WhatsAppSenderService {
           type: 'list',
           body: { text: bodyText },
           action: {
-            button: actionButtonLabel ?? 'Ver categorias',
+            button: this.truncateLabel(actionButtonLabel ?? 'Ver categorias'),
             sections: Array.from(sections.entries()).map(([title, rows]) => ({
               title,
-              rows
+              rows: rows.map((row) => ({
+                ...row,
+                title: this.truncateLabel(row.title)
+              }))
             }))
           }
         };
