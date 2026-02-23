@@ -35,7 +35,8 @@ export const detectIntentWithConfidence = async (
       confidence: 0,
       allIntents: [ConversationIntent.UNKNOWN],
       responseType: 'TEXT',
-      content: ''
+      content: '',
+      detectedProductName: null
     };
   }
 

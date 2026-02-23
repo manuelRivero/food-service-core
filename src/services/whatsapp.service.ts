@@ -397,11 +397,11 @@ export const handleProductSelectionFromWebhook = async (
   };
 
   if (!metadata.pendingProductSelection || !metadata.pendingQuestion) {
-    return '';
+    return 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.';
   }
 
   if (!metadata.candidateProductIds?.includes(productId)) {
-    return '';
+    return 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.';
   }
 
   const item = await prisma.menu_item.findUnique({
@@ -1414,7 +1414,8 @@ const buildResponse = async ({
   from,
   isFirstMessage,
   hasGreeted,
-  formattedMessages
+  formattedMessages,
+  detectedProductName
 }: {
   intent: ConversationIntent;
   business: Business;
@@ -1424,6 +1425,7 @@ const buildResponse = async ({
   isFirstMessage: boolean;
   hasGreeted: boolean;
   formattedMessages: OpenAITypes.Chat.ChatCompletionMessageParam[];
+  detectedProductName: string | null;
 }): Promise<string | WhatsAppListMessage> => {
   if (intent === ConversationIntent.SMALL_TALK) {
     return buildSmallTalkResponse(conversation.id, isFirstMessage, hasGreeted);
@@ -1452,7 +1454,7 @@ const buildResponse = async ({
 
   if (intent === ConversationIntent.PRODUCT_QUERY) {
     const userQuestion = getLastUserMessage(formattedMessages);
-    const keyword = userQuestion.trim();
+    const keyword = (detectedProductName ?? '').trim();
     const items = await MenuService.searchMenuItemsByKeyword({
       businessId: business.id,
       keyword
@@ -1671,7 +1673,8 @@ export const processIncomingMessage = async (
           from,
           isFirstMessage,
           hasGreeted,
-          formattedMessages
+          formattedMessages,
+          detectedProductName: null
         });
         return responseContent;
         }
@@ -1702,7 +1705,8 @@ export const processIncomingMessage = async (
           from,
           isFirstMessage,
           hasGreeted,
-          formattedMessages
+          formattedMessages,
+          detectedProductName: null
         });
         return responseContent;
       }
@@ -1713,6 +1717,10 @@ export const processIncomingMessage = async (
       await updateConversationLastMessageAt(conversation.id);
       return messageText;
     }
+  }
+
+  if (!listCheck.isConfirmation) {
+    await updateConversationState(conversation.id, { metadata: Prisma.JsonNull });
   }
 
   const detectionResult = await detectIntentWithConfidence(messageContent);
@@ -1749,7 +1757,8 @@ export const processIncomingMessage = async (
     from,
     isFirstMessage,
     hasGreeted,
-    formattedMessages
+    formattedMessages,
+    detectedProductName: detectionResult.detectedProductName
   });
   return responseContent;
 };

@@ -22,6 +22,7 @@ export type IntentDetectionResult =
       allIntents: ConversationIntent[];
       responseType: 'TEXT';
       content: string;
+      detectedProductName: string | null;
     }
   | {
       type: 'UNCERTAIN';
@@ -29,6 +30,7 @@ export type IntentDetectionResult =
       originalMessage: string;
       responseType: 'LIST';
       listContent: WhatsAppListMessage;
+      detectedProductName: string | null;
     };
 
 export type ConfirmationState =

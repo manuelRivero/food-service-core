@@ -16,6 +16,10 @@ export function evaluateConfidence(
   originalMessage: string
 ): IntentDetectionResult {
   const { intents, confidence } = intentResult;
+  const detectedProductName =
+    typeof intentResult.entities?.product_name === 'string'
+      ? intentResult.entities.product_name
+      : null;
 
   const normalizedIntents = intents.map((intent) => normalizeIntent(intent));
   const sortedIntents = sortIntentsByPriority(normalizedIntents);
@@ -27,7 +31,8 @@ export function evaluateConfidence(
       confidence,
       allIntents: sortedIntents,
       responseType: 'TEXT',
-      content: originalMessage
+      content: originalMessage,
+      detectedProductName
     };
   }
 
@@ -42,7 +47,8 @@ export function evaluateConfidence(
       candidates: topCandidates,
       originalMessage,
       responseType: 'LIST',
-      listContent: generateConfirmationList(topCandidates)
+      listContent: generateConfirmationList(topCandidates),
+      detectedProductName
     };
   }
 
@@ -52,7 +58,8 @@ export function evaluateConfidence(
     confidence,
     allIntents: sortedIntents,
     responseType: 'TEXT',
-    content: originalMessage
+    content: originalMessage,
+    detectedProductName
   };
 }
 
