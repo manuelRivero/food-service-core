@@ -1589,6 +1589,66 @@ const buildResponse = async ({
   if (detectedProductName) {
     const userQuestion = lastUserMessage;
     const keyword = (detectedProductName ?? '').trim();
+
+    if (lastReferencedProductId) {
+      const focusedProduct = await prisma.menu_item.findUnique({
+        where: { id: lastReferencedProductId },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          ingredients: true,
+          serves_people: true,
+          is_available: true
+        }
+      });
+
+      if (
+        focusedProduct &&
+        detectedProductName.toLowerCase() !== focusedProduct.name.toLowerCase()
+      ) {
+        console.log('---- CONTEXTUAL ATTRIBUTE QUESTION DETECTED ----');
+
+        const currency = customer.preferred_currency ?? business.currency_code ?? null;
+        const now = new Date();
+        const priceWhere = {
+          is_active: true,
+          valid_from: { lte: now },
+          OR: [{ valid_to: null }, { valid_to: { gte: now } }],
+          ...(currency ? { currency_code: currency } : {})
+        };
+
+        const activePrice = await prisma.menu_item_price.findFirst({
+          where: {
+            menu_item_id: focusedProduct.id,
+            ...priceWhere
+          },
+          orderBy: { valid_from: 'desc' }
+        });
+
+        const aiResponse = await generateProductAwareResponse({
+          product: {
+            name: focusedProduct.name,
+            description: focusedProduct.description,
+            ingredients: focusedProduct.ingredients,
+            serves_people: focusedProduct.serves_people,
+            is_available: focusedProduct.is_available,
+            price: activePrice
+              ? {
+                  amount: activePrice.amount,
+                  currency_code: activePrice.currency_code
+                }
+              : null
+          },
+          userQuestion: lastUserMessage
+        });
+
+        await createConversationMessage(conversation.id, 'ai', aiResponse, true);
+        await updateConversationLastMessageAt(conversation.id);
+        return aiResponse;
+      }
+    }
+
     const items = await MenuService.searchMenuItemsByKeyword({
       businessId: business.id,
       keyword
