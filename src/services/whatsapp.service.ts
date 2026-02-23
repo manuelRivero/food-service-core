@@ -19,7 +19,6 @@ import {
 import type { OpenAI as OpenAITypes } from 'openai';
 import {
   generateAIResponse,
-  generateOrderActionAnalysis,
   generateOrderExtraction,
   generateProductAwareResponse
 } from './ai/openai.service';
@@ -1955,145 +1954,24 @@ const buildResponse = async ({
   lastUserMessage: string;
   lastReferencedProductId: string | null;
 }): Promise<string | WhatsAppListMessage> => {
-  if (detectedProductName) {
-    const userQuestion = lastUserMessage;
-    const keyword = (detectedProductName ?? '').trim();
-    const items = await MenuService.searchMenuItemsByKeyword({
-      businessId: business.id,
-      keyword
-    });
 
-    if (items.length === 0 && lastReferencedProductId) {
-      const implicitResponse = await buildImplicitProductResponse({
-        business,
-        customer,
-        conversation,
-        lastReferencedProductId,
-        lastUserMessage,
-        logLabel: '---- ATTRIBUTE QUESTION DETECTED ----',
-        additionalLogLine: `Falling back to contextual product: ${lastReferencedProductId}`
-      });
-      if (implicitResponse) {
-        return implicitResponse;
-      }
-    }
-
-    if (items.length === 0) {
-      const safeKeyword = keyword || 'tu consulta';
-      const messageText = `No encontramos productos relacionados con "${safeKeyword}" en nuestro menú.`;
-      await createConversationMessage(conversation.id, 'ai', messageText, false);
-      await updateConversationLastMessageAt(conversation.id);
-      return messageText;
-    }
-
-    if (items.length > 1) {
-      console.log('---- MULTI MATCH TRIGGERED ----');
-      console.log('Saving pendingQuestion:', userQuestion);
-      console.log('Candidate product IDs:', items.map((item) => item.id));
-      console.log('--------------------------------');
-      await updateConversationState(conversation.id, {
-        metadata: {
-          pendingProductSelection: true,
-          pendingQuestion: lastUserMessage,
-          candidateProductIds: items.map((item) => item.id)
-        }
-      });
-      console.log('Correct pendingQuestion saved:', lastUserMessage);
-
-      const listMessage = buildListMessage({
-        headerText: 'Opciones encontradas',
-        bodyText:
-          'Encontramos varios platillos relacionados con tu consulta.\nSelecciona uno para ver más detalles 👇',
-        footerText: 'Toca el botón de abajo para ver las opciones',
-        actionButtonLabel: 'Ver opciones',
-        sections: [
-          {
-            title: 'Resultados',
-            rows: items.map((item) => ({
-              id: `SELECT_PRODUCT_${item.id}`,
-              title: item.name,
-              description: truncateDescription(
-                item.description ?? item.ingredients ?? 'Sin descripción'
-              )
-            }))
-          }
-        ]
-      });
-
-      await createConversationMessage(conversation.id, 'ai', listMessage.body.text, false);
-      await updateConversationLastMessageAt(conversation.id);
-      return listMessage;
-    }
-
-    const matchedItem = items[0];
-    const activePrice = matchedItem.menu_item_price[0];
-
-    if (!matchedItem.is_available) {
-      const messageText = `El producto "${matchedItem.name}" no está disponible en este momento.`;
-      await createConversationMessage(conversation.id, 'ai', messageText, false);
-      await updateConversationLastMessageAt(conversation.id);
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { lastReferencedProductId: matchedItem.id }
-      });
-      console.log('[CONTEXT] Implicit product set:', matchedItem.name, 'for conversation:', conversation.id);
-      return messageText;
-    }
-
-    if (!activePrice) {
-      const messageText = `No tengo el precio actual de "${matchedItem.name}".`;
-      await createConversationMessage(conversation.id, 'ai', messageText, false);
-      await updateConversationLastMessageAt(conversation.id);
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { lastReferencedProductId: matchedItem.id }
-      });
-      console.log('[CONTEXT] Implicit product set:', matchedItem.name, 'for conversation:', conversation.id);
-      return messageText;
-    }
-
-    const aiResponse = await generateProductAwareResponse({
-      product: {
-        name: matchedItem.name,
-        description: matchedItem.description,
-        ingredients: matchedItem.ingredients,
-        serves_people: matchedItem.serves_people,
-        is_available: matchedItem.is_available,
-        price: {
-          amount: activePrice.amount,
-          currency_code: activePrice.currency_code
-        }
-      },
-      userQuestion: lastUserMessage
-    });
-
-    await createConversationMessage(conversation.id, 'ai', aiResponse, true);
+  // =========================
+  // 1️⃣ PAYMENT
+  // =========================
+  if (intent === ConversationIntent.PAYMENT_METHODS) {
+    const messageText = 'Aceptamos efectivo y transferencia.';
+    await createConversationMessage(conversation.id, 'ai', messageText, false);
     await updateConversationLastMessageAt(conversation.id);
-    await prisma.conversation.update({
-      where: { id: conversation.id },
-      data: { lastReferencedProductId: matchedItem.id }
-    });
-    console.log('[CONTEXT] Implicit product set:', matchedItem.name, 'for conversation:', conversation.id);
-    return aiResponse;
+    return messageText;
   }
 
-  if (
-    intent === ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION &&
-    lastReferencedProductId
-  ) {
-    const implicitResponse = await buildImplicitProductResponse({
-      business,
-      customer,
-      conversation,
-      lastReferencedProductId,
-      lastUserMessage,
-      logLabel: '---- PRODUCT ATTRIBUTE QUESTION ----'
-    });
-    if (implicitResponse) {
-      return implicitResponse;
-    }
+  if (intent === ConversationIntent.PAYMENT_REQUEST) {
+    return buildViewOrderResponse(business, conversation, customer, from);
   }
 
+  // =========================
+  // 2️⃣ ORDER
+  // =========================
   if (intent === ConversationIntent.ORDER_FOOD) {
     let product: { id: string; name: string; is_available: boolean } | null = null;
 
@@ -2120,6 +1998,7 @@ const buildResponse = async ({
             pendingOrderCandidateIds: items.map((item) => item.id)
           })
         });
+
         const listMessage = buildOrderSearchListMessage({ items, page: 1 });
         await createConversationMessage(conversation.id, 'ai', listMessage.body.text, false);
         await updateConversationLastMessageAt(conversation.id);
@@ -2131,176 +2010,26 @@ const buildResponse = async ({
         name: items[0].name,
         is_available: items[0].is_available
       };
+
     } else if (lastReferencedProductId) {
       const focusedProduct = await prisma.menu_item.findUnique({
         where: { id: lastReferencedProductId },
         select: { id: true, name: true, is_available: true }
       });
 
-      const actionResult = await generateOrderActionAnalysis({
-        userMessage: lastUserMessage,
-        currentProductName: focusedProduct?.name ?? null
-      });
-      console.log('---- ORDER ACTION ANALYSIS ----');
-      console.log('Action:', actionResult.action);
-      console.log('--------------------------------');
-
-      if (actionResult.action === 'add_same') {
-        product = focusedProduct;
-      } else if (actionResult.action === 'add_other') {
-        const items = await MenuService.searchMenuItemsByKeyword({
-          businessId: business.id,
-          keyword: lastUserMessage
-        });
-
-        if (items.length === 0) {
-          const messageText = 'No encontré ese producto en el menú.';
-          await createConversationMessage(conversation.id, 'ai', messageText, false);
-          await updateConversationLastMessageAt(conversation.id);
-          return messageText;
-        }
-
-        if (items.length > 1) {
-          await updateConversationState(conversation.id, {
-            metadata: buildMetadataValue({
-              pendingOrderSelection: true,
-              pendingOrderMessage: lastUserMessage,
-              pendingOrderCandidateIds: items.map((item) => item.id)
-            })
-          });
-          const listMessage = buildOrderSearchListMessage({ items, page: 1 });
-          await createConversationMessage(conversation.id, 'ai', listMessage.body.text, false);
-          await updateConversationLastMessageAt(conversation.id);
-          return listMessage;
-        }
-
-        product = {
-          id: items[0].id,
-          name: items[0].name,
-          is_available: items[0].is_available
-        };
-      } else if (actionResult.action === 'remove') {
-        if (!focusedProduct) {
-          const messageText = 'No encontré ese producto en tu pedido.';
-          await createConversationMessage(conversation.id, 'ai', messageText, false);
-          await updateConversationLastMessageAt(conversation.id);
-          return messageText;
-        }
-
-        const extraction = await generateOrderExtraction({
-          userMessage: lastUserMessage
-        });
-        const quantity =
-          Number.isFinite(extraction.quantity) && extraction.quantity > 0
-            ? Math.round(extraction.quantity)
-            : 1;
-
-        console.log('---- REMOVE PRODUCT ----');
-        console.log('Product:', focusedProduct.name);
-        console.log('Quantity:', quantity);
-        console.log('--------------------------------');
-
-        const removal = await removeProductFromOrder({
-          conversationId: conversation.id,
-          productId: focusedProduct.id,
-          quantity
-        });
-
-        if (removal.removedQuantity === 0) {
-          const messageText = 'No encontré ese producto en tu pedido.';
-          await createConversationMessage(conversation.id, 'ai', messageText, false);
-          await updateConversationLastMessageAt(conversation.id);
-          return messageText;
-        }
-
-        const draftOrder = await prisma.draft_order.findFirst({
-          where: {
-            business_id: business.id,
-            customer_phone: from,
-            status: 'active'
-          }
-        });
-
-        if (!draftOrder) {
-          const messageText = `Quité ${removal.removedQuantity} ${focusedProduct.name} de tu pedido.`;
-          await createConversationMessage(conversation.id, 'ai', messageText, false);
-          await updateConversationLastMessageAt(conversation.id);
-          return messageText;
-        }
-
-        const items = await prisma.draft_order_item.findMany({
-          where: { draft_order_id: draftOrder.id }
-        });
-
-        if (items.length === 0) {
-          const messageText = `Quité ${removal.removedQuantity} ${focusedProduct.name} de tu pedido.\n\nTu pedido está vacío.`;
-          await createConversationMessage(conversation.id, 'ai', messageText, false);
-          await updateConversationLastMessageAt(conversation.id);
-          return messageText;
-        }
-
-        const menuItemIds = items.flatMap((item) =>
-          item.product_id ? [item.product_id] : []
-        );
-        const menuItems =
-          menuItemIds.length > 0
-            ? await prisma.menu_item.findMany({
-                where: { id: { in: menuItemIds } },
-                select: { id: true, name: true }
-              })
-            : [];
-        const menuItemMap = new Map(menuItems.map((item) => [item.id, item.name]));
-
-        const lines: string[] = [
-          `Quité ${removal.removedQuantity} ${focusedProduct.name} de tu pedido.`,
-          '',
-          '🛒 Pedido actual:',
-          ''
-        ];
-        for (const item of items) {
-          const name = item.product_id ? menuItemMap.get(item.product_id) ?? 'Platillo' : 'Platillo';
-          lines.push(`- ${item.quantity}x ${name}`);
-        }
-        lines.push('', `Total: $${draftOrder.total_amount.toFixed(2)} ${draftOrder.currency}`);
-
-        const bodyText = lines.join('\n');
-        await createConversationMessage(conversation.id, 'ai', bodyText, false);
-        await updateConversationLastMessageAt(conversation.id);
-
-        return buildListMessage({
-          headerText: 'Pedido actualizado',
-          bodyText,
-          footerText: 'Toca el botón de abajo para ver las opciones',
-          actionButtonLabel: 'Acciones',
-          sections: [
-            {
-              title: 'Acciones',
-              rows: [
-                {
-                  id: 'VIEW_MENU_RETURN',
-                  title: 'Agregar más',
-                  description: 'Ver más platillos'
-                },
-                {
-                  id: 'CANCEL_ORDER',
-                  title: 'Cancelar pedido',
-                  description: 'Cancelar el pedido actual'
-                },
-                {
-                  id: 'CHECKOUT',
-                  title: 'Finalizar pedido',
-                  description: 'Continuar al pago'
-                }
-              ]
-            }
-          ]
-        });
-      } else {
-        const messageText = '¿Deseas agregar o quitar algo de tu pedido?';
+      if (!focusedProduct) {
+        const messageText = 'No pude identificar el producto al que te refieres.';
         await createConversationMessage(conversation.id, 'ai', messageText, false);
         await updateConversationLastMessageAt(conversation.id);
         return messageText;
       }
+
+      product = {
+        id: focusedProduct.id,
+        name: focusedProduct.name,
+        is_available: focusedProduct.is_available
+      };
+
     } else {
       const messageText = '¿Qué producto deseas agregar a tu pedido?';
       await createConversationMessage(conversation.id, 'ai', messageText, false);
@@ -2321,11 +2050,6 @@ const buildResponse = async ({
       await updateConversationLastMessageAt(conversation.id);
       return messageText;
     }
-
-    console.log('---- ORDER FOOD ----');
-    console.log('Using product:', product.id);
-    console.log('User message:', lastUserMessage);
-    console.log('---------------------');
 
     const extraction = await generateOrderExtraction({ userMessage: lastUserMessage });
     const quantity =
@@ -2360,9 +2084,114 @@ const buildResponse = async ({
     return messageText;
   }
 
+  if (intent === ConversationIntent.VIEW_ORDER) {
+    return buildViewOrderResponse(business, conversation, customer, from);
+  }
+
+  // =========================
+  // 3️⃣ PRODUCT QUERY (explícito)
+  // =========================
   if (
-    intent === ConversationIntent.GENERAL_QUESTION &&
-    !detectedProductName &&
+    intent === ConversationIntent.PRODUCT_QUERY &&
+    detectedProductName
+  ) {
+    const userQuestion = lastUserMessage;
+    const keyword = detectedProductName.trim();
+
+    const items = await MenuService.searchMenuItemsByKeyword({
+      businessId: business.id,
+      keyword
+    });
+
+    if (items.length === 0) {
+      const messageText = `No encontramos productos relacionados con "${keyword}" en nuestro menú.`;
+      await createConversationMessage(conversation.id, 'ai', messageText, false);
+      await updateConversationLastMessageAt(conversation.id);
+      return messageText;
+    }
+
+    if (items.length > 1) {
+      await updateConversationState(conversation.id, {
+        metadata: {
+          pendingProductSelection: true,
+          pendingQuestion: lastUserMessage,
+          candidateProductIds: items.map((item) => item.id)
+        }
+      });
+
+      const listMessage = buildListMessage({
+        headerText: 'Opciones encontradas',
+        bodyText:
+          'Encontramos varios platillos relacionados con tu consulta.\nSelecciona uno para ver más detalles 👇',
+        footerText: 'Toca el botón de abajo para ver las opciones',
+        actionButtonLabel: 'Ver opciones',
+        sections: [
+          {
+            title: 'Resultados',
+            rows: items.map((item) => ({
+              id: `SELECT_PRODUCT_${item.id}`,
+              title: item.name,
+              description: truncateDescription(
+                item.description ?? item.ingredients ?? 'Sin descripción'
+              )
+            }))
+          }
+        ]
+      });
+
+      await createConversationMessage(conversation.id, 'ai', listMessage.body.text, false);
+      await updateConversationLastMessageAt(conversation.id);
+      return listMessage;
+    }
+
+    const matchedItem = items[0];
+    const activePrice = matchedItem.menu_item_price[0];
+
+    if (!matchedItem.is_available) {
+      const messageText = `El producto "${matchedItem.name}" no está disponible en este momento.`;
+      await createConversationMessage(conversation.id, 'ai', messageText, false);
+      await updateConversationLastMessageAt(conversation.id);
+      return messageText;
+    }
+
+    if (!activePrice) {
+      const messageText = `No tengo el precio actual de "${matchedItem.name}".`;
+      await createConversationMessage(conversation.id, 'ai', messageText, false);
+      await updateConversationLastMessageAt(conversation.id);
+      return messageText;
+    }
+
+    const aiResponse = await generateProductAwareResponse({
+      product: {
+        name: matchedItem.name,
+        description: matchedItem.description,
+        ingredients: matchedItem.ingredients,
+        serves_people: matchedItem.serves_people,
+        is_available: matchedItem.is_available,
+        price: {
+          amount: activePrice.amount,
+          currency_code: activePrice.currency_code
+        }
+      },
+      userQuestion: userQuestion
+    });
+
+    await createConversationMessage(conversation.id, 'ai', aiResponse, true);
+    await updateConversationLastMessageAt(conversation.id);
+
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { lastReferencedProductId: matchedItem.id }
+    });
+
+    return aiResponse;
+  }
+
+  // =========================
+  // 4️⃣ PRODUCT ATTRIBUTE (contextual)
+  // =========================
+  if (
+    intent === ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION &&
     lastReferencedProductId
   ) {
     const implicitResponse = await buildImplicitProductResponse({
@@ -2371,27 +2200,23 @@ const buildResponse = async ({
       conversation,
       lastReferencedProductId,
       lastUserMessage,
-      logLabel: '---- CONTEXTUAL PRODUCT QUESTION ----'
+      logLabel: '---- PRODUCT ATTRIBUTE QUESTION ----'
     });
+
     if (implicitResponse) {
       return implicitResponse;
     }
   }
 
-  if (intent === ConversationIntent.VIEW_ORDER) {
-    return buildViewOrderResponse(business, conversation, customer, from);
-  }
-
+  // =========================
+  // 5️⃣ OTROS
+  // =========================
   if (intent === ConversationIntent.VIEW_MENU) {
     return buildViewMenuResponse(business.id, customer.id, conversation.id, hasGreeted);
   }
 
   if (intent === ConversationIntent.SMALL_TALK) {
     return buildSmallTalkResponse(conversation.id, isFirstMessage, hasGreeted);
-  }
-
-  if (intent === ConversationIntent.UNKNOWN) {
-    return buildUnknownResponse(conversation.id);
   }
 
   if (intent === ConversationIntent.ASK_QUESTION) {
@@ -2403,14 +2228,32 @@ const buildResponse = async ({
     return messageText;
   }
 
+  if (intent === ConversationIntent.UNKNOWN) {
+    return buildUnknownResponse(conversation.id);
+  }
+
+  // =========================
+  // 6️⃣ FALLBACK GENERAL
+  // =========================
   const aiResponse = await generateAIResponse(business, formattedMessages);
-  await createConversationMessage(conversation.id, 'ai', aiResponse.content, true, undefined, undefined, {
-    promptTokens: aiResponse.usage.promptTokens,
-    completionTokens: aiResponse.usage.completionTokens,
-    totalTokens: aiResponse.usage.totalTokens,
-    estimatedCostUsd: aiResponse.usage.estimatedCostUsd
-  });
+
+  await createConversationMessage(
+    conversation.id,
+    'ai',
+    aiResponse.content,
+    true,
+    undefined,
+    undefined,
+    {
+      promptTokens: aiResponse.usage.promptTokens,
+      completionTokens: aiResponse.usage.completionTokens,
+      totalTokens: aiResponse.usage.totalTokens,
+      estimatedCostUsd: aiResponse.usage.estimatedCostUsd
+    }
+  );
+
   await updateConversationLastMessageAt(conversation.id);
+
   return aiResponse.content;
 };
 
