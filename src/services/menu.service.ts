@@ -28,6 +28,16 @@ type MenuPrice = {
   currency_code: string;
 };
 
+export type MenuItemSearchResult = {
+  id: string;
+  name: string;
+  description: string | null;
+  ingredients: string | null;
+  serves_people: number | null;
+  is_available: boolean;
+  menu_item_price: MenuPrice[];
+};
+
 const formatPrice = (price: MenuPrice): string => {
   const amount = price.amount.toFixed(2);
   return `${amount} ${price.currency_code}`;
@@ -237,5 +247,50 @@ export class MenuService {
       text: lines.join('\n'),
       buttons
     };
+  }
+
+  static async searchMenuItemsByKeyword(params: {
+    businessId: string;
+    keyword: string;
+  }): Promise<MenuItemSearchResult[]> {
+    const { businessId, keyword } = params;
+    const trimmedKeyword = keyword.trim();
+    if (!trimmedKeyword) {
+      return [];
+    }
+
+    const business = await prisma.business.findUnique({
+      where: { id: businessId },
+      select: { currency_code: true }
+    });
+
+    const currency = business?.currency_code ?? null;
+    const now = new Date();
+    const priceWhere = buildPriceWhere(currency, now);
+
+    return prisma.menu_item.findMany({
+      where: {
+        business_id: businessId,
+        name: { contains: trimmedKeyword, mode: 'insensitive' }
+      },
+      orderBy: { created_at: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        ingredients: true,
+        serves_people: true,
+        is_available: true,
+        menu_item_price: {
+          where: priceWhere,
+          orderBy: { valid_from: 'desc' },
+          take: 1,
+          select: {
+            amount: true,
+            currency_code: true
+          }
+        }
+      }
+    });
   }
 }

@@ -11,6 +11,7 @@ import {
   handleCategorySelectionFromWebhook,
   handleCheckoutFromWebhook,
   handleEndConversationFromWebhook,
+  handleProductSelectionFromWebhook,
   handleViewCategoriesFromWebhook,
   processIncomingMessage,
   sendTextMessage,
@@ -68,6 +69,29 @@ export const handleWebhook = async (
       : undefined;
 
   if (payloadId) {
+    if (payloadId.startsWith('SELECT_PRODUCT_')) {
+      const productId = payloadId.replace('SELECT_PRODUCT_', '');
+      void (async () => {
+        const response = await handleProductSelectionFromWebhook(req.body, productId);
+        if (!response) {
+          return;
+        }
+        const phoneNumberId = value?.metadata?.phone_number_id;
+        const to = message?.from;
+        if (!phoneNumberId || !to) {
+          return;
+        }
+        const sender = new WhatsAppSenderService();
+        await sender.sendResponse({
+          phoneNumberId,
+          to,
+          content: response
+        });
+      })().catch((error: unknown) => {
+        console.error('Async webhook processing error:', error);
+      });
+      return;
+    }
     if (payloadId.startsWith('CATEGORY_PAGE:')) {
       const [, categoryId, pageValue] = payloadId.split(':');
       const page = Number(pageValue);

@@ -365,6 +365,115 @@ export const handleAddItemFromWebhook = async (
   await handleAddItemToDraftOrder(business, conversation, customer, menuItemId, from, phoneNumberId);
 };
 
+export const handleProductSelectionFromWebhook = async (
+  payload: WhatsAppWebhookPayload,
+  productId: string
+): Promise<string | WhatsAppListMessage> => {
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
+  if (!phoneNumberId || !from || !productId) {
+    return '';
+  }
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) {
+    return '';
+  }
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+
+  const conversationState = await findOrCreateConversationState(conversation.id);
+  const metadata = (conversationState.metadata ?? {}) as {
+    pendingProductSelection?: boolean;
+    pendingQuestion?: string;
+    candidateProductIds?: string[];
+  };
+
+  if (!metadata.pendingProductSelection || !metadata.pendingQuestion) {
+    return '';
+  }
+
+  if (!metadata.candidateProductIds?.includes(productId)) {
+    return '';
+  }
+
+  const item = await prisma.menu_item.findUnique({
+    where: { id: productId },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      ingredients: true,
+      serves_people: true,
+      is_available: true
+    }
+  });
+
+  if (!item) {
+    return '';
+  }
+
+  if (!item.is_available) {
+    const messageText = `El producto "${item.name}" no está disponible en este momento.`;
+    await createConversationMessage(conversation.id, 'ai', messageText, false);
+    await updateConversationLastMessageAt(conversation.id);
+    await updateConversationState(conversation.id, { metadata: null });
+    return messageText;
+  }
+
+  const currency = customer.preferred_currency ?? business.currency_code ?? null;
+  const now = new Date();
+  const priceWhere = {
+    is_active: true,
+    valid_from: { lte: now },
+    OR: [{ valid_to: null }, { valid_to: { gte: now } }],
+    ...(currency ? { currency_code: currency } : {})
+  };
+
+  const activePrice = await prisma.menu_item_price.findFirst({
+    where: {
+      menu_item_id: item.id,
+      ...priceWhere
+    },
+    orderBy: { valid_from: 'desc' }
+  });
+
+  if (!activePrice) {
+    const messageText = `No tengo el precio actual de "${item.name}".`;
+    await createConversationMessage(conversation.id, 'ai', messageText, false);
+    await updateConversationLastMessageAt(conversation.id);
+    await updateConversationState(conversation.id, { metadata: null });
+    return messageText;
+  }
+
+  const aiResponse = await generateProductAwareResponse({
+    product: {
+      name: item.name,
+      description: item.description,
+      ingredients: item.ingredients,
+      serves_people: item.serves_people,
+      is_available: item.is_available,
+      price: {
+        amount: activePrice.amount,
+        currency_code: activePrice.currency_code
+      }
+    },
+    userQuestion: metadata.pendingQuestion
+  });
+
+  await createConversationMessage(conversation.id, 'ai', aiResponse, true);
+  await updateConversationLastMessageAt(conversation.id);
+  await updateConversationState(conversation.id, { metadata: null });
+  return aiResponse;
+};
+
 export const handleCheckoutFromWebhook = async (
   payload: WhatsAppWebhookPayload
 ): Promise<void> => {
@@ -1069,6 +1178,9 @@ const buildListMessageFromButtons = (
   });
 };
 
+const truncateDescription = (value: string, maxLength = 60): string =>
+  value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
+
 const getLastUserMessage = (
   messages: OpenAITypes.Chat.ChatCompletionMessageParam[]
 ): string => {
@@ -1340,38 +1452,56 @@ const buildResponse = async ({
 
   if (intent === ConversationIntent.PRODUCT_QUERY) {
     const userQuestion = getLastUserMessage(formattedMessages);
-    const normalizedQuestion = userQuestion.toLowerCase();
-    const now = new Date();
-    const currency = customer.preferred_currency ?? business.currency_code ?? null;
-    const priceWhere = {
-      is_active: true,
-      valid_from: { lte: now },
-      OR: [{ valid_to: null }, { valid_to: { gte: now } }],
-      ...(currency ? { currency_code: currency } : {})
-    };
-
-    const items = await prisma.menu_item.findMany({
-      where: { business_id: business.id },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        ingredients: true,
-        serves_people: true,
-        is_available: true
-      }
+    const keyword = userQuestion.trim();
+    const items = await MenuService.searchMenuItemsByKeyword({
+      businessId: business.id,
+      keyword
     });
 
-    const matchedItem = items.find((item) =>
-      normalizedQuestion.includes(item.name.toLowerCase())
-    );
-
-    if (!matchedItem) {
-      const messageText = 'No encontré ese producto en el menú.';
+    if (items.length === 0) {
+      const safeKeyword = keyword || 'tu consulta';
+      const messageText = `No encontramos productos relacionados con "${safeKeyword}" en nuestro menú.`;
       await createConversationMessage(conversation.id, 'ai', messageText, false);
       await updateConversationLastMessageAt(conversation.id);
       return messageText;
     }
+
+    if (items.length > 1) {
+      await updateConversationState(conversation.id, {
+        metadata: {
+          pendingProductSelection: true,
+          pendingQuestion: userQuestion,
+          candidateProductIds: items.map((item) => item.id)
+        }
+      });
+
+      const listMessage = buildListMessage({
+        headerText: 'Opciones encontradas',
+        bodyText:
+          'Encontramos varios platillos relacionados con tu consulta.\nSelecciona uno para ver más detalles 👇',
+        footerText: 'Toca el botón de abajo para ver las opciones',
+        actionButtonLabel: 'Ver opciones',
+        sections: [
+          {
+            title: 'Resultados',
+            rows: items.map((item) => ({
+              id: `SELECT_PRODUCT_${item.id}`,
+              title: item.name,
+              description: truncateDescription(
+                item.description ?? item.ingredients ?? 'Sin descripción'
+              )
+            }))
+          }
+        ]
+      });
+
+      await createConversationMessage(conversation.id, 'ai', listMessage.body.text, false);
+      await updateConversationLastMessageAt(conversation.id);
+      return listMessage;
+    }
+
+    const matchedItem = items[0];
+    const activePrice = matchedItem.menu_item_price[0];
 
     if (!matchedItem.is_available) {
       const messageText = `El producto "${matchedItem.name}" no está disponible en este momento.`;
@@ -1379,14 +1509,6 @@ const buildResponse = async ({
       await updateConversationLastMessageAt(conversation.id);
       return messageText;
     }
-
-    const activePrice = await prisma.menu_item_price.findFirst({
-      where: {
-        menu_item_id: matchedItem.id,
-        ...priceWhere
-      },
-      orderBy: { valid_from: 'desc' }
-    });
 
     if (!activePrice) {
       const messageText = `No tengo el precio actual de "${matchedItem.name}".`;
