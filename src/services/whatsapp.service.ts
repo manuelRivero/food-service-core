@@ -420,8 +420,9 @@ export const handleProductSelectionFromWebhook = async (
     const messageText = `El producto "${item.name}" no está disponible en este momento.`;
     await createConversationMessage(conversation.id, 'ai', messageText, false);
     await updateConversationLastMessageAt(conversation.id);
-    await updateConversationState(conversation.id, {
-      metadata: buildMetadataValue({ lastReferencedProductId: item.id })
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { lastReferencedProductId: item.id }
     });
     return messageText;
   }
@@ -447,8 +448,9 @@ export const handleProductSelectionFromWebhook = async (
     const messageText = `No tengo el precio actual de "${item.name}".`;
     await createConversationMessage(conversation.id, 'ai', messageText, false);
     await updateConversationLastMessageAt(conversation.id);
-    await updateConversationState(conversation.id, {
-      metadata: buildMetadataValue({ lastReferencedProductId: item.id })
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { lastReferencedProductId: item.id }
     });
     return messageText;
   }
@@ -476,8 +478,9 @@ export const handleProductSelectionFromWebhook = async (
 
   await createConversationMessage(conversation.id, 'ai', aiResponse, true);
   await updateConversationLastMessageAt(conversation.id);
-  await updateConversationState(conversation.id, {
-    metadata: buildMetadataValue({ lastReferencedProductId: item.id })
+  await prisma.conversation.update({
+    where: { id: conversation.id },
+    data: { lastReferencedProductId: item.id }
   });
   return aiResponse;
 };
@@ -1193,7 +1196,6 @@ type ConversationMetadata = {
   pendingProductSelection?: boolean;
   pendingQuestion?: string;
   candidateProductIds?: string[];
-  lastReferencedProductId?: string;
 };
 
 const normalizeMetadata = (value: unknown): ConversationMetadata => {
@@ -1212,9 +1214,10 @@ const buildMetadataValue = (
 };
 
 const clearPendingSelection = (metadata: ConversationMetadata): ConversationMetadata => {
-  return metadata.lastReferencedProductId
-    ? { lastReferencedProductId: metadata.lastReferencedProductId }
-    : {};
+  if (!metadata.pendingProductSelection && !metadata.pendingQuestion && !metadata.candidateProductIds) {
+    return metadata;
+  }
+  return {};
 };
 
 const getLastUserMessage = (
@@ -1645,9 +1648,11 @@ const buildResponse = async ({
       const messageText = `El producto "${matchedItem.name}" no está disponible en este momento.`;
       await createConversationMessage(conversation.id, 'ai', messageText, false);
       await updateConversationLastMessageAt(conversation.id);
-      await updateConversationState(conversation.id, {
-        metadata: buildMetadataValue({ lastReferencedProductId: matchedItem.id })
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { lastReferencedProductId: matchedItem.id }
       });
+      console.log('[CONTEXT] Implicit product set:', matchedItem.name, 'for conversation:', conversation.id);
       return messageText;
     }
 
@@ -1655,9 +1660,11 @@ const buildResponse = async ({
       const messageText = `No tengo el precio actual de "${matchedItem.name}".`;
       await createConversationMessage(conversation.id, 'ai', messageText, false);
       await updateConversationLastMessageAt(conversation.id);
-      await updateConversationState(conversation.id, {
-        metadata: buildMetadataValue({ lastReferencedProductId: matchedItem.id })
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { lastReferencedProductId: matchedItem.id }
       });
+      console.log('[CONTEXT] Implicit product set:', matchedItem.name, 'for conversation:', conversation.id);
       return messageText;
     }
 
@@ -1678,9 +1685,11 @@ const buildResponse = async ({
 
     await createConversationMessage(conversation.id, 'ai', aiResponse, true);
     await updateConversationLastMessageAt(conversation.id);
-    await updateConversationState(conversation.id, {
-      metadata: buildMetadataValue({ lastReferencedProductId: matchedItem.id })
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { lastReferencedProductId: matchedItem.id }
     });
+    console.log('[CONTEXT] Implicit product set:', matchedItem.name, 'for conversation:', conversation.id);
     return aiResponse;
   }
 
@@ -1752,6 +1761,7 @@ export const processIncomingMessage = async (
 
   const conversationState = await findOrCreateConversationState(conversation.id);
   let currentMetadata = normalizeMetadata(conversationState.metadata);
+  console.log('Loaded lastReferencedProductId:', conversation.lastReferencedProductId);
 
   if (messageId) {
     const existingMessage = await findByWhatsappMessageId(messageId);
@@ -1812,7 +1822,7 @@ export const processIncomingMessage = async (
           formattedMessages,
           detectedProductName: null,
           lastUserMessage,
-          lastReferencedProductId: currentMetadata.lastReferencedProductId ?? null
+          lastReferencedProductId: conversation.lastReferencedProductId ?? null
         });
         return responseContent;
         }
@@ -1846,7 +1856,7 @@ export const processIncomingMessage = async (
           formattedMessages,
           detectedProductName: null,
           lastUserMessage,
-          lastReferencedProductId: currentMetadata.lastReferencedProductId ?? null
+          lastReferencedProductId: conversation.lastReferencedProductId ?? null
         });
         return responseContent;
       }
@@ -1916,10 +1926,10 @@ export const processIncomingMessage = async (
     ConversationIntent.UNKNOWN
   ]);
 
-  if (intentsToClearContext.has(detectionResult.intent) && currentMetadata.lastReferencedProductId) {
-    currentMetadata = clearPendingSelection({ ...currentMetadata, lastReferencedProductId: undefined });
-    await updateConversationState(conversation.id, {
-      metadata: buildMetadataValue(currentMetadata)
+  if (intentsToClearContext.has(detectionResult.intent) && conversation.lastReferencedProductId) {
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { lastReferencedProductId: null }
     });
   }
 
@@ -1935,7 +1945,7 @@ export const processIncomingMessage = async (
     formattedMessages,
     detectedProductName: detectionResult.detectedProductName,
     lastUserMessage,
-    lastReferencedProductId: currentMetadata.lastReferencedProductId ?? null
+    lastReferencedProductId: conversation.lastReferencedProductId ?? null
   });
   return responseContent;
 };
