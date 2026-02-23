@@ -1821,7 +1821,11 @@ export const processIncomingMessage = async (
     ConversationIntent.UNKNOWN
   ]);
 
-  if (!detectionResult.detectedProductName && currentMetadata.lastReferencedProductId) {
+  if (
+    detectionResult.intent === ConversationIntent.GENERAL_QUESTION &&
+    !detectionResult.detectedProductName &&
+    currentMetadata.lastReferencedProductId
+  ) {
     const product = await prisma.menu_item.findUnique({
       where: { id: currentMetadata.lastReferencedProductId },
       select: {
@@ -1881,9 +1885,9 @@ export const processIncomingMessage = async (
   }
 
   if (intentsToClearContext.has(detectionResult.intent) && currentMetadata.lastReferencedProductId) {
-    currentMetadata = {};
+    currentMetadata = clearPendingSelection({ ...currentMetadata, lastReferencedProductId: undefined });
     await updateConversationState(conversation.id, {
-      metadata: Prisma.JsonNull
+      metadata: buildMetadataValue(currentMetadata)
     });
   }
 
