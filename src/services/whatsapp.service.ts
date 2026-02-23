@@ -1821,12 +1821,7 @@ export const processIncomingMessage = async (
     ConversationIntent.UNKNOWN
   ]);
 
-  if (
-    detectionResult.intent !== ConversationIntent.PRODUCT_QUERY &&
-    !detectionResult.detectedProductName &&
-    currentMetadata.lastReferencedProductId &&
-    !intentsToClearContext.has(detectionResult.intent)
-  ) {
+  if (!detectionResult.detectedProductName && currentMetadata.lastReferencedProductId) {
     const product = await prisma.menu_item.findUnique({
       where: { id: currentMetadata.lastReferencedProductId },
       select: {
