@@ -410,7 +410,7 @@ export const handleProductSelectionFromWebhook = async (
       type: 'interactive',
       interactive: {
         type: 'button',
-        body: { text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
+        body: { title: 'Opción no disponible', text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
         action: {
           buttons: [
             {
@@ -432,7 +432,7 @@ export const handleProductSelectionFromWebhook = async (
         type: 'interactive',
         interactive: {
           type: 'button',
-          body: { text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
+          body: { title: 'Opción no disponible', text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
           action: {
             buttons: [
               {
@@ -476,7 +476,7 @@ export const handleProductSelectionFromWebhook = async (
       type: 'interactive',
       interactive: {
         type: 'button',
-        body: { text: messageText },
+        body: { title: 'Platillo no disponible', text: messageText },
         action: {
           buttons: [
             {
@@ -522,7 +522,7 @@ export const handleProductSelectionFromWebhook = async (
       type: 'interactive',
       interactive: {
         type: 'button',
-        body: { text: messageText },
+        body: { title: 'Precio no disponible', text: messageText },
         action: {
           buttons: [
             {
@@ -569,7 +569,7 @@ export const handleProductSelectionFromWebhook = async (
     type: 'interactive',
     interactive: {
       type: 'button',
-      body: { text: aiResponse },
+      body: { title: 'Tenemos un match para tu consulta', text: aiResponse },
       action: {
         buttons: [
           {
@@ -1732,7 +1732,7 @@ const buildSmallTalkResponse = async (
 ): Promise<WhatsAppListMessage> => {
   const messageText = isFirstMessage && !hasGreeted
     ? 'Hola! Bienvenido/a 👋\nEstoy aqui para ayudarte. Elige una opcion para comenzar.'
-    : 'Hola de nuevo! 😊\n¿Quieres ver el menu o tienes una duda?';
+    : 'Hola de nuevo! soy el nuevo asistente de IA, estoy para ayudarte.😊\n¿Quieres ver el menu o tienes una duda?';
 
   await createConversationMessage(conversationId, 'ai', messageText, false);
   await updateConversationState(conversationId, { current_intent: 'greeted' });
@@ -2049,7 +2049,7 @@ const buildResponse = async ({
   detectedProductName: string | null;
   lastUserMessage: string;
   lastReferencedProductId: string | null;
-}): Promise<string | WhatsAppListMessage> => {
+}): Promise<string | WhatsAppListMessage | WhatsAppInteractiveMessage> => {
 
   // =========================
   // PAYMENT
@@ -2264,7 +2264,24 @@ const buildResponse = async ({
       const messageText = `No encontramos productos relacionados con "${keyword}" en nuestro menú.`;
       await createConversationMessage(conversation.id, 'ai', messageText, false);
       await updateConversationLastMessageAt(conversation.id);
-      return messageText;
+      return {
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { title: 'Sin resultados a tu consulta', text: messageText },
+          action: {
+            buttons: [
+              {
+                type: 'reply',
+                reply: {
+                  id: 'VIEW_MENU',
+                  title: 'Ver manù',
+                }
+              }
+            ]
+          }
+        }
+      };
     }
 
     if (items.length > 1) {
@@ -2369,7 +2386,7 @@ const processConfirmationResponse = (
 
 export const processIncomingMessage = async (
   payload: WhatsAppWebhookPayload
-): Promise<string | WhatsAppListMessage> => {
+): Promise<string | WhatsAppListMessage | WhatsAppInteractiveMessage> => {
   const entry = payload.entry?.[0];
   const change = entry?.changes?.[0];
   const value = change?.value;

@@ -31,7 +31,7 @@ export interface WhatsAppInteractiveMessage {
   type: 'interactive',
   interactive: {
     type: 'button',
-    body: { text: string },
+    body: { title: string, text: string },
     action: {
       buttons: [
         {
