@@ -2001,7 +2001,7 @@ const buildResponse = async ({
     } else {
   
     const draftItems = await prisma.draft_order_item.findMany({
-      where: { draft_order_id: draftOrder.id }
+      where: { draft_order_id: activeOrder?.id }
     });
   
     const menuItems =
