@@ -30,7 +30,7 @@ import { ConversationIntent } from '../types/conversationIntent';
 import { WhatsAppSenderService } from './whatsappSender.service';
 import { Prisma } from '@prisma/client';
 import type { ConfirmationState } from '../domain/intent/types';
-import type { WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
+import type { WhatsAppInteractiveMessage, WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
 import { INTENT_SELECTION_ID_PREFIX } from '../domain/intent/whatsappTemplates';
 import type {
   business as Business,
@@ -381,7 +381,7 @@ export const handleAddItemFromWebhook = async (
 export const handleProductSelectionFromWebhook = async (
   payload: WhatsAppWebhookPayload,
   productId: string
-): Promise<string | WhatsAppListMessage> => {
+): Promise<WhatsAppInteractiveMessage | null> => {
   const entry = payload.entry?.[0];
   const change = entry?.changes?.[0];
   const value = change?.value;
@@ -391,12 +391,12 @@ export const handleProductSelectionFromWebhook = async (
   const phoneNumberId = value?.metadata?.phone_number_id;
 
   if (!phoneNumberId || !from || !productId) {
-    return '';
+    return null;
   }
 
   const business = await findBusinessByPhoneNumberId(phoneNumberId);
   if (!business) {
-    return '';
+    return null;
   }
 
   const customer = await findOrCreateCustomer(business.id, from);
@@ -406,11 +406,46 @@ export const handleProductSelectionFromWebhook = async (
   const metadata = normalizeMetadata(conversationState.metadata);
 
   if (!metadata.pendingProductSelection || !metadata.pendingQuestion) {
-    return 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.';
+    return {
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
+        action: {
+          buttons: [
+            {
+              type: 'reply',
+              reply: {
+                id: 'VIEW_MENU',
+                title: 'Ver menù',
+              }
+            }
+          ]
+        }
+      }
+    };
+      
   }
 
   if (!metadata.candidateProductIds?.includes(productId)) {
-    return 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.';
+      return {
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
+          action: {
+            buttons: [
+              {
+                type: 'reply',
+                reply: {
+                  id: 'VIEW_MENU',
+                  title: 'Ver menù',
+                }
+              }
+            ]
+          }
+        }
+      };
   }
 
   const item = await prisma.menu_item.findUnique({
@@ -426,7 +461,7 @@ export const handleProductSelectionFromWebhook = async (
   });
 
   if (!item) {
-    return '';
+    return null;
   }
 
   if (!item.is_available) {
@@ -437,7 +472,24 @@ export const handleProductSelectionFromWebhook = async (
       where: { id: conversation.id },
       data: { lastReferencedProductId: item.id }
     });
-    return messageText;
+    return {
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: messageText },
+        action: {
+          buttons: [
+            {
+              type: 'reply',
+              reply: {
+                id: 'VIEW_MENU',
+                title: 'Ver menù',
+              }
+            }
+          ]
+        }
+      }
+    };
   }
 
   const currency = customer.preferred_currency ?? business.currency_code ?? null;
@@ -465,7 +517,25 @@ export const handleProductSelectionFromWebhook = async (
       where: { id: conversation.id },
       data: { lastReferencedProductId: item.id }
     });
-    return messageText;
+
+    return {
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: messageText },
+        action: {
+          buttons: [
+            {
+              type: 'reply',
+              reply: {
+                id: 'VIEW_MENU',
+                title: 'Ver manù',
+              }
+            }
+          ]
+        }
+      }
+    };
   }
 
   console.log('---- PRODUCT SELECTED ----');
@@ -495,7 +565,24 @@ export const handleProductSelectionFromWebhook = async (
     where: { id: conversation.id },
     data: { lastReferencedProductId: item.id }
   });
-  return aiResponse;
+  return {
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: { text: aiResponse },
+      action: {
+        buttons: [
+          {
+            type: 'reply',
+            reply: {
+              id: 'ADD_ITEM',
+              title: 'Agregar',
+            }
+          }
+        ]
+      }
+    }
+  };
 };
 
 export const handleOrderProductSelectionFromWebhook = async (

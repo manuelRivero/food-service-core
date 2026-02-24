@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios';
-import type { WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
+import type { WhatsAppInteractiveMessage, WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
 
 export class WhatsAppSenderService {
   private readonly baseUrl = 'https://graph.facebook.com/v18.0';
@@ -183,6 +183,48 @@ export class WhatsAppSenderService {
     }
   }
 
+  async sendInteractiveMessage(params: {
+    phoneNumberId: string;
+    to: string;
+    text: string;
+    messageObject: WhatsAppInteractiveMessage
+  }): Promise<void> {
+    const {
+      phoneNumberId,
+      to,
+      text,
+      messageObject
+    } = params;
+    const normalizedTo = this.normalizeRecipient(to);
+    try {
+      await axios.post(
+        `${this.baseUrl}/${phoneNumberId}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          to: normalizedTo,
+          text: text,
+          ...messageObject
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`
+          }
+        }
+      );
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      const status = axiosError.response?.status;
+      const data = axiosError.response?.data;
+
+      const messageDetail =
+        typeof data === 'string' ? data : JSON.stringify(data ?? {});
+
+      throw new Error(
+        `Error al enviar mensaje WhatsApp: ${status ?? 'sin_status'} ${messageDetail}`
+      );
+    }
+  }
+
   async sendResponse(params: {
     phoneNumberId: string;
     to: string;
@@ -202,14 +244,15 @@ export class WhatsAppSenderService {
       ].filter(Boolean);
       const text = textParts.join('\n\n');
 
-      const buttons = content.action.sections.flatMap((section) =>
-        section.rows.map((row) => ({
-          title: row.title,
-          payload: row.id,
-          description: row.description,
-          sectionTitle: section.title
-        }))
-      );
+      const buttons =
+        content.action.sections?.flatMap((section) =>
+          section.rows.map((row) => ({
+            title: row.title,
+            payload: row.id,
+            description: row.description,
+            sectionTitle: section.title
+          }))
+        ) ?? [];
 
       await this.sendInteractiveMenu({
         phoneNumberId,

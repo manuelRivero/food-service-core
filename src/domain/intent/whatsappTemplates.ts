@@ -27,6 +27,25 @@ export interface WhatsAppListMessage {
   };
 }
 
+export interface WhatsAppInteractiveMessage {
+  type: 'interactive',
+  interactive: {
+    type: 'button',
+    body: { text: string },
+    action: {
+      buttons: [
+        {
+          type: 'reply',
+          reply: {
+            id: string,
+            title: string
+          }
+        }
+      ]
+    }
+  }
+}
+
 export const INTENT_SELECTION_ID_PREFIX = 'confirm_intent:';
 
 export function createIntentConfirmationList(

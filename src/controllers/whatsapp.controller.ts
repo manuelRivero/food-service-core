@@ -21,6 +21,7 @@ import {
   verifyWebhook as verifyWebhookService
 } from '../services/whatsapp.service';
 import { WhatsAppSenderService } from '../services/whatsappSender.service';
+import { WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
 
 /**
  * Envía un mensaje de WhatsApp
@@ -84,17 +85,15 @@ export const handleWebhook = async (
           return;
         }
         const sender = new WhatsAppSenderService();
-        await sender.sendInteractiveMenu({
-          phoneNumberId,
-          to,
-          text: response as string,
-          buttons: [
-            {
-              title: 'Agregar producto',
-              payload: `ADD_ITEM_${productId}`
-            },
-          ]
-        });
+
+          await sender.sendInteractiveMessage({
+            phoneNumberId,
+            to,
+            text: response.interactive.body.text,
+            messageObject: response
+          }
+          );
+        
       })().catch((error: unknown) => {
         console.error('Async webhook processing error:', error);
       });
