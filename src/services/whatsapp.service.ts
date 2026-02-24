@@ -1984,12 +1984,21 @@ const buildResponse = async ({
       }
     });
   
-    if (!draftOrder) {
-      const messageText = 'No tienes un pedido activo.';
-      await createConversationMessage(conversation.id, 'ai', messageText, false);
-      await updateConversationLastMessageAt(conversation.id);
-      return messageText;
-    }
+    let activeOrder = draftOrder;
+
+    if (!activeOrder) {
+      activeOrder = await prisma.draft_order.create({
+        data: {
+          business_id: business.id,
+          customer_phone: from,
+          status: 'active',
+          currency: business.currency_code ?? 'ARS',
+          total_amount: 0
+        }
+      });
+
+      console.log('[ORDER] New draft order created:', activeOrder.id);
+    } else {
   
     const draftItems = await prisma.draft_order_item.findMany({
       where: { draft_order_id: draftOrder.id }
@@ -2158,7 +2167,9 @@ const buildResponse = async ({
     await createConversationMessage(conversation.id, 'ai', messageText, false);
     await updateConversationLastMessageAt(conversation.id);
     return messageText;
+    }
   }
+  
   
 
   if (intent === ConversationIntent.VIEW_ORDER) {
