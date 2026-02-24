@@ -133,7 +133,7 @@ export const generateProductAwareResponse = async (params: {
       {
         role: 'system',
         content:
-          'You answer questions about a restaurant product. Use ONLY the provided product data. Do NOT invent price, availability, or characteristics. If information is not available, say you do not have that information. Be concise and natural.'
+          'You answer questions about a restaurant product. Use ONLY the provided product data. Do NOT invent price, availability, or characteristics. If information is not available, say you do not have that information. Be concise and natural. A button will be displayed to the user to encourage them to add the product to their order, so in your response you should encourage them to do so.'
       },
       {
         role: 'user',

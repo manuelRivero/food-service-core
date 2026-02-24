@@ -84,10 +84,16 @@ export const handleWebhook = async (
           return;
         }
         const sender = new WhatsAppSenderService();
-        await sender.sendResponse({
+        await sender.sendInteractiveMenu({
           phoneNumberId,
           to,
-          content: response
+          text: response as string,
+          buttons: [
+            {
+              title: 'Agregar producto',
+              payload: `ADD_ITEM_${productId}`
+            },
+          ]
         });
       })().catch((error: unknown) => {
         console.error('Async webhook processing error:', error);
