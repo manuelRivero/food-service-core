@@ -405,7 +405,7 @@ export const handleProductSelectionFromWebhook = async (
   const conversationState = await findOrCreateConversationState(conversation.id);
   const metadata = normalizeMetadata(conversationState.metadata);
 
-  if (!metadata.pendingProductSelection || !metadata.candidateProductIds?.length) {
+  if (!metadata.pendingProductSelection || !metadata.pendingQuestion) {
     return {
       type: 'interactive',
       interactive: {
@@ -550,9 +550,7 @@ export const handleProductSelectionFromWebhook = async (
   console.log('---- PRODUCT SELECTED ----');
   console.log('Selected product ID:', productId);
   console.log('Selected product name:', item.name);
-  const pendingQuestion =
-    metadata.pendingQuestion ?? `¿Qué me puedes decir de ${item.name}?`;
-  console.log('Stored pendingQuestion:', pendingQuestion);
+  console.log('Stored pendingQuestion:', metadata.pendingQuestion);
   console.log('--------------------------------');
 
   const aiResponse = await generateProductAwareResponse({
@@ -567,7 +565,7 @@ export const handleProductSelectionFromWebhook = async (
         currency_code: activePrice.currency_code
       }
     },
-    userQuestion: pendingQuestion
+    userQuestion: metadata.pendingQuestion
   });
 
   await createConversationMessage(conversation.id, 'ai', aiResponse, true);
@@ -629,7 +627,7 @@ export const handleOrderProductSelectionFromWebhook = async (
   const conversationState = await findOrCreateConversationState(conversation.id);
   const metadata = normalizeMetadata(conversationState.metadata);
 
-  if (!metadata.pendingOrderSelection || !metadata.pendingOrderCandidateIds?.length) {
+  if (!metadata.pendingOrderSelection || !metadata.pendingOrderMessage) {
     return 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.';
   }
 
@@ -660,13 +658,11 @@ export const handleOrderProductSelectionFromWebhook = async (
 
   console.log('---- ORDER FOOD ----');
   console.log('Using product:', item.id);
-  const orderMessage =
-    metadata.pendingOrderMessage ?? `Agrega ${item.name}`;
-  console.log('User message:', orderMessage);
+  console.log('User message:', metadata.pendingOrderMessage);
   console.log('---------------------');
 
   const extraction = await generateOrderExtraction({
-    userMessage: orderMessage
+    userMessage: metadata.pendingOrderMessage
   });
   const quantity =
     Number.isFinite(extraction.quantity) && extraction.quantity > 0
@@ -2306,6 +2302,13 @@ const buildResponse = async ({
     }
 
     if (items.length > 1) {
+      await updateConversationState(conversation.id, {
+        metadata: {
+          pendingProductSelection: true,
+          pendingQuestion: lastUserMessage,
+          candidateProductIds: items.map((item) => item.id)
+        }
+      });
 
       const listMessage = buildListMessage({
         headerText: 'Tenemos algunos resultados para tu consulta',
