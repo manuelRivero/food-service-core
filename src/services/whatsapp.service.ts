@@ -404,6 +404,12 @@ export const handleProductSelectionFromWebhook = async (
 
   const conversationState = await findOrCreateConversationState(conversation.id);
   const metadata = normalizeMetadata(conversationState.metadata);
+  console.log('DEBUG selection:', {
+    selectedId: productId,
+    conversationId: conversation.id,
+    candidateProductIds: metadata.candidateProductIds,
+    match: metadata.candidateProductIds?.includes(productId)
+  });
 
   if (!metadata.pendingProductSelection || !metadata.pendingQuestion) {
     return {
