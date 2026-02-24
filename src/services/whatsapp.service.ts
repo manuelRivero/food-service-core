@@ -2029,6 +2029,37 @@ const buildResponse = async ({
     const quantity = resolution.quantity && resolution.quantity > 0
       ? resolution.quantity
       : 1;
+
+      // =======================================
+// CONTEXTUAL ADD (ej: "Quiero 2")
+// =======================================
+
+if (
+  resolution.action === 'unclear' &&
+  !resolution.product_name &&
+  resolution.quantity &&
+  lastReferencedProductId
+) {
+  const focusedProduct = await prisma.menu_item.findUnique({
+    where: { id: lastReferencedProductId },
+    select: { id: true, name: true, is_available: true }
+  });
+
+    if (focusedProduct && focusedProduct.is_available) {
+
+      await addProductToOrder({
+        conversationId: conversation.id,
+        productId: focusedProduct.id,
+        quantity: resolution.quantity
+      });
+
+      return await buildUpdatedOrderResponse({
+        conversation,
+        business,
+        from
+      });
+    }
+  }
   
     // =========================
     // NEEDS CLARIFICATION
