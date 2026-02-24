@@ -435,7 +435,7 @@ export const handleProductSelectionFromWebhook = async (
       
   }
 
-  if (!metadata.candidateProductIds?.includes(productId)) {
+  if (!metadata.candidateProductIds?.includes(productId.replace('SELECT_PRODUCT:', ''))) {
       return {
         type: 'interactive',
         interactive: {
