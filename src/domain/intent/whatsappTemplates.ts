@@ -42,7 +42,6 @@ export interface WhatsAppInteractiveMessage {
       text: string
     },
     footer: {
-      type: 'text',
       text: string
     },
     action: {
