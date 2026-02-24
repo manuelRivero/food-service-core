@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios';
-import type { WhatsAppInteractiveMessage, WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
+import type { WhatsAppInteractiveMessage, WhatsAppListMessage, WhatsAppListSection } from '../domain/intent/whatsappTemplates';
 
 export class WhatsAppSenderService {
   private readonly baseUrl = 'https://graph.facebook.com/v18.0';
@@ -225,7 +225,7 @@ export class WhatsAppSenderService {
   async sendResponse(params: {
     phoneNumberId: string;
     to: string;
-    content: string | WhatsAppListMessage;
+    content: string | WhatsAppListMessage | WhatsAppInteractiveMessage;
   }): Promise<void> {
     const { phoneNumberId, to, content } = params;
     if (typeof content === 'string') {
