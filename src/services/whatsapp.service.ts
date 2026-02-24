@@ -590,7 +590,7 @@ export const handleProductSelectionFromWebhook = async (
           {
             type: 'reply',
             reply: {
-              id: 'ADD_ITEM',
+              id: `ADD_ITEM:${item.id}`,
               title: 'Agregar',
             }
           }
@@ -1657,7 +1657,7 @@ const buildOrderSearchListMessage = (params: {
   console.log('--------------------------------');
 
   const rows = pageItems.map((item) => ({
-    id: `SELECT_ORDER_PRODUCT_${item.id}`,
+    id: `SELECT_ORDER_PRODUCT:${item.id}`,
     title: item.name,
     description: truncateDescription(item.description ?? item.ingredients ?? 'Sin descripción')
   }));

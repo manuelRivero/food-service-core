@@ -73,7 +73,7 @@ export const handleWebhook = async (
 
   if (payloadId) {
     if (payloadId.startsWith('SELECT_PRODUCT_')) {
-      const productId = payloadId.replace('SELECT_PRODUCT_', '');
+      const productId = payloadId.replace('SELECT_PRODUCT:', '');
       void (async () => {
         const response = await handleProductSelectionFromWebhook(req.body, productId);
         if (!response) {
@@ -99,7 +99,7 @@ export const handleWebhook = async (
       return;
     }
     if (payloadId.startsWith('SELECT_ORDER_PRODUCT_')) {
-      const productId = payloadId.replace('SELECT_ORDER_PRODUCT_', '');
+      const productId = payloadId.replace('SELECT_ORDER_PRODUCT:', '');
       void (async () => {
         const response = await handleOrderProductSelectionFromWebhook(req.body, productId);
         if (!response) {
