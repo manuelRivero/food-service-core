@@ -1706,6 +1706,36 @@ const normalizeMetadata = (value: unknown): ConversationMetadata => {
   return {};
 };
 
+const handlePendingAction = async (params: {
+  conversationId: string;
+  pendingAction: string;
+  messageText: string;
+}): Promise<string | WhatsAppListMessage | WhatsAppInteractiveMessage | null> => {
+  const { conversationId, pendingAction, messageText } = params;
+  const normalized = pendingAction.trim().toLowerCase();
+
+  if (!messageText.trim()) {
+    return null;
+  }
+
+  if (
+    normalized === 'awaiting_address' ||
+    normalized === 'awaiting_quantity' ||
+    normalized === 'awaiting_confirmation'
+  ) {
+    const responseText = 'Gracias, ya registré la información.';
+    await updateConversationState(conversationId, {
+      pending_action: null,
+      metadata: Prisma.JsonNull
+    } as Prisma.conversation_stateUpdateInput & { pending_action?: string | null });
+    await createConversationMessage(conversationId, 'ai', responseText, false);
+    await updateConversationLastMessageAt(conversationId);
+    return responseText;
+  }
+
+  return null;
+};
+
 const buildMetadataValue = (
   metadata: ConversationMetadata
 ): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput => {
@@ -2440,6 +2470,9 @@ export const processIncomingMessage = async (
     if (existingMessage) return '';
   }
 
+  const existingMessages = await getRecentMessagesByConversationId(conversation.id, 20);
+  const isFirstMessage = existingMessages.length === 0;
+
   // Persist message
   const messageContent =
     message.type === 'text'
@@ -2450,7 +2483,7 @@ export const processIncomingMessage = async (
         '[interactive]'
       : `[${message.type ?? 'unknown'}]`;
 
-  await createConversationMessage(
+  const persistedMessage = await createConversationMessage(
     conversation.id,
     'customer',
     messageContent,
@@ -2459,16 +2492,25 @@ export const processIncomingMessage = async (
     messageId
   );
 
+  if (!persistedMessage) {
+    return '';
+  }
+
   await updateConversationLastMessageAt(conversation.id);
 
-  const recentMessages = await getRecentMessagesByConversationId(conversation.id, 20);
+  const newMessage: OpenAITypes.Chat.ChatCompletionMessageParam = {
+    role: 'user',
+    content: messageContent
+  };
   const formattedMessages: OpenAITypes.Chat.ChatCompletionMessageParam[] =
-    recentMessages.map((recentMessage) => ({
-      role: recentMessage.is_ai_generated ? 'assistant' : 'user',
-      content: recentMessage.message
-    }));
-
-  const isFirstMessage = recentMessages.length === 1;
+    existingMessages.map(
+      (recentMessage) =>
+        ({
+          role: recentMessage.is_ai_generated ? 'assistant' : 'user',
+          content: recentMessage.message
+        } as OpenAITypes.Chat.ChatCompletionMessageParam)
+    );
+  formattedMessages.push(newMessage);
   const hasGreeted = conversationState.current_intent === 'greeted';
 
   // =====================================================
@@ -2545,25 +2587,45 @@ export const processIncomingMessage = async (
   const text = message.text?.body ?? '';
   const lastUserMessage = text;
 
-  const detectionResult = await detectIntentWithConfidence(text);
+  const pendingAction =
+    (conversationState as unknown as { pending_action?: string | null })
+      .pending_action ?? null;
+  if (pendingAction) {
+    const pendingResponse = await handlePendingAction({
+      conversationId: conversation.id,
+      pendingAction,
+      messageText: text
+    });
+    if (pendingResponse) {
+      return pendingResponse;
+    }
+  }
+
+  let detectionResult;
+  try {
+    detectionResult = await detectIntentWithConfidence(text);
+  } catch (error) {
+    detectionResult = null;
+  }
 
   let resolvedIntent: ConversationIntent;
-  if (detectionResult.type === 'UNCERTAIN') {
+  if (detectionResult?.type === 'UNCERTAIN') {
     resolvedIntent =
       detectionResult.candidates[0]?.intent ?? ConversationIntent.UNKNOWN;
-  } else {
+  } else if (detectionResult) {
     resolvedIntent = detectionResult.intent;
+  } else {
+    resolvedIntent = ConversationIntent.UNKNOWN;
   }
 
   console.log('---- INTENT DETECTED ----');
   console.log('User message:', text);
   console.log('Intent:', resolvedIntent);
-  console.log('Detected product:', detectionResult.detectedProductName);
+  console.log('Detected product:', detectionResult?.detectedProductName ?? null);
   console.log('-------------------------');
 
   // Clear product context when appropriate
   const intentsToClearContext = new Set<ConversationIntent>([
-    ConversationIntent.VIEW_MENU,
     ConversationIntent.SMALL_TALK,
     ConversationIntent.BUSINESS_HOURS,
     ConversationIntent.BUSINESS_LOCATION,
@@ -2575,6 +2637,7 @@ export const processIncomingMessage = async (
 
   if (
     intentsToClearContext.has(resolvedIntent) &&
+    !detectionResult?.detectedProductName &&
     conversation.lastReferencedProductId
   ) {
     await prisma.conversation.update({
@@ -2583,20 +2646,27 @@ export const processIncomingMessage = async (
     });
   }
 
-  return await buildResponse({
-    intent: resolvedIntent,
-    business,
-    customer,
-    conversation,
-    from,
-    isFirstMessage,
-    hasGreeted,
-    formattedMessages,
-    detectedProductName: detectionResult.detectedProductName,
-    lastUserMessage,
-    lastReferencedProductId:
-      conversation.lastReferencedProductId ?? null
-  });
+  try {
+    return await buildResponse({
+      intent: resolvedIntent,
+      business,
+      customer,
+      conversation,
+      from,
+      isFirstMessage,
+      hasGreeted,
+      formattedMessages,
+      detectedProductName: detectionResult?.detectedProductName ?? null,
+      lastUserMessage,
+      lastReferencedProductId:
+        conversation.lastReferencedProductId ?? null
+    });
+  } catch (error) {
+    const messageText = 'Lo siento, ocurrió un error. Intenta de nuevo.';
+    await createConversationMessage(conversation.id, 'ai', messageText, false);
+    await updateConversationLastMessageAt(conversation.id);
+    return messageText;
+  }
 };
 
 export const processStatus = async (
