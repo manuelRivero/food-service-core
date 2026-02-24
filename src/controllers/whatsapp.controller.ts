@@ -89,7 +89,6 @@ export const handleWebhook = async (
           await sender.sendInteractiveMessage({
             phoneNumberId,
             to,
-            text: response.interactive.body.text,
             messageObject: response
           }
           );

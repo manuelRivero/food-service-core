@@ -186,13 +186,11 @@ export class WhatsAppSenderService {
   async sendInteractiveMessage(params: {
     phoneNumberId: string;
     to: string;
-    text: string;
     messageObject: WhatsAppInteractiveMessage
   }): Promise<void> {
     const {
       phoneNumberId,
       to,
-      text,
       messageObject
     } = params;
     const normalizedTo = this.normalizeRecipient(to);
@@ -202,7 +200,6 @@ export class WhatsAppSenderService {
         {
           messaging_product: 'whatsapp',
           to: normalizedTo,
-          text: text,
           ...messageObject
         },
         {
