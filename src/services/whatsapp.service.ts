@@ -2060,6 +2060,41 @@ if (
       });
     }
   }
+  // =======================================
+// PEDIDO VACÍO + NEEDS CLARIFICATION
+// =======================================
+
+if (draftItems.length === 0) {
+  // Caso típico: "Quiero 2" después de seleccionar producto
+  if (lastReferencedProductId && resolution.quantity) {
+
+    const focusedProduct = await prisma.menu_item.findUnique({
+      where: { id: lastReferencedProductId },
+      select: { id: true, name: true, is_available: true }
+    });
+
+    if (focusedProduct?.is_available) {
+
+      await addProductToOrder({
+        conversationId: conversation.id,
+        productId: focusedProduct.id,
+        quantity: resolution.quantity
+      });
+
+      return await buildUpdatedOrderResponse({
+        conversation,
+        business,
+        from
+      });
+    }
+  }
+
+  // Si no hay contexto
+  const messageText = '¿Qué producto deseas agregar a tu pedido?';
+  await createConversationMessage(conversation.id, 'ai', messageText, false);
+  await updateConversationLastMessageAt(conversation.id);
+  return messageText;
+}
   
     // =========================
     // NEEDS CLARIFICATION
