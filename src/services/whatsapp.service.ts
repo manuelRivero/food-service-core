@@ -411,7 +411,7 @@ export const handleProductSelectionFromWebhook = async (
       interactive: {
         type: 'button',
         header: { type: 'text', text: 'Opción no disponible' },
-        body: { type: 'text', text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
+        body: { text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
         footer: { type: 'text', text: 'Elige una opción' },
         action: {
           buttons: [
@@ -435,7 +435,7 @@ export const handleProductSelectionFromWebhook = async (
         interactive: {
           type: 'button',
           header: { type: 'text', text: 'Opción no disponible' },
-          body: { type: 'text', text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
+          body: { text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
           footer: { type: 'text', text: 'Elige una opción' },
           action: {
             buttons: [
@@ -460,7 +460,8 @@ export const handleProductSelectionFromWebhook = async (
       description: true,
       ingredients: true,
       serves_people: true,
-      is_available: true
+      is_available: true,
+      image: true
     }
   });
 
@@ -481,7 +482,7 @@ export const handleProductSelectionFromWebhook = async (
       interactive: {
         type: 'button',
         header: { type: 'text', text: 'Platillo no disponible' },
-        body: { type: 'text', text: messageText },
+        body: { text: messageText },
         footer: { type: 'text', text: 'Elige una opción' },
         action: {
           buttons: [
@@ -529,7 +530,7 @@ export const handleProductSelectionFromWebhook = async (
       interactive: {
         type: 'button',
         header: { type: 'text', text: 'Precio no disponible' },
-        body: { type: 'text', text: messageText },
+        body: { text: messageText },
         footer: { type: 'text', text: 'Elige una opción' },
         action: {
           buttons: [
@@ -573,12 +574,16 @@ export const handleProductSelectionFromWebhook = async (
     where: { id: conversation.id },
     data: { lastReferencedProductId: item.id }
   });
+  const header = item.image
+    ? ({ type: 'image', image: { link: item.image } } as const)
+    : ({ type: 'text', text: 'Tenemos un match para tu consulta' } as const);
+
   return {
     type: 'interactive',
     interactive: {
       type: 'button',
-      header: { type: 'text', text: 'Tenemos un match para tu consulta' },
-      body: { type: 'text', text: aiResponse },
+      header,
+      body: { text: aiResponse },
       footer: { type: 'text', text: 'Elige una opción' },
       action: {
         buttons: [
@@ -632,7 +637,7 @@ export const handleOrderProductSelectionFromWebhook = async (
 
   const item = await prisma.menu_item.findUnique({
     where: { id: productId },
-    select: { id: true, name: true, is_available: true }
+    select: { id: true, name: true, is_available: true, image: true }
   });
 
   if (!item) {
@@ -2279,7 +2284,7 @@ const buildResponse = async ({
         interactive: {
           type: 'button',
           header: { type: 'text', text: 'Sin resultados a tu consulta' },
-          body: { type: 'text', text: messageText },
+          body: { text: messageText },
           footer: { type: 'text', text: 'Elige una opción' },
           action: {
             buttons: [

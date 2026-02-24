@@ -32,11 +32,13 @@ export interface WhatsAppInteractiveMessage {
   interactive: {
     type: 'button',
     header: {
-      type: 'text',
-      text: string
+      type: 'text' | 'image',
+      text?: string,
+      image?: {
+        link: string
+      }
     },
     body: {
-      type: 'text',
       text: string
     },
     footer: {

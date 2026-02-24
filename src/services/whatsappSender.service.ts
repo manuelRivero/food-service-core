@@ -260,5 +260,12 @@ export class WhatsAppSenderService {
         forceList: true
       });
     }
+    if (content.type === 'interactive') {
+      await this.sendInteractiveMessage({
+        phoneNumberId,
+        to,
+        messageObject: content
+      });
+    }
   }
 }

@@ -152,6 +152,7 @@ model menu_item {
   serves_people     Int?
   is_featured       Boolean            @default(false)
   ingredients_notes String?
+  image             String?
   draft_order_item  draft_order_item[]
   business          business           @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   menu_category     menu_category      @relation(fields: [category_id], references: [id], onUpdate: NoAction)
