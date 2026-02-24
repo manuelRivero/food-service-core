@@ -2424,39 +2424,33 @@ export const processIncomingMessage = async (
   }
 
   const from = message.from;
-  const text = message.text?.body;
-  const interactiveId =
-    message.interactive?.button_reply?.id ??
-    message.interactive?.list_reply?.id;
   const phoneNumberId = value?.metadata?.phone_number_id;
 
-  if (!phoneNumberId || !from) {
-    return '';
-  }
+  if (!phoneNumberId || !from) return '';
 
   const business = await findBusinessByPhoneNumberId(phoneNumberId);
-  if (!business) {
-    return '';
-  }
+  if (!business) return '';
 
   const customer = await findOrCreateCustomer(business.id, from);
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
-
   const conversationState = await findOrCreateConversationState(conversation.id);
-  let currentMetadata = normalizeMetadata(conversationState.metadata);
-  console.log('Loaded lastReferencedProductId:', conversation.lastReferencedProductId);
 
   if (messageId) {
     const existingMessage = await findByWhatsappMessageId(messageId);
-    if (existingMessage) {
-      return '';
-    }
+    if (existingMessage) return '';
   }
 
-  const messageContent = text ?? interactiveId ?? `[${message.type ?? 'unknown'}]`;
-  const lastUserMessage = text ?? '';
+  // Persist message
+  const messageContent =
+    message.type === 'text'
+      ? message.text?.body ?? ''
+      : message.type === 'interactive'
+      ? message.interactive?.button_reply?.id ??
+        message.interactive?.list_reply?.id ??
+        '[interactive]'
+      : `[${message.type ?? 'unknown'}]`;
 
-  const persistedMessage = await createConversationMessage(
+  await createConversationMessage(
     conversation.id,
     'customer',
     messageContent,
@@ -2464,10 +2458,6 @@ export const processIncomingMessage = async (
     messageId,
     messageId
   );
-
-  if (!persistedMessage) {
-    return '';
-  }
 
   await updateConversationLastMessageAt(conversation.id);
 
@@ -2477,130 +2467,101 @@ export const processIncomingMessage = async (
       role: recentMessage.is_ai_generated ? 'assistant' : 'user',
       content: recentMessage.message
     }));
+
   const isFirstMessage = recentMessages.length === 1;
   const hasGreeted = conversationState.current_intent === 'greeted';
 
-  const existingState = confirmationStates.get(from);
-  const listCheck = isListConfirmation(messageContent);
-  if (listCheck.isConfirmation && listCheck.intent) {
-    if (existingState?.status === 'awaiting_confirmation') {
-      if (new Date() > existingState.expiresAt) {
-        confirmationStates.delete(from);
-      } else {
-        const isValidCandidate = existingState.candidates.some(
-          (candidate) => candidate.intent === listCheck.intent
-        );
+  // =====================================================
+  // 🔥 PRIORITY 1: INTERACTIVE EVENTS (NO NLP)
+  // =====================================================
 
-        if (isValidCandidate) {
-          confirmationStates.delete(from);
-        console.info('Detected intent:', listCheck.intent);
-        const responseContent = await buildResponse({
-          intent: listCheck.intent,
-          business,
-          customer,
-          conversation,
-          from,
-          isFirstMessage,
-          hasGreeted,
-          formattedMessages,
-          detectedProductName: null,
-          lastUserMessage,
-          lastReferencedProductId: conversation.lastReferencedProductId ?? null
-        });
-        return responseContent;
-        }
-        confirmationStates.delete(from);
+  if (message.type === 'interactive') {
+    const interactive = message.interactive;
+
+    // BUTTONS
+    if (interactive?.button_reply) {
+      const buttonId = interactive.button_reply.id;
+
+      switch (buttonId) {
+        case 'ADD_ITEM':
+          if (!conversation.lastReferencedProductId) return '';
+          await handleAddItemFromWebhook(
+            payload,
+            conversation.lastReferencedProductId
+          );
+          return '';
+
+        case 'VIEW_MENU':
+          return await buildResponse({
+            intent: ConversationIntent.VIEW_MENU,
+            business,
+            customer,
+            conversation,
+            from,
+            isFirstMessage,
+            hasGreeted,
+            formattedMessages,
+            detectedProductName: null,
+            lastUserMessage: '',
+            lastReferencedProductId:
+              conversation.lastReferencedProductId ?? null
+          });
+
+        case 'VIEW_ORDER':
+          return await buildResponse({
+            intent: ConversationIntent.VIEW_ORDER,
+            business,
+            customer,
+            conversation,
+            from,
+            isFirstMessage,
+            hasGreeted,
+            formattedMessages,
+            detectedProductName: null,
+            lastUserMessage: '',
+            lastReferencedProductId:
+              conversation.lastReferencedProductId ?? null
+          });
+
+        default:
+          return '';
       }
+    }
+
+    // LIST SELECTION
+    if (interactive?.list_reply) {
+      const selectedId = interactive.list_reply.id ?? '';
+      const response = await handleProductSelectionFromWebhook(payload, selectedId);
+      return response ?? '';
     }
   }
 
-  if (!listCheck.isConfirmation && existingState?.status === 'awaiting_confirmation') {
-    if (new Date() > existingState.expiresAt) {
-      confirmationStates.delete(from);
-    } else {
-      const confirmationInput = text ?? messageContent;
-      const confirmationResult = processConfirmationResponse(
-        confirmationInput,
-        existingState.candidates
-      );
+  // =====================================================
+  // 🔥 PRIORITY 2: TEXT → NLP
+  // =====================================================
 
-      confirmationStates.delete(from);
+  if (message.type !== 'text') return '';
 
-      if (confirmationResult) {
-        console.info('Detected intent:', confirmationResult);
-        const responseContent = await buildResponse({
-          intent: confirmationResult,
-          business,
-          customer,
-          conversation,
-          from,
-          isFirstMessage,
-          hasGreeted,
-          formattedMessages,
-          detectedProductName: null,
-          lastUserMessage,
-          lastReferencedProductId: conversation.lastReferencedProductId ?? null
-        });
-        return responseContent;
-      }
+  const text = message.text?.body ?? '';
+  const lastUserMessage = text;
 
-      const messageText =
-        'Disculpa, no entendí tu respuesta. ¿Puedes escribirme qué necesitas de otra forma?';
-      await createConversationMessage(conversation.id, 'ai', messageText, false);
-      await updateConversationLastMessageAt(conversation.id);
-      return messageText;
-    }
+  const detectionResult = await detectIntentWithConfidence(text);
+
+  let resolvedIntent: ConversationIntent;
+  if (detectionResult.type === 'UNCERTAIN') {
+    resolvedIntent =
+      detectionResult.candidates[0]?.intent ?? ConversationIntent.UNKNOWN;
+  } else {
+    resolvedIntent = detectionResult.intent;
   }
 
-  if (
-    !listCheck.isConfirmation &&
-    (currentMetadata.pendingProductSelection ||
-      currentMetadata.pendingQuestion ||
-      (currentMetadata.candidateProductIds?.length ?? 0) > 0 ||
-      currentMetadata.pendingOrderSelection ||
-      currentMetadata.pendingOrderMessage ||
-      (currentMetadata.pendingOrderCandidateIds?.length ?? 0) > 0)
-  ) {
-    currentMetadata = clearPendingSelection(currentMetadata);
-    await updateConversationState(conversation.id, {
-      metadata: buildMetadataValue(currentMetadata)
-    });
-  }
-
-  const detectionResult = await detectIntentWithConfidence(messageContent);
-  const resolvedIntent =
-    detectionResult.type === 'UNCERTAIN'
-      ? detectionResult.candidates[0]?.intent ?? ConversationIntent.UNKNOWN
-      : detectionResult.intent;
   console.log('---- INTENT DETECTED ----');
-  console.log('User message:', messageContent);
+  console.log('User message:', text);
   console.log('Intent:', resolvedIntent);
   console.log('Detected product:', detectionResult.detectedProductName);
   console.log('-------------------------');
 
-  if (detectionResult.type === 'UNCERTAIN') {
-    const confirmationState: ConfirmationState = {
-      status: 'awaiting_confirmation',
-      candidates: detectionResult.candidates.map((candidate) => ({
-        intent: candidate.intent,
-        label: candidate.intent
-      })),
-      originalMessage: detectionResult.originalMessage,
-      expiresAt: new Date(Date.now() + CONFIRMATION_TTL_MS)
-    };
-
-    confirmationStates.set(from, confirmationState);
-
-    await createConversationMessage(
-      conversation.id,
-      'ai',
-      detectionResult.listContent.body.text,
-      false
-    );
-    await updateConversationLastMessageAt(conversation.id);
-    return detectionResult.listContent;
-  }
-
+  // Clear product context when appropriate
   const intentsToClearContext = new Set<ConversationIntent>([
     ConversationIntent.VIEW_MENU,
     ConversationIntent.SMALL_TALK,
@@ -2612,16 +2573,18 @@ export const processIncomingMessage = async (
     ConversationIntent.UNKNOWN
   ]);
 
-  if (intentsToClearContext.has(detectionResult.intent) && conversation.lastReferencedProductId) {
+  if (
+    intentsToClearContext.has(resolvedIntent) &&
+    conversation.lastReferencedProductId
+  ) {
     await prisma.conversation.update({
       where: { id: conversation.id },
       data: { lastReferencedProductId: null }
     });
   }
 
-  console.info('Detected intent:', detectionResult.intent);
-  const responseContent = await buildResponse({
-    intent: detectionResult.intent,
+  return await buildResponse({
+    intent: resolvedIntent,
     business,
     customer,
     conversation,
@@ -2631,9 +2594,9 @@ export const processIncomingMessage = async (
     formattedMessages,
     detectedProductName: detectionResult.detectedProductName,
     lastUserMessage,
-    lastReferencedProductId: conversation.lastReferencedProductId ?? null
+    lastReferencedProductId:
+      conversation.lastReferencedProductId ?? null
   });
-  return responseContent;
 };
 
 export const processStatus = async (
