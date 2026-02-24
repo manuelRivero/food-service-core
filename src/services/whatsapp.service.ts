@@ -19,7 +19,9 @@ import {
 import type { OpenAI as OpenAITypes } from 'openai';
 import {
   generateAIResponse,
+  generateOrderActionAnalysis,
   generateOrderExtraction,
+  generateOrderResolution,
   generateProductAwareResponse
 } from './ai/openai.service';
 import { detectIntentWithConfidence } from './conversationOrchestrator.service';
@@ -1973,116 +1975,191 @@ const buildResponse = async ({
   // 2️⃣ ORDER
   // =========================
   if (intent === ConversationIntent.ORDER_FOOD) {
-    let product: { id: string; name: string; is_available: boolean } | null = null;
 
-    if (detectedProductName) {
-      const keyword = detectedProductName.trim();
+    const draftOrder = await prisma.draft_order.findFirst({
+      where: {
+        business_id: business.id,
+        customer_phone: from,
+        status: 'active'
+      }
+    });
+  
+    if (!draftOrder) {
+      const messageText = 'No tienes un pedido activo.';
+      await createConversationMessage(conversation.id, 'ai', messageText, false);
+      await updateConversationLastMessageAt(conversation.id);
+      return messageText;
+    }
+  
+    const draftItems = await prisma.draft_order_item.findMany({
+      where: { draft_order_id: draftOrder.id }
+    });
+  
+    const menuItems =
+      draftItems.length > 0
+        ? await prisma.menu_item.findMany({
+            where: {
+              id: { in: draftItems.map(i => i.product_id).filter(Boolean) as string[] }
+            },
+            select: { id: true, name: true }
+          })
+        : [];
+  
+    const menuMap = new Map(menuItems.map(m => [m.id, m.name]));
+  
+    const currentOrderItems = draftItems.map(item => ({
+      name: item.product_id ? menuMap.get(item.product_id) ?? 'Producto' : 'Producto',
+      quantity: item.quantity
+    }));
+  
+    const resolution = await generateOrderResolution({
+      userMessage: lastUserMessage,
+      currentOrderItems
+    });
+  
+    const quantity = resolution.quantity && resolution.quantity > 0
+      ? resolution.quantity
+      : 1;
+  
+    // =========================
+    // NEEDS CLARIFICATION
+    // =========================
+    if (resolution.needs_clarification) {
+  
+      const listMessage = buildListMessage({
+        headerText: '¿Cuál deseas modificar?',
+        bodyText: 'Selecciona el producto del pedido 👇',
+        footerText: 'Elige una opción',
+        actionButtonLabel: 'Ver pedido',
+        sections: [
+          {
+            title: 'Tu pedido',
+            rows: menuItems.map((item) => ({
+              id: `ORDER_SELECT_${item.id}`,
+              title: item.name,
+              description: `${draftItems.find(i => i.product_id === item.id)?.quantity ?? 0}x`
+            }))
+          }
+        ]
+      });
+  
+      await createConversationMessage(conversation.id, 'ai', listMessage.body.text, false);
+      await updateConversationLastMessageAt(conversation.id);
+  
+      return listMessage;
+    }
+  
+    // =========================
+    // REMOVE
+    // =========================
+    if (resolution.action === 'remove' && resolution.product_name) {
+  
+      const target = menuItems.find(item =>
+        item.name.toLowerCase().includes(resolution.product_name!.toLowerCase())
+      );
+  
+      if (!target) {
+        const messageText = 'No encontré ese producto en tu pedido.';
+        await createConversationMessage(conversation.id, 'ai', messageText, false);
+        await updateConversationLastMessageAt(conversation.id);
+        return messageText;
+      }
+  
+      await removeProductFromOrder({
+        conversationId: conversation.id,
+        productId: target.id,
+        quantity
+      });
+  
+      return await buildUpdatedOrderResponse({
+        conversation,
+        business,
+        from
+      });
+    }
+  
+    // =========================
+    // ADD
+    // =========================
+    if (resolution.action === 'add' && resolution.product_name) {
+  
       const items = await MenuService.searchMenuItemsByKeyword({
         businessId: business.id,
-        keyword
+        keyword: resolution.product_name
       });
-
-      if (items.length === 0) {
-        const safeKeyword = keyword || 'tu consulta';
-        const messageText = `No encontramos productos relacionados con "${safeKeyword}" en nuestro menú.`;
+  
+      if (items.length !== 1) {
+        const messageText = 'No pude identificar el producto exacto para agregar.';
         await createConversationMessage(conversation.id, 'ai', messageText, false);
         await updateConversationLastMessageAt(conversation.id);
         return messageText;
       }
-
-      if (items.length > 1) {
-        await updateConversationState(conversation.id, {
-          metadata: buildMetadataValue({
-            pendingOrderSelection: true,
-            pendingOrderMessage: lastUserMessage,
-            pendingOrderCandidateIds: items.map((item) => item.id)
-          })
-        });
-
-        const listMessage = buildOrderSearchListMessage({ items, page: 1 });
-        await createConversationMessage(conversation.id, 'ai', listMessage.body.text, false);
-        await updateConversationLastMessageAt(conversation.id);
-        return listMessage;
-      }
-
-      product = {
-        id: items[0].id,
-        name: items[0].name,
-        is_available: items[0].is_available
-      };
-
-    } else if (lastReferencedProductId) {
-      const focusedProduct = await prisma.menu_item.findUnique({
-        where: { id: lastReferencedProductId },
-        select: { id: true, name: true, is_available: true }
-      });
-
-      if (!focusedProduct) {
-        const messageText = 'No pude identificar el producto al que te refieres.';
+  
+      const product = items[0];
+  
+      if (!product.is_available) {
+        const messageText = `El producto "${product.name}" no está disponible.`;
         await createConversationMessage(conversation.id, 'ai', messageText, false);
         await updateConversationLastMessageAt(conversation.id);
         return messageText;
       }
-
-      product = {
-        id: focusedProduct.id,
-        name: focusedProduct.name,
-        is_available: focusedProduct.is_available
-      };
-
-    } else {
-      const messageText = '¿Qué producto deseas agregar a tu pedido?';
-      await createConversationMessage(conversation.id, 'ai', messageText, false);
-      await updateConversationLastMessageAt(conversation.id);
-      return messageText;
-    }
-
-    if (!product) {
-      const messageText = 'No pude encontrar ese producto en el menú.';
-      await createConversationMessage(conversation.id, 'ai', messageText, false);
-      await updateConversationLastMessageAt(conversation.id);
-      return messageText;
-    }
-
-    if (!product.is_available) {
-      const messageText = `El producto "${product.name}" no está disponible en este momento.`;
-      await createConversationMessage(conversation.id, 'ai', messageText, false);
-      await updateConversationLastMessageAt(conversation.id);
-      return messageText;
-    }
-
-    const extraction = await generateOrderExtraction({ userMessage: lastUserMessage });
-    const quantity =
-      Number.isFinite(extraction.quantity) && extraction.quantity > 0
-        ? Math.round(extraction.quantity)
-        : 1;
-
-    try {
+  
       await addProductToOrder({
         conversationId: conversation.id,
         productId: product.id,
         quantity
       });
-    } catch (error) {
-      const messageText =
-        error instanceof Error
-          ? `No pude agregar el producto: ${error.message}`
-          : 'No pude agregar el producto en este momento.';
-      await createConversationMessage(conversation.id, 'ai', messageText, false);
-      await updateConversationLastMessageAt(conversation.id);
-      return messageText;
+  
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { lastReferencedProductId: product.id }
+      });
+  
+      return await buildUpdatedOrderResponse({
+        conversation,
+        business,
+        from
+      });
     }
-
-    await prisma.conversation.update({
-      where: { id: conversation.id },
-      data: { lastReferencedProductId: product.id }
-    });
-
-    const messageText = `Perfecto ✅ Agregué ${quantity} ${product.name} a tu pedido. ¿Deseas algo más?`;
+  
+    // =========================
+    // SET QUANTITY
+    // =========================
+    if (resolution.action === 'set_quantity' && resolution.product_name) {
+  
+      const target = menuItems.find(item =>
+        item.name.toLowerCase().includes(resolution.product_name!.toLowerCase())
+      );
+  
+      if (!target) {
+        const messageText = 'No encontré ese producto en tu pedido.';
+        await createConversationMessage(conversation.id, 'ai', messageText, false);
+        await updateConversationLastMessageAt(conversation.id);
+        return messageText;
+      }
+  
+      await setProductQuantity({
+        conversationId: conversation.id,
+        productId: target.id,
+        quantity
+      });
+  
+      return await buildUpdatedOrderResponse({
+        conversation,
+        business,
+        from
+      });
+    }
+  
+    // =========================
+    // UNCLEAR
+    // =========================
+    const messageText = '¿Deseas agregar, quitar o modificar algo de tu pedido?';
     await createConversationMessage(conversation.id, 'ai', messageText, false);
     await updateConversationLastMessageAt(conversation.id);
     return messageText;
   }
+  
 
   if (intent === ConversationIntent.VIEW_ORDER) {
     return buildViewOrderResponse(business, conversation, customer, from);
@@ -2528,4 +2605,142 @@ export const verifyWebhook = (
   const isValid = mode === 'subscribe' && token === verifyToken;
 
   return { isValid, challenge };
+};
+
+const buildUpdatedOrderResponse = async ({
+  conversation,
+  business,
+  from
+}: {
+  conversation: Conversation;
+  business: Business;
+  from: string;
+}) => {
+
+  const draftOrder = await prisma.draft_order.findFirst({
+    where: {
+      business_id: business.id,
+      customer_phone: from,
+      status: 'active'
+    }
+  });
+
+  if (!draftOrder) {
+    return 'Tu pedido está vacío.';
+  }
+
+  const items = await prisma.draft_order_item.findMany({
+    where: { draft_order_id: draftOrder.id }
+  });
+
+  if (items.length === 0) {
+    return 'Tu pedido está vacío.';
+  }
+
+  const menuItems = await prisma.menu_item.findMany({
+    where: {
+      id: { in: items.map(i => i.product_id).filter(Boolean) as string[] }
+    },
+    select: { id: true, name: true }
+  });
+
+  const menuMap = new Map(menuItems.map(m => [m.id, m.name]));
+
+  const lines = [
+    '🛒 Pedido actual:',
+    ''
+  ];
+
+  for (const item of items) {
+    const name = item.product_id ? menuMap.get(item.product_id) ?? 'Producto' : 'Producto';
+    lines.push(`- ${item.quantity}x ${name}`);
+  }
+
+  lines.push('', `Total: $${draftOrder.total_amount.toFixed(2)} ${draftOrder.currency}`);
+
+  return lines.join('\n');
+};
+
+const setProductQuantity = async ({
+  conversationId,
+  productId,
+  quantity
+}: {
+  conversationId: string;
+  productId: string;
+  quantity: number;
+}) => {
+
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    include: {
+      business: { select: { id: true } },
+      customer: { select: { phone_number: true } }
+    }
+  });
+
+  if (!conversation) {
+    throw new Error('Conversación no encontrada');
+  }
+
+  const draftOrder = await prisma.draft_order.findFirst({
+    where: {
+      business_id: conversation.business.id,
+      customer_phone: conversation.customer.phone_number,
+      status: 'active'
+    }
+  });
+
+  if (!draftOrder) {
+    throw new Error('No active order found.');
+  }
+
+  if (quantity <= 0) {
+    await prisma.draft_order_item.deleteMany({
+      where: {
+        draft_order_id: draftOrder.id,
+        product_id: productId
+      }
+    });
+  } else {
+    await prisma.draft_order_item.updateMany({
+      where: {
+        draft_order_id: draftOrder.id,
+        product_id: productId
+      },
+      data: {
+        quantity
+      }
+    });
+  }
+
+  // 🔁 Recalcular total
+  const items = await prisma.draft_order_item.findMany({
+    where: { draft_order_id: draftOrder.id }
+  });
+
+  let total = 0;
+
+  for (const item of items) {
+    if (!item.product_id) {
+      continue;
+    }
+    const price = await prisma.menu_item_price.findFirst({
+      where: {
+        menu_item_id: item.product_id,
+        is_active: true
+      }
+    });
+
+    if (price) {
+      total += Number(price.amount) * item.quantity;
+    }
+  }
+
+  await prisma.draft_order.update({
+    where: { id: draftOrder.id },
+    data: { total_amount: total }
+  });
+
+  return true;
 };

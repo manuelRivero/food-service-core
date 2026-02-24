@@ -266,7 +266,7 @@ Responde SOLO en JSON:
 export const generateOrderActionAnalysis = async (params: {
   userMessage: string;
   currentProductName: string | null;
-}): Promise<{ action: 'add_same' | 'add_other' | 'remove' | 'unclear' }> => {
+}): Promise<{ action: 'add' | 'add_same' | 'add_other' | 'remove' | 'unclear' }> => {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     temperature: 0,
@@ -274,8 +274,9 @@ export const generateOrderActionAnalysis = async (params: {
     messages: [
       {
         role: 'system',
-        content: `El usuario está interactuando con su pedido.
-
+        content: `
+Eres un poderoso asistente que analiza los mensajes del usuario para determinar su intención cuando ordena comida.
+el usuario está interactuando con su pedido.
 Producto actualmente en contexto:
 "${params.currentProductName ?? 'NINGUNO'}"
 
@@ -287,10 +288,12 @@ Determina qué está intentando hacer el usuario.
 Responde SOLO en JSON:
 
 {
-"action": "add_same" | "add_other" | "remove" | "unclear"
+"action": "add" | "add_same" | "add_other" | "remove" | "unclear"
 }
 
 Reglas:
+
+"add" → quiere agregar el producto actual.
 
 "add_same" → quiere agregar más del producto actual.
 
@@ -320,3 +323,61 @@ No expliques nada. Solo JSON válido.`
     return { action: 'unclear' };
   }
 };
+
+export const generateOrderResolution = async ({
+  userMessage,
+  currentOrderItems
+}: {
+  userMessage: string;
+  currentOrderItems: {
+    name: string;
+    quantity: number;
+  }[];
+}): Promise<OrderResolution> => {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: `
+        You are analyzing a food order.
+
+Current order items:
+${currentOrderItems.map((item) => `${item.quantity}x ${item.name}`).join('\n')}
+
+User message:
+"${userMessage}"
+
+Return JSON:
+{
+  action: "add" | "remove" | "set_quantity" | "unclear",
+  product_name: string | null,
+  quantity: number | null,
+  needs_clarification: boolean
+}
+
+Rules:
+- If multiple products match the user's wording, set needs_clarification = true.
+- If only one product matches, resolve automatically.
+- If user says "dos ceviches" and only one ceviche exists, infer correct product.
+- Always return valid JSON.`}
+    ]
+  });
+
+  const content = response.choices[0]?.message?.content ?? '';
+    try {
+      const parsed = JSON.parse(content) as OrderResolution;
+    return { action: parsed.action , product_name: parsed.product_name ?? null, quantity: parsed.quantity ?? null, needs_clarification: parsed.needs_clarification ?? false };
+  } catch (error) {
+    return { action: 'unclear', product_name: null, quantity: null, needs_clarification: false };
+  }
+};
+
+interface OrderResolution {
+  action: "add" | "remove" | "set_quantity" | "unclear",
+  product_name: string | null,
+  quantity: number | null,
+  needs_clarification: boolean
+}
