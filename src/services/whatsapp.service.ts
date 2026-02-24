@@ -410,7 +410,9 @@ export const handleProductSelectionFromWebhook = async (
       type: 'interactive',
       interactive: {
         type: 'button',
-        body: { title: 'Opción no disponible', text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
+        header: { type: 'text', text: 'Opción no disponible' },
+        body: { type: 'text', text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
+        footer: { type: 'text', text: 'Elige una opción' },
         action: {
           buttons: [
             {
@@ -432,7 +434,9 @@ export const handleProductSelectionFromWebhook = async (
         type: 'interactive',
         interactive: {
           type: 'button',
-          body: { title: 'Opción no disponible', text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
+          header: { type: 'text', text: 'Opción no disponible' },
+          body: { type: 'text', text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
+          footer: { type: 'text', text: 'Elige una opción' },
           action: {
             buttons: [
               {
@@ -476,7 +480,9 @@ export const handleProductSelectionFromWebhook = async (
       type: 'interactive',
       interactive: {
         type: 'button',
-        body: { title: 'Platillo no disponible', text: messageText },
+        header: { type: 'text', text: 'Platillo no disponible' },
+        body: { type: 'text', text: messageText },
+        footer: { type: 'text', text: 'Elige una opción' },
         action: {
           buttons: [
             {
@@ -522,7 +528,9 @@ export const handleProductSelectionFromWebhook = async (
       type: 'interactive',
       interactive: {
         type: 'button',
-        body: { title: 'Precio no disponible', text: messageText },
+        header: { type: 'text', text: 'Precio no disponible' },
+        body: { type: 'text', text: messageText },
+        footer: { type: 'text', text: 'Elige una opción' },
         action: {
           buttons: [
             {
@@ -569,7 +577,9 @@ export const handleProductSelectionFromWebhook = async (
     type: 'interactive',
     interactive: {
       type: 'button',
-      body: { title: 'Tenemos un match para tu consulta', text: aiResponse },
+      header: { type: 'text', text: 'Tenemos un match para tu consulta' },
+      body: { type: 'text', text: aiResponse },
+      footer: { type: 'text', text: 'Elige una opción' },
       action: {
         buttons: [
           {
@@ -2268,7 +2278,9 @@ const buildResponse = async ({
         type: 'interactive',
         interactive: {
           type: 'button',
-          body: { title: 'Sin resultados a tu consulta', text: messageText },
+          header: { type: 'text', text: 'Sin resultados a tu consulta' },
+          body: { type: 'text', text: messageText },
+          footer: { type: 'text', text: 'Elige una opción' },
           action: {
             buttons: [
               {
