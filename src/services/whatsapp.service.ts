@@ -412,7 +412,7 @@ export const handleProductSelectionFromWebhook = async (
         type: 'button',
         header: { type: 'text', text: 'Opción no disponible' },
         body: { text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
-        footer: { type: 'text', text: 'Elige una opción' },
+        footer: { text: 'Elige una opción' },
         action: {
           buttons: [
             {
@@ -436,7 +436,7 @@ export const handleProductSelectionFromWebhook = async (
           type: 'button',
           header: { type: 'text', text: 'Opción no disponible' },
           body: { text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
-          footer: { type: 'text', text: 'Elige una opción' },
+          footer: { text: 'Elige una opción' },
           action: {
             buttons: [
               {
@@ -483,7 +483,7 @@ export const handleProductSelectionFromWebhook = async (
         type: 'button',
         header: { type: 'text', text: 'Platillo no disponible' },
         body: { text: messageText },
-        footer: { type: 'text', text: 'Elige una opción' },
+        footer: { text: 'Elige una opción' },
         action: {
           buttons: [
             {
@@ -531,7 +531,7 @@ export const handleProductSelectionFromWebhook = async (
         type: 'button',
         header: { type: 'text', text: 'Precio no disponible' },
         body: { text: messageText },
-        footer: { type: 'text', text: 'Elige una opción' },
+        footer: { text: 'Elige una opción' },
         action: {
           buttons: [
             {
@@ -584,7 +584,7 @@ export const handleProductSelectionFromWebhook = async (
       type: 'button',
       header,
       body: { text: aiResponse },
-      footer: { type: 'text', text: 'Elige una opción' },
+      footer: { text: 'Elige una opción' },
       action: {
         buttons: [
           {
@@ -2285,7 +2285,7 @@ const buildResponse = async ({
           type: 'button',
           header: { type: 'text', text: 'Sin resultados a tu consulta' },
           body: { text: messageText },
-          footer: { type: 'text', text: 'Elige una opción' },
+          footer: { text: 'Elige una opción' },
           action: {
             buttons: [
               {
