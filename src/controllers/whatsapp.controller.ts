@@ -72,7 +72,7 @@ export const handleWebhook = async (
       : undefined;
 
   if (payloadId) {
-    if (payloadId.startsWith('SELECT_PRODUCT_')) {
+    if (payloadId.startsWith('SELECT_PRODUCT:')) {
       const productId = payloadId.replace('SELECT_PRODUCT:', '');
       void (async () => {
         const response = await handleProductSelectionFromWebhook(req.body, productId);

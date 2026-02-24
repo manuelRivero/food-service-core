@@ -2355,7 +2355,7 @@ const buildResponse = async ({
           {
             title: 'Resultados',
             rows: items.map((item) => ({
-              id: `SELECT_PRODUCT_${item.id}`,
+              id: `SELECT_PRODUCT:${item.id}`,
               title: item.name,
               description: truncateDescription(
                 item.description ?? item.ingredients ?? 'Sin descripción'
