@@ -352,10 +352,12 @@ User message:
 
 Return JSON:
 {
-  action: "add" | "remove" | "set_quantity" | "unclear",
-  product_name: string | null,
-  quantity: number | null,
-  needs_clarification: boolean
+  actions: {
+    action: "add" | "remove" | "set_quantity";
+    product_name: string;
+    quantity: number;
+  }[];
+  needs_clarification: boolean;
 }
 
 Rules:
@@ -369,15 +371,17 @@ Rules:
   const content = response.choices[0]?.message?.content ?? '';
     try {
       const parsed = JSON.parse(content) as OrderResolution;
-    return { action: parsed.action , product_name: parsed.product_name ?? null, quantity: parsed.quantity ?? null, needs_clarification: parsed.needs_clarification ?? false };
+    return { actions: parsed.actions, needs_clarification: parsed.needs_clarification ?? false };
   } catch (error) {
-    return { action: 'unclear', product_name: null, quantity: null, needs_clarification: false };
+    return { actions: [], needs_clarification: false };
   }
 };
 
 interface OrderResolution {
-  action: "add" | "remove" | "set_quantity" | "unclear",
-  product_name: string | null,
-  quantity: number | null,
-  needs_clarification: boolean
+  actions: {
+    action: "add" | "remove" | "set_quantity";
+    product_name: string;
+    quantity: number;
+  }[];
+  needs_clarification: boolean;
 }
