@@ -265,26 +265,23 @@ export class MenuService {
     const queryEmbeddingString = `[${queryEmbedding.join(",")}]`;
 
     // 2️⃣ Buscar por similitud coseno
-    const results = await prisma.$queryRaw<
-      MenuItemSearchResult[]
-    >`
-      SELECT 
-        m.id,
-        m.name,
-        m.description,
-        m.ingredients,
-        m.serves_people,
-        m.is_available,
-        m.image,
-        (m.embedding <-> ${queryEmbeddingString}::vector) AS distance
-      FROM menu_item m
-      WHERE m.business_id = ${businessId}
-        AND m.is_available = true
-      ORDER BY m.embedding <-> ${queryEmbeddingString}::vector
-      LIMIT 10
-      AND m.embedding IS NOT NULL
-      AND m.embedding != '';
-    `;
+    const results = await prisma.$queryRaw<MenuItemSearchResult[]>`
+  SELECT 
+    m.id,
+    m.name,
+    m.description,
+    m.ingredients,
+    m.serves_people,
+    m.is_available,
+    m.image,
+    (m.embedding <-> ${queryEmbeddingString}::vector) AS distance
+  FROM menu_item m
+  WHERE m.business_id = ${businessId}
+    AND m.is_available = true
+    AND m.embedding IS NOT NULL
+  ORDER BY m.embedding <-> ${queryEmbeddingString}::vector
+  LIMIT 10;
+`;
   
     // 3️⃣ Filtrar por umbral de similitud
     const SIMILARITY_THRESHOLD = 0.75;
