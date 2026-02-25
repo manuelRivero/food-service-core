@@ -274,12 +274,12 @@ export class MenuService {
     m.serves_people,
     m.is_available,
     m.image,
-    (m.embedding <-> ${queryEmbeddingString}::vector) AS distance
+    (m.embedding <=> ${queryEmbeddingString}::vector) AS distance
   FROM menu_item m
   WHERE m.business_id = ${businessId}
     AND m.is_available = true
     AND m.embedding IS NOT NULL
-  ORDER BY m.embedding <-> ${queryEmbeddingString}::vector
+  ORDER BY m.embedding <=> ${queryEmbeddingString}::vector
   LIMIT 10;
 `;
     console.log(
