@@ -75,6 +75,7 @@ model conversation_state {
   updated_at       DateTime     @default(now()) @db.Timestamptz(6)
   metadata         Json?
   pending_action   String?
+  mode             String       @default("GLOBAL")
   conversation     conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 

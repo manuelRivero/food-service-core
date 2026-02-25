@@ -572,7 +572,11 @@ export const handleProductSelectionFromWebhook = async (
         currency_code: activePrice.currency_code
       }
     },
-    userQuestion: metadata.pendingQuestion
+    userQuestion: `
+    El usuario originalmente preguntó: "${metadata.pendingQuestion}".
+    El usuario seleccionó el producto "${item.name}".
+    Responde proporcionando información sobre el producto seleccionado.
+    `
   });
 
   await createConversationMessage(conversation.id, 'ai', aiResponse, true);
@@ -581,6 +585,12 @@ export const handleProductSelectionFromWebhook = async (
     where: { id: conversation.id },
     data: { lastReferencedProductId: item.id }
   });
+  const cleanedMetadata = clearProductFilterMetadata(metadata);
+  console.debug('Conversation mode:', 'PRODUCT_FOCUS');
+  await updateConversationState(conversation.id, {
+    mode: 'PRODUCT_FOCUS',
+    metadata: buildMetadataValue(cleanedMetadata)
+  } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
   const header = item.image
     ? ({ type: 'image', image: { link: item.image } } as const)
     : ({ type: 'text', text: 'Tenemos un match para tu consulta' } as const);
@@ -1706,11 +1716,30 @@ type ConversationMetadata = {
   pendingOrderCandidateIds?: string[];
 };
 
+type ConversationMode = 'GLOBAL' | 'FILTER_SET' | 'PRODUCT_FOCUS';
+
 const normalizeMetadata = (value: unknown): ConversationMetadata => {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return value as ConversationMetadata;
   }
   return {};
+};
+
+const clearProductFilterMetadata = (
+  metadata: ConversationMetadata
+): ConversationMetadata => {
+  if (
+    !metadata.pendingProductSelection &&
+    !metadata.pendingQuestion &&
+    !metadata.candidateProductIds
+  ) {
+    return metadata;
+  }
+  const { pendingProductSelection, pendingQuestion, candidateProductIds, ...rest } = metadata;
+  void pendingProductSelection;
+  void pendingQuestion;
+  void candidateProductIds;
+  return rest;
 };
 
 const handlePendingAction = async (params: {
@@ -2088,7 +2117,9 @@ const buildResponse = async ({
   formattedMessages,
   detectedProductName,
   lastUserMessage,
-  lastReferencedProductId
+  lastReferencedProductId,
+  mode,
+  candidateProductIds
 }: {
   intent: ConversationIntent;
   business: Business;
@@ -2101,7 +2132,10 @@ const buildResponse = async ({
   detectedProductName: string | null;
   lastUserMessage: string;
   lastReferencedProductId: string | null;
+  mode: ConversationMode;
+  candidateProductIds: string[] | null;
 }): Promise<string | WhatsAppListMessage | WhatsAppInteractiveMessage> => {
+  console.debug('Conversation mode:', mode);
 
   // =========================
   // PAYMENT
@@ -2304,14 +2338,32 @@ const buildResponse = async ({
 // PRODUCT ATTRIBUTE QUESTION (CONTEXT SET)
 // =========================
 if (intent === ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION) {
-
   const state = await findOrCreateConversationState(conversation.id);
   const metadata = normalizeMetadata(state.metadata);
+  const candidateIds = candidateProductIds ?? metadata.candidateProductIds ?? null;
 
-  const candidateIds = metadata.candidateProductIds ?? null;
+  // 🔥 CASO 1: Tenemos producto en foco
+  if (mode === 'PRODUCT_FOCUS' && lastReferencedProductId) {
+    const implicit = await buildImplicitProductResponse({
+      business,
+      customer,
+      conversation,
+      lastReferencedProductId,
+      lastUserMessage,
+      logLabel: '---- ATTRIBUTE VIA PRODUCT FOCUS ----'
+    });
 
-  // 🔥 CASO 1: Tenemos conjunto activo
-  if (candidateIds && candidateIds.length > 0) {
+    if (implicit) return implicit;
+  }
+
+  // 🔥 CASO 2: Tenemos conjunto activo
+  if (mode === 'FILTER_SET' && candidateIds && candidateIds.length > 0) {
+    if (conversation.lastReferencedProductId) {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { lastReferencedProductId: null }
+      });
+    }
 
     const products = await prisma.menu_item.findMany({
       where: { id: { in: candidateIds } },
@@ -2345,6 +2397,12 @@ if (intent === ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION) {
         where: { id: conversation.id },
         data: { lastReferencedProductId: product.id }
       });
+      const cleanedMetadata = clearProductFilterMetadata(metadata);
+      console.debug('Conversation mode:', 'PRODUCT_FOCUS');
+      await updateConversationState(conversation.id, {
+        mode: 'PRODUCT_FOCUS',
+        metadata: buildMetadataValue(cleanedMetadata)
+      } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
     
       const messageText = `${reason}\n\n¿Deseas agregar ${product.name}?`;
     
@@ -2392,25 +2450,20 @@ if (intent === ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION) {
       ]
     });
     
+    console.debug('Conversation mode:', 'FILTER_SET');
+    await updateConversationState(conversation.id, {
+      mode: 'FILTER_SET',
+      metadata: buildMetadataValue({
+        pendingProductSelection: true,
+        pendingQuestion: lastUserMessage,
+        candidateProductIds: recommendedIds
+      })
+    } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
     await createConversationMessage(conversation.id, 'ai', reason, false);
     await updateConversationLastMessageAt(conversation.id);
     
     return listMessage;
 
-  }
-
-  // 🔥 CASO 2: No hay conjunto pero sí último producto referenciado
-  if (lastReferencedProductId) {
-    const implicit = await buildImplicitProductResponse({
-      business,
-      customer,
-      conversation,
-      lastReferencedProductId,
-      lastUserMessage,
-      logLabel: '---- ATTRIBUTE VIA LAST REFERENCED ----'
-    });
-
-    if (implicit) return implicit;
   }
 
   // 🔥 CASO 3: No hay contexto → pedir aclaración
@@ -2462,17 +2515,25 @@ if (intent === ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION) {
     }
 
     if (items.length > 1) {
+      console.debug('Conversation mode:', 'FILTER_SET');
       await updateConversationState(conversation.id, {
-        metadata: {
+        mode: 'FILTER_SET',
+        metadata: buildMetadataValue({
           pendingProductSelection: true,
           pendingQuestion: lastUserMessage,
           candidateProductIds: items.map((item) => item.id)
-        }
-      });
+        })
+      } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
+      if (conversation.lastReferencedProductId) {
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { lastReferencedProductId: null }
+        });
+      }
 
       const listMessage = buildListMessage({
         headerText: '',
-        bodyText: '**Tenemos algunos resultados para tu consulta** /n Selecciona uno 👇',
+        bodyText: '*Tenemos algunos resultados para tu consulta* \n Selecciona uno 👇',
         footerText: 'Elige una opción',
         actionButtonLabel: 'Ver opciones',
         sections: [
@@ -2518,6 +2579,15 @@ if (intent === ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION) {
       where: { id: conversation.id },
       data: { lastReferencedProductId: matchedItem.id }
     });
+    const stateForFocus = await findOrCreateConversationState(conversation.id);
+    const cleanedMetadata = clearProductFilterMetadata(
+      normalizeMetadata(stateForFocus.metadata)
+    );
+    console.debug('Conversation mode:', 'PRODUCT_FOCUS');
+    await updateConversationState(conversation.id, {
+      mode: 'PRODUCT_FOCUS',
+      metadata: buildMetadataValue(cleanedMetadata)
+    } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
 
     return aiResponse;
   }
@@ -2594,6 +2664,11 @@ export const processIncomingMessage = async (
   const customer = await findOrCreateCustomer(business.id, from);
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
   const conversationState = await findOrCreateConversationState(conversation.id);
+  const stateMode =
+    ((conversationState as unknown as { mode?: string }).mode ??
+      'GLOBAL') as ConversationMode;
+  const stateMetadata = normalizeMetadata(conversationState.metadata);
+  const candidateProductIds = stateMetadata.candidateProductIds ?? null;
 
   if (messageId) {
     const existingMessage = await findByWhatsappMessageId(messageId);
@@ -2676,7 +2751,9 @@ export const processIncomingMessage = async (
             detectedProductName: null,
             lastUserMessage: '',
             lastReferencedProductId:
-              conversation.lastReferencedProductId ?? null
+              conversation.lastReferencedProductId ?? null,
+            mode: stateMode,
+            candidateProductIds
           });
 
         case 'VIEW_ORDER':
@@ -2692,7 +2769,9 @@ export const processIncomingMessage = async (
             detectedProductName: null,
             lastUserMessage: '',
             lastReferencedProductId:
-              conversation.lastReferencedProductId ?? null
+              conversation.lastReferencedProductId ?? null,
+            mode: stateMode,
+            candidateProductIds
           });
 
         default:
@@ -2768,12 +2847,20 @@ export const processIncomingMessage = async (
   if (
     intentsToClearContext.has(resolvedIntent) &&
     !detectionResult?.detectedProductName &&
-    conversation.lastReferencedProductId
+    (conversation.lastReferencedProductId || candidateProductIds?.length)
   ) {
-    await prisma.conversation.update({
-      where: { id: conversation.id },
-      data: { lastReferencedProductId: null }
-    });
+    if (conversation.lastReferencedProductId) {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { lastReferencedProductId: null }
+      });
+    }
+    const cleanedMetadata = clearProductFilterMetadata(stateMetadata);
+    console.debug('Conversation mode:', 'GLOBAL');
+    await updateConversationState(conversation.id, {
+      mode: 'GLOBAL',
+      metadata: buildMetadataValue(cleanedMetadata)
+    } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
   }
 
   try {
@@ -2789,7 +2876,9 @@ export const processIncomingMessage = async (
       detectedProductName: detectionResult?.detectedProductName ?? null,
       lastUserMessage,
       lastReferencedProductId:
-        conversation.lastReferencedProductId ?? null
+        conversation.lastReferencedProductId ?? null,
+      mode: stateMode,
+      candidateProductIds
     });
   } catch (error) {
     const messageText = 'Lo siento, ocurrió un error. Intenta de nuevo.';
