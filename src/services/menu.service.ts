@@ -290,7 +290,7 @@ export class MenuService {
     );
   
     // 3️⃣ Filtrar por umbral de similitud
-    const SIMILARITY_THRESHOLD = 0.75;
+    const SIMILARITY_THRESHOLD = 0.5;
   
     return results.filter(
       (r) => r.distance !== undefined && r.distance < SIMILARITY_THRESHOLD

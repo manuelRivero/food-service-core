@@ -2471,8 +2471,8 @@ if (intent === ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION) {
       });
 
       const listMessage = buildListMessage({
-        headerText: 'Tenemos algunos resultados para tu consulta',
-        bodyText: 'Selecciona uno 👇',
+        headerText: '',
+        bodyText: '**Tenemos algunos resultados para tu consulta** /n Selecciona uno 👇',
         footerText: 'Elige una opción',
         actionButtonLabel: 'Ver opciones',
         sections: [
