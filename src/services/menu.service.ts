@@ -282,6 +282,12 @@ export class MenuService {
   ORDER BY m.embedding <-> ${queryEmbeddingString}::vector
   LIMIT 10;
 `;
+    console.log(
+      results.map(r => ({
+        name: r.name,
+        distance: r.distance
+      }))
+    );
   
     // 3️⃣ Filtrar por umbral de similitud
     const SIMILARITY_THRESHOLD = 0.75;
