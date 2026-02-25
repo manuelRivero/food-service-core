@@ -141,24 +141,27 @@ model menu_category {
 }
 
 model menu_item {
-  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  business_id       String             @db.Uuid
-  category_id       String             @db.Uuid
+  id                String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id       String                 @db.Uuid
+  category_id       String                 @db.Uuid
   name              String
   description       String?
   ingredients       String?
   preparation       String?
-  is_available      Boolean            @default(true)
-  created_at        DateTime           @default(now()) @db.Timestamptz(6)
+  is_available      Boolean                @default(true)
+  created_at        DateTime               @default(now()) @db.Timestamptz(6)
   serves_people     Int?
-  is_featured       Boolean            @default(false)
+  is_featured       Boolean                @default(false)
   ingredients_notes String?
   image             String?
+  embedding         Unsupported("vector")?
   draft_order_item  draft_order_item[]
-  business          business           @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  menu_category     menu_category      @relation(fields: [category_id], references: [id], onUpdate: NoAction)
+  business          business               @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  menu_category     menu_category          @relation(fields: [category_id], references: [id], onUpdate: NoAction)
   menu_item_price   menu_item_price[]
   order_item        order_item[]
+
+  @@index([embedding])
 }
 
 model business_hours {

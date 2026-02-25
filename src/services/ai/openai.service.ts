@@ -333,7 +333,14 @@ export const generateOrderResolution = async ({
     name: string;
     quantity: number;
   }[];
-}): Promise<OrderResolution> => {
+}): Promise<{
+  actions: {
+    action: "add" | "remove" | "set_quantity";
+    product_name: string;
+    quantity: number;
+  }[];
+  needs_clarification: boolean;
+}> => {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     temperature: 0,
@@ -370,7 +377,7 @@ Rules:
 
   const content = response.choices[0]?.message?.content ?? '';
     try {
-      const parsed = JSON.parse(content) as OrderResolution;
+      const parsed = JSON.parse(content);
     return { actions: parsed.actions, needs_clarification: parsed.needs_clarification ?? false };
   } catch (error) {
     return { actions: [], needs_clarification: false };
@@ -450,11 +457,15 @@ ${userQuestion}
   }
 };
 
-interface OrderResolution {
-  actions: {
-    action: "add" | "remove" | "set_quantity";
-    product_name: string;
-    quantity: number;
-  }[];
-  needs_clarification: boolean;
+  export const getProductEmbedding = async (
+    keyword: string
+  ): Promise<number[]> => {
+  // 1️⃣ Generar embedding del query
+  const embeddingResponse = await openai.embeddings.create({
+    model: "text-embedding-3-small",
+    input: keyword
+  });
+
+  const queryEmbedding = embeddingResponse.data[0].embedding;
+  return queryEmbedding;
 }

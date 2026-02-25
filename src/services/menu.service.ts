@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { getProductEmbedding } from './ai/openai.service';
 
 export type MenuButton = {
   title: string;
@@ -36,6 +37,7 @@ export type MenuItemSearchResult = {
   serves_people: number | null;
   is_available: boolean;
   menu_item_price: MenuPrice[];
+  distance?: number;
 };
 
 const formatPrice = (price: MenuPrice): string => {
@@ -256,65 +258,36 @@ export class MenuService {
   
     const { businessId, keyword } = params;
   
-    const normalize = (str: string) =>
-      str
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .trim();
+    if (!keyword.trim()) return [];
   
-    const stopWords = new Set([
-      "a", "la", "el", "de", "y", "con", "del"
-    ]);
   
-    const normalizedKeyword = normalize(keyword);
+    const queryEmbedding = getProductEmbedding(keyword)
   
-    if (!normalizedKeyword) return [];
+    // 2️⃣ Buscar por similitud coseno
+    const results = await prisma.$queryRaw<
+      MenuItemSearchResult[]
+    >`
+      SELECT 
+        m.id,
+        m.name,
+        m.description,
+        m.ingredients,
+        m.serves_people,
+        m.is_available,
+        m.image,
+        (m.embedding <-> ${queryEmbedding}::vector) AS distance
+      FROM menu_item m
+      WHERE m.business_id = ${businessId}
+        AND m.is_available = true
+      ORDER BY m.embedding <-> ${queryEmbedding}::vector
+      LIMIT 10;
+    `;
   
-    const tokens = normalizedKeyword
-      .split(" ")
-      .filter(t => t.length > 1 && !stopWords.has(t));
+    // 3️⃣ Filtrar por umbral de similitud
+    const SIMILARITY_THRESHOLD = 0.75;
   
-    if (tokens.length === 0) return [];
-  
-    const business = await prisma.business.findUnique({
-      where: { id: businessId },
-      select: { currency_code: true }
-    });
-  
-    const currency = business?.currency_code ?? null;
-    const now = new Date();
-    const priceWhere = buildPriceWhere(currency, now);
-  
-    // Traemos candidatos básicos (optimizable después)
-    const items = await prisma.menu_item.findMany({
-      where: {
-        business_id: businessId,
-        is_available: true
-      },
-      orderBy: { created_at: 'asc' },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        ingredients: true,
-        serves_people: true,
-        is_available: true,
-        menu_item_price: {
-          where: priceWhere,
-          orderBy: { valid_from: 'desc' },
-          take: 1,
-          select: {
-            amount: true,
-            currency_code: true
-          }
-        }
-      }
-    });
-  
-    return items.filter(item => {
-      const normalizedName = normalize(item.name);
-      return tokens.every(token => normalizedName.includes(token));
-    });
+    return results.filter(
+      (r) => r.distance !== undefined && r.distance < SIMILARITY_THRESHOLD
+    );
   }
 }
