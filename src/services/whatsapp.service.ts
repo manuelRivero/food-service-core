@@ -2827,6 +2827,18 @@ export const processIncomingMessage = async (
     resolvedIntent = ConversationIntent.UNKNOWN;
   }
 
+  // 🔥 CONTEXT OVERRIDE: PRODUCT_FOCUS dominates PRODUCT_QUERY
+
+  if (
+    conversationState.mode === "PRODUCT_FOCUS" &&
+    resolvedIntent === ConversationIntent.PRODUCT_QUERY &&
+    detectionResult?.detectedProductName
+  ) {
+    console.debug("Override PRODUCT_QUERY → PRODUCT_ATTRIBUTE_QUESTION due to PRODUCT_FOCUS mode");
+
+    resolvedIntent = ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION;
+  }
+
   console.log('---- INTENT DETECTED ----');
   console.log('User message:', text);
   console.log('Intent:', resolvedIntent);
