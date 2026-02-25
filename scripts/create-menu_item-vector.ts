@@ -36,7 +36,6 @@ async function generateEmbeddings() {
     Ingredientes: ${item.ingredients ?? ""}
     Sirve personas: ${item.serves_people ?? ""}
     Disponible: ${item.is_available ? "sí" : "no"}
-    Imagen: ${item.image ?? ""}
     Categoría: ${item.menu_category?.name ?? ""}
     Categoría descripción: ${item.menu_category?.description ?? ""}
     Precio: ${priceText}

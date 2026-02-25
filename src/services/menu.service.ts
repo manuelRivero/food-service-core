@@ -291,9 +291,19 @@ export class MenuService {
   
     // 3️⃣ Filtrar por umbral de similitud
     const SIMILARITY_THRESHOLD = 0.5;
-  
-    return results.filter(
+
+    const filtered = results.filter(
       (r) => r.distance !== undefined && r.distance < SIMILARITY_THRESHOLD
     );
+    
+    let finalResults;
+    
+    if (filtered.length > 0) {
+      finalResults = filtered;
+    } else {
+      // Fallback inteligente
+      finalResults = results.slice(0, 3);
+    }
+    return finalResults;
   }
 }
