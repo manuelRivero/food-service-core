@@ -377,6 +377,79 @@ Rules:
   }
 };
 
+export const generateFilteredSetResponse = async ({
+  products,
+  userQuestion
+}: {
+  products: {
+    id: string;
+    name: string;
+    description?: string | null;
+    ingredients?: string | null;
+  }[];
+  userQuestion: string;
+}) => {
+  const systemPrompt = `
+Eres un asistente de restaurante.
+
+Recibirás una lista cerrada de productos.
+Solo puedes recomendar productos de la lista.
+
+Debes responder exclusivamente en JSON con este formato:
+
+{
+  "recommended_product_ids": string[],
+  "reason": string
+}
+
+Reglas:
+- No inventes productos.
+- Solo usa IDs existentes.
+- Si ninguno cumple la condición:
+{
+  "recommended_product_ids": [],
+  "reason": "Ninguno cumple la condición."
+}
+`;
+
+  const productList = products.map(p => `
+ID: ${p.id}
+Nombre: ${p.name}
+Descripción: ${p.description ?? ''}
+Ingredientes: ${p.ingredients ?? ''}
+`).join('\n');
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: `
+Productos disponibles:
+${productList}
+
+Condición:
+${userQuestion}
+`
+      }
+    ]
+  });
+
+  const text = response.choices[0]?.message?.content ?? '{}';
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      recommended_product_ids: [],
+      reason: 'No pude procesar la recomendación.'
+    };
+  }
+};
+
 interface OrderResolution {
   actions: {
     action: "add" | "remove" | "set_quantity";

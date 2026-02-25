@@ -19,6 +19,7 @@ import {
 import type { OpenAI as OpenAITypes } from 'openai';
 import {
   generateAIResponse,
+  generateFilteredSetResponse,
   generateOrderActionAnalysis,
   generateOrderExtraction,
   generateOrderResolution,
@@ -2298,6 +2299,129 @@ const buildResponse = async ({
   if (intent === ConversationIntent.VIEW_ORDER) {
     return buildViewOrderResponse(business, conversation, customer, from);
   }
+
+  // =========================
+// PRODUCT ATTRIBUTE QUESTION (CONTEXT SET)
+// =========================
+if (intent === ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION) {
+
+  const state = await findOrCreateConversationState(conversation.id);
+  const metadata = normalizeMetadata(state.metadata);
+
+  const candidateIds = metadata.candidateProductIds ?? null;
+
+  // 🔥 CASO 1: Tenemos conjunto activo
+  if (candidateIds && candidateIds.length > 0) {
+
+    const products = await prisma.menu_item.findMany({
+      where: { id: { in: candidateIds } },
+      include: { menu_item_price: true }
+    });
+
+    if (products.length === 0) {
+      return buildUnknownResponse(conversation.id);
+    }
+
+    const result = await generateFilteredSetResponse({
+      products,
+      userQuestion: lastUserMessage
+    });
+    
+    const recommendedIds = result.recommended_product_ids ?? [];
+    const reason = result.reason ?? '';
+
+    if (recommendedIds.length === 0) {
+      await createConversationMessage(conversation.id, 'ai', reason, false);
+      await updateConversationLastMessageAt(conversation.id);
+      return reason;
+    }
+
+    if (recommendedIds.length === 1) {
+
+      const product = products.find(p => p.id === recommendedIds[0]);
+      if (!product) return buildUnknownResponse(conversation.id);
+    
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { lastReferencedProductId: product.id }
+      });
+    
+      const messageText = `${reason}\n\n¿Deseas agregar ${product.name}?`;
+    
+      await createConversationMessage(conversation.id, 'ai', messageText, false);
+      await updateConversationLastMessageAt(conversation.id);
+    
+      return {
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          header: { type: 'text', text: 'Recomendación' },
+          body: { text: messageText },
+          footer: { text: 'Elige una opción' },
+          action: {
+            buttons: [
+              {
+                type: 'reply',
+                reply: {
+                  id: 'ADD_ITEM',
+                  title: 'Agregar'
+                }
+              }
+            ]
+          }
+        }
+      };
+    }
+
+    const listMessage = buildListMessage({
+      headerText: 'Opciones recomendadas',
+      bodyText: reason,
+      footerText: 'Selecciona uno',
+      actionButtonLabel: 'Ver opciones',
+      sections: [
+        {
+          title: 'Recomendaciones',
+          rows: products
+            .filter(p => recommendedIds.includes(p.id))
+            .map(p => ({
+              id: `SELECT_PRODUCT:${p.id}`,
+              title: p.name,
+              description: truncateDescription(p.description ?? '')
+            }))
+        }
+      ]
+    });
+    
+    await createConversationMessage(conversation.id, 'ai', reason, false);
+    await updateConversationLastMessageAt(conversation.id);
+    
+    return listMessage;
+
+  }
+
+  // 🔥 CASO 2: No hay conjunto pero sí último producto referenciado
+  if (lastReferencedProductId) {
+    const implicit = await buildImplicitProductResponse({
+      business,
+      customer,
+      conversation,
+      lastReferencedProductId,
+      lastUserMessage,
+      logLabel: '---- ATTRIBUTE VIA LAST REFERENCED ----'
+    });
+
+    if (implicit) return implicit;
+  }
+
+  // 🔥 CASO 3: No hay contexto → pedir aclaración
+  const clarification =
+    '¿Sobre qué platillo quieres saber eso? Puedes decirme el nombre o pedirme ver opciones.';
+
+  await createConversationMessage(conversation.id, 'ai', clarification, false);
+  await updateConversationLastMessageAt(conversation.id);
+
+  return clarification;
+}
 
   // =========================
   // PRODUCT QUERY
