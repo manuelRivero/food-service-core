@@ -261,8 +261,9 @@ export class MenuService {
     if (!keyword.trim()) return [];
   
   
-    const queryEmbedding = getProductEmbedding(keyword)
-  
+    const queryEmbedding = await getProductEmbedding(keyword)
+    const queryEmbeddingString = `[${queryEmbedding.join(",")}]`;
+
     // 2️⃣ Buscar por similitud coseno
     const results = await prisma.$queryRaw<
       MenuItemSearchResult[]
@@ -275,12 +276,14 @@ export class MenuService {
         m.serves_people,
         m.is_available,
         m.image,
-        (m.embedding <-> ${queryEmbedding}::vector) AS distance
+        (m.embedding <-> ${queryEmbeddingString}::vector) AS distance
       FROM menu_item m
       WHERE m.business_id = ${businessId}
         AND m.is_available = true
-      ORDER BY m.embedding <-> ${queryEmbedding}::vector
-      LIMIT 10;
+      ORDER BY m.embedding <-> ${queryEmbeddingString}::vector
+      LIMIT 10
+      AND m.embedding IS NOT NULL
+      AND m.embedding != '';
     `;
   
     // 3️⃣ Filtrar por umbral de similitud

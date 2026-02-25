@@ -19,13 +19,14 @@ async function generateEmbeddings() {
     });
 
     const embedding = response.data[0].embedding;
+    const embeddingString = `[${embedding.join(",")}]`;
 
     await prisma.$executeRaw`
       UPDATE menu_item
-      SET embedding = ${embedding}::vector
+      SET embedding = ${embeddingString}::vector
       WHERE id = ${item.id}
     `;
   }
 }
 
-generateEmbeddings();
+generateEmbeddings().catch(console.error);
