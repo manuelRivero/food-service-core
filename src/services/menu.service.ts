@@ -253,25 +253,44 @@ export class MenuService {
     businessId: string;
     keyword: string;
   }): Promise<MenuItemSearchResult[]> {
+  
     const { businessId, keyword } = params;
-    const trimmedKeyword = keyword.trim();
-    if (!trimmedKeyword) {
-      return [];
-    }
-
+  
+    const normalize = (str: string) =>
+      str
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+  
+    const stopWords = new Set([
+      "a", "la", "el", "de", "y", "con", "del"
+    ]);
+  
+    const normalizedKeyword = normalize(keyword);
+  
+    if (!normalizedKeyword) return [];
+  
+    const tokens = normalizedKeyword
+      .split(" ")
+      .filter(t => t.length > 1 && !stopWords.has(t));
+  
+    if (tokens.length === 0) return [];
+  
     const business = await prisma.business.findUnique({
       where: { id: businessId },
       select: { currency_code: true }
     });
-
+  
     const currency = business?.currency_code ?? null;
     const now = new Date();
     const priceWhere = buildPriceWhere(currency, now);
-
-    return prisma.menu_item.findMany({
+  
+    // Traemos candidatos básicos (optimizable después)
+    const items = await prisma.menu_item.findMany({
       where: {
         business_id: businessId,
-        name: { contains: trimmedKeyword, mode: 'insensitive' }
+        is_available: true
       },
       orderBy: { created_at: 'asc' },
       select: {
@@ -291,6 +310,11 @@ export class MenuService {
           }
         }
       }
+    });
+  
+    return items.filter(item => {
+      const normalizedName = normalize(item.name);
+      return tokens.every(token => normalizedName.includes(token));
     });
   }
 }
