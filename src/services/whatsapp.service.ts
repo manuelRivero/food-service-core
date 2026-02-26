@@ -426,7 +426,7 @@ export const handleProductSelectionFromWebhook = async (
               type: 'reply',
               reply: {
                 id: 'VIEW_MENU',
-                title: 'Ver menù',
+                title: 'Ver menú',
               }
             }
           ]
@@ -450,7 +450,7 @@ export const handleProductSelectionFromWebhook = async (
               type: 'reply',
               reply: {
                 id: 'VIEW_MENU',
-                title: 'Ver menù',
+                title: 'Ver menú',
               }
             }
           ]
@@ -497,7 +497,7 @@ export const handleProductSelectionFromWebhook = async (
               type: 'reply',
               reply: {
                 id: 'VIEW_MENU',
-                title: 'Ver menù',
+                title: 'Ver menú',
               }
             }
           ]
@@ -1625,7 +1625,7 @@ const buildListMessage = (params: {
 const buildListMessageFromButtons = (
   bodyText: string,
   buttons: { title: string; payload: string; description?: string; sectionTitle?: string }[],
-  actionButtonLabel = 'Ver opciones disponibles',
+  actionButtonLabel = 'Ver opciones',
   headerText = 'Opciones',
   footerText = 'Toca el botón de abajo para ver las opciones'
 ): WhatsAppListMessage => {
@@ -1694,15 +1694,12 @@ const buildOrderSearchListMessage = (params: {
   });
 
   return buildListMessage({
-    headerText: 'Opciones encontradas',
-    bodyText: 'Encontramos varios productos relacionados.\nSelecciona uno para agregarlo 👇',
-    footerText: 'Toca el botón de abajo para ver las opciones',
-    actionButtonLabel: 'Ver opciones',
+    headerText: '',
+    bodyText: '*Este es nuestro menú disponible*\n Navega por las categorías y selecciona uno 👇',
+    footerText: '',
+    actionButtonLabel: 'Ver menú',
     sections: [
-      {
-        title: 'Resultados',
-        rows
-      }
+      { title: 'Menú', rows }
     ]
   });
 };
