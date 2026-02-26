@@ -26,7 +26,7 @@ import {
   generateProductAwareResponse
 } from './ai/openai.service';
 import { detectIntentWithConfidence } from './conversationOrchestrator.service';
-import { MenuService } from './menu.service';
+import { MenuItemSearchResult, MenuService } from './menu.service';
 import { ConversationIntent } from '../types/conversationIntent';
 import { WhatsAppSenderService } from './whatsappSender.service';
 import { Prisma } from '@prisma/client';
@@ -2268,52 +2268,44 @@ const buildResponse = async ({
           businessId: business.id,
           keyword: action.product_name
         });
-
+      
         const normalizedTarget = normalize(action.product_name);
-
+      
         const exactMatch = products.find(p =>
           normalize(p.name) === normalizedTarget
         );
-
+      
         const strongMatch = products.find(p =>
-          normalize(p.name).includes(normalizedTarget) &&
-          normalizedTarget.length > 4
+          normalize(p.name).includes(normalizedTarget)
         );
-
-        // 🔒 Política de seguridad
-        let match = exactMatch ?? strongMatch ?? null;
-
+      
+        // 🔒 Política enterprise segura
+        let match: MenuItemSearchResult | null = null;
+      
+        if (exactMatch) {
+          match = exactMatch;
+        } else if (products.length === 1 && strongMatch) {
+          match = strongMatch;
+        }
+      
         if (!match) {
-          // ⚠️ Mostrar lista de confirmación
           return buildListMessage({
             headerText: '',
             bodyText: '*¿Qué producto querés agregar?\n*Tenemos algunos resultados para tu consulta* \nSelecciona uno 👇',
             footerText: 'Elige una opción',
             actionButtonLabel: 'Ver opciones',
             sections: [
-              {
-                title: 'Productos',
-                rows: products
-                  .slice(0, 5)
-                  .map(p => ({
-                    id: `PRODUCT_${p.id}`,
-                    title: p.name,
-                    description: p.description ?? ''
-                  }))
-              }
+              { title: 'Productos', rows: products.slice(0, 5).map(p => ({ id: `PRODUCT_${p.id}`, title: p.name, description: p.description ?? '' })) }
             ]
           });
         }
-
-        if (!match) continue;
-        if (!match.is_available) continue;
-
+      
         await addProductToOrder({
           conversationId: conversation.id,
           productId: match.id,
           quantity
         });
-
+      
         await prisma.conversation.update({
           where: { id: conversation.id },
           data: { lastReferencedProductId: match.id }
