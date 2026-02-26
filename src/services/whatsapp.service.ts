@@ -2361,6 +2361,54 @@ const buildResponse = async ({
   }
 
   // =========================
+  // VIEW MENU
+  // =========================
+
+  if (intent === ConversationIntent.VIEW_MENU) {
+
+    // 🔥 Reset context
+    await updateConversationState(conversation.id, {
+      mode: "GLOBAL",
+      metadata: {}
+    });
+  
+    const items = await prisma.menu_item.findMany({
+      where: {
+        business_id: business.id,
+        is_available: true
+      },
+      orderBy: { created_at: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        description: true
+      }
+    });
+  
+    const listMessage = buildListMessage({
+      headerText: 'Nuestro menú',
+      bodyText: 'Selecciona un producto 👇',
+      footerText: 'Elige una opción',
+      actionButtonLabel: 'Ver productos',
+      sections: [
+        {
+          title: 'Menú disponible',
+          rows: items.map(item => ({
+            id: `SELECT_PRODUCT:${item.id}`,
+            title: item.name,
+            description: truncateDescription(item.description ?? '')
+          }))
+        }
+      ]
+    });
+  
+    await createConversationMessage(conversation.id, 'ai', listMessage.body.text, false);
+    await updateConversationLastMessageAt(conversation.id);
+  
+    return listMessage;
+  }
+
+  // =========================
   // PRODUCT ATTRIBUTE QUESTION (CONTEXT SET)
   // =========================
   if (intent === ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION) {
@@ -2624,6 +2672,8 @@ const buildResponse = async ({
   if (intent === ConversationIntent.SMALL_TALK) {
     return buildSmallTalkResponse(conversation.id, isFirstMessage, hasGreeted);
   }
+
+  
 
   if (intent === ConversationIntent.UNKNOWN) {
     return buildUnknownResponse(conversation.id);
