@@ -2381,26 +2381,16 @@ const buildResponse = async ({
       select: {
         id: true,
         name: true,
-        description: true
+        description: true,
+        ingredients: true
       }
     });
-  
-    const listMessage = buildListMessage({
-      headerText: 'Nuestro menú',
-      bodyText: 'Selecciona un producto 👇',
-      footerText: 'Elige una opción',
-      actionButtonLabel: 'Ver productos',
-      sections: [
-        {
-          title: 'Menú disponible',
-          rows: items.map(item => ({
-            id: `SELECT_PRODUCT:${item.id}`,
-            title: item.name,
-            description: truncateDescription(item.description ?? '')
-          }))
-        }
-      ]
-    });
+
+
+  const listMessage: WhatsAppListMessage = await buildOrderSearchListMessage({
+    items,
+    page:1
+  });
   
     await createConversationMessage(conversation.id, 'ai', listMessage.body.text, false);
     await updateConversationLastMessageAt(conversation.id);
