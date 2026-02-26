@@ -307,13 +307,13 @@ const handleViewCategories = async (
     pageText = menuHeader.text;
   }
 
-    await sender.sendInteractiveMenu({
+  await sender.sendInteractiveMenu({
     phoneNumberId,
     to,
     text: pageText,
     buttons: currentPage?.buttons ?? [],
     forceList: true,
-      actionButtonLabel: 'Elige categoria',
+    actionButtonLabel: 'Elige categoria',
     page: totalPages > 1 ? safePage : undefined,
     totalPages: totalPages > 1 ? totalPages : undefined
   });
@@ -433,30 +433,30 @@ export const handleProductSelectionFromWebhook = async (
         }
       }
     };
-      
+
   }
 
   if (!metadata.candidateProductIds?.includes(productId.replace('SELECT_PRODUCT:', ''))) {
-      return {
-        type: 'interactive',
-        interactive: {
-          type: 'button',
-          header: { type: 'text', text: 'Opción no disponible' },
-          body: { text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
-          footer: { text: 'Elige una opción' },
-          action: {
-            buttons: [
-              {
-                type: 'reply',
-                reply: {
-                  id: 'VIEW_MENU',
-                  title: 'Ver menù',
-                }
+    return {
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        header: { type: 'text', text: 'Opción no disponible' },
+        body: { text: 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.' },
+        footer: { text: 'Elige una opción' },
+        action: {
+          buttons: [
+            {
+              type: 'reply',
+              reply: {
+                id: 'VIEW_MENU',
+                title: 'Ver menù',
               }
-            ]
-          }
+            }
+          ]
         }
-      };
+      }
+    };
   }
 
   const item = await prisma.menu_item.findUnique({
@@ -1383,9 +1383,9 @@ const sendCurrentOrderSummary = async (
   const menuItems =
     menuItemIds.length > 0
       ? await prisma.menu_item.findMany({
-          where: { id: { in: menuItemIds } },
-          select: { id: true, name: true }
-        })
+        where: { id: { in: menuItemIds } },
+        select: { id: true, name: true }
+      })
       : [];
   const menuItemMap = new Map(menuItems.map((item) => [item.id, item.name]));
 
@@ -1530,13 +1530,13 @@ export const handleCheckout = async (
     const orderItems = items.flatMap((item) =>
       item.product_id
         ? [
-            {
-              order_id: order.id,
-              menu_item_id: item.product_id,
-              quantity: item.quantity,
-              unit_price: item.unit_price
-            }
-          ]
+          {
+            order_id: order.id,
+            menu_item_id: item.product_id,
+            quantity: item.quantity,
+            unit_price: item.unit_price
+          }
+        ]
         : []
     );
 
@@ -1971,9 +1971,9 @@ const buildViewOrderResponse = async (
   const menuItems =
     menuItemIds.length > 0
       ? await prisma.menu_item.findMany({
-          where: { id: { in: menuItemIds } },
-          select: { id: true, name: true }
-        })
+        where: { id: { in: menuItemIds } },
+        select: { id: true, name: true }
+      })
       : [];
   const menuItemMap = new Map(menuItems.map((item) => [item.id, item.name]));
 
@@ -2086,9 +2086,9 @@ const buildImplicitProductResponse = async ({
       is_available: product.is_available,
       price: activePrice
         ? {
-            amount: activePrice.amount,
-            currency_code: activePrice.currency_code
-          }
+          amount: activePrice.amount,
+          currency_code: activePrice.currency_code
+        }
         : null
     },
     userQuestion: lastUserMessage
@@ -2183,11 +2183,11 @@ const buildResponse = async ({
     const menuItems =
       draftItems.length > 0
         ? await prisma.menu_item.findMany({
-            where: {
-              id: { in: draftItems.map(i => i.product_id).filter(Boolean) as string[] }
-            },
-            select: { id: true, name: true, is_available: true }
-          })
+          where: {
+            id: { in: draftItems.map(i => i.product_id).filter(Boolean) as string[] }
+          },
+          select: { id: true, name: true, is_available: true }
+        })
         : [];
 
     const menuMap = new Map(menuItems.map(m => [m.id, m.name]));
@@ -2261,16 +2261,49 @@ const buildResponse = async ({
       const quantity = action.quantity && action.quantity > 0 ? action.quantity : 1;
 
       // ADD
+
       if (action.action === "add") {
 
-        const products = await MenuService.searchMenuItemsByKeyword({
+        const products = await MenuService.searchMenuItemsForOrder({
           businessId: business.id,
           keyword: action.product_name
         });
 
-        const match = products.find(p =>
-          normalize(p.name).includes(normalize(action.product_name))
+        const normalizedTarget = normalize(action.product_name);
+
+        const exactMatch = products.find(p =>
+          normalize(p.name) === normalizedTarget
         );
+
+        const strongMatch = products.find(p =>
+          normalize(p.name).includes(normalizedTarget) &&
+          normalizedTarget.length > 4
+        );
+
+        // 🔒 Política de seguridad
+        let match = exactMatch ?? strongMatch ?? null;
+
+        if (!match) {
+          // ⚠️ Mostrar lista de confirmación
+          return buildListMessage({
+            headerText: '',
+            bodyText: '*¿Qué producto querés agregar?\n*Tenemos algunos resultados para tu consulta* \nSelecciona uno 👇',
+            footerText: 'Elige una opción',
+            actionButtonLabel: 'Ver opciones',
+            sections: [
+              {
+                title: 'Productos',
+                rows: products
+                  .slice(0, 5)
+                  .map(p => ({
+                    id: `PRODUCT_${p.id}`,
+                    title: p.name,
+                    description: p.description ?? ''
+                  }))
+              }
+            ]
+          });
+        }
 
         if (!match) continue;
         if (!match.is_available) continue;
@@ -2286,6 +2319,7 @@ const buildResponse = async ({
           data: { lastReferencedProductId: match.id }
         });
       }
+
 
       // REMOVE
       if (action.action === "remove") {
@@ -2335,146 +2369,146 @@ const buildResponse = async ({
   }
 
   // =========================
-// PRODUCT ATTRIBUTE QUESTION (CONTEXT SET)
-// =========================
-if (intent === ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION) {
-  const state = await findOrCreateConversationState(conversation.id);
-  const metadata = normalizeMetadata(state.metadata);
-  const candidateIds = candidateProductIds ?? metadata.candidateProductIds ?? null;
+  // PRODUCT ATTRIBUTE QUESTION (CONTEXT SET)
+  // =========================
+  if (intent === ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION) {
+    const state = await findOrCreateConversationState(conversation.id);
+    const metadata = normalizeMetadata(state.metadata);
+    const candidateIds = candidateProductIds ?? metadata.candidateProductIds ?? null;
 
-  // 🔥 CASO 1: Tenemos producto en foco
-  if (mode === 'PRODUCT_FOCUS' && lastReferencedProductId) {
-    const implicit = await buildImplicitProductResponse({
-      business,
-      customer,
-      conversation,
-      lastReferencedProductId,
-      lastUserMessage,
-      logLabel: '---- ATTRIBUTE VIA PRODUCT FOCUS ----'
-    });
-
-    if (implicit) return implicit;
-  }
-
-  // 🔥 CASO 2: Tenemos conjunto activo
-  if (mode === 'FILTER_SET' && candidateIds && candidateIds.length > 0) {
-    if (conversation.lastReferencedProductId) {
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { lastReferencedProductId: null }
+    // 🔥 CASO 1: Tenemos producto en foco
+    if (mode === 'PRODUCT_FOCUS' && lastReferencedProductId) {
+      const implicit = await buildImplicitProductResponse({
+        business,
+        customer,
+        conversation,
+        lastReferencedProductId,
+        lastUserMessage,
+        logLabel: '---- ATTRIBUTE VIA PRODUCT FOCUS ----'
       });
+
+      if (implicit) return implicit;
     }
 
-    const products = await prisma.menu_item.findMany({
-      where: { id: { in: candidateIds } },
-      include: { menu_item_price: true }
-    });
+    // 🔥 CASO 2: Tenemos conjunto activo
+    if (mode === 'FILTER_SET' && candidateIds && candidateIds.length > 0) {
+      if (conversation.lastReferencedProductId) {
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { lastReferencedProductId: null }
+        });
+      }
 
-    if (products.length === 0) {
-      return buildUnknownResponse(conversation.id);
-    }
+      const products = await prisma.menu_item.findMany({
+        where: { id: { in: candidateIds } },
+        include: { menu_item_price: true }
+      });
 
-    const result = await generateFilteredSetResponse({
-      products,
-      userQuestion: lastUserMessage
-    });
-    
-    const recommendedIds = result.recommended_product_ids ?? [];
-    const reason = result.reason ?? '';
+      if (products.length === 0) {
+        return buildUnknownResponse(conversation.id);
+      }
 
-    if (recommendedIds.length === 0) {
+      const result = await generateFilteredSetResponse({
+        products,
+        userQuestion: lastUserMessage
+      });
+
+      const recommendedIds = result.recommended_product_ids ?? [];
+      const reason = result.reason ?? '';
+
+      if (recommendedIds.length === 0) {
+        await createConversationMessage(conversation.id, 'ai', reason, false);
+        await updateConversationLastMessageAt(conversation.id);
+        return reason;
+      }
+
+      if (recommendedIds.length === 1) {
+
+        const product = products.find(p => p.id === recommendedIds[0]);
+        if (!product) return buildUnknownResponse(conversation.id);
+
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { lastReferencedProductId: product.id }
+        });
+        const cleanedMetadata = clearProductFilterMetadata(metadata);
+        console.debug('Conversation mode:', 'PRODUCT_FOCUS');
+        await updateConversationState(conversation.id, {
+          mode: 'PRODUCT_FOCUS',
+          metadata: buildMetadataValue(cleanedMetadata)
+        } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
+
+        const messageText = `${reason}\n\n¿Deseas agregar ${product.name}?`;
+
+        await createConversationMessage(conversation.id, 'ai', messageText, false);
+        await updateConversationLastMessageAt(conversation.id);
+
+        return {
+          type: 'interactive',
+          interactive: {
+            type: 'button',
+            header: { type: 'text', text: 'Recomendación' },
+            body: { text: messageText },
+            footer: { text: 'Elige una opción' },
+            action: {
+              buttons: [
+                {
+                  type: 'reply',
+                  reply: {
+                    id: 'ADD_ITEM',
+                    title: 'Agregar'
+                  }
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      const listMessage = buildListMessage({
+        headerText: 'Opciones recomendadas',
+        bodyText: reason,
+        footerText: 'Selecciona uno',
+        actionButtonLabel: 'Ver opciones',
+        sections: [
+          {
+            title: 'Recomendaciones',
+            rows: products
+              .filter(p => recommendedIds.includes(p.id))
+              .map(p => ({
+                id: `SELECT_PRODUCT:${p.id}`,
+                title: p.name,
+                description: truncateDescription(p.description ?? '')
+              }))
+          }
+        ]
+      });
+
+      console.debug('Conversation mode:', 'FILTER_SET');
+      await updateConversationState(conversation.id, {
+        mode: 'FILTER_SET',
+        metadata: buildMetadataValue({
+          pendingProductSelection: true,
+          pendingQuestion: lastUserMessage,
+          candidateProductIds: recommendedIds
+        })
+      } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
       await createConversationMessage(conversation.id, 'ai', reason, false);
       await updateConversationLastMessageAt(conversation.id);
-      return reason;
+
+      return listMessage;
+
     }
 
-    if (recommendedIds.length === 1) {
+    // 🔥 CASO 3: No hay contexto → pedir aclaración
+    const clarification =
+      '¿Sobre qué platillo quieres saber eso? Puedes decirme el nombre o pedirme ver opciones.';
 
-      const product = products.find(p => p.id === recommendedIds[0]);
-      if (!product) return buildUnknownResponse(conversation.id);
-    
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { lastReferencedProductId: product.id }
-      });
-      const cleanedMetadata = clearProductFilterMetadata(metadata);
-      console.debug('Conversation mode:', 'PRODUCT_FOCUS');
-      await updateConversationState(conversation.id, {
-        mode: 'PRODUCT_FOCUS',
-        metadata: buildMetadataValue(cleanedMetadata)
-      } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
-    
-      const messageText = `${reason}\n\n¿Deseas agregar ${product.name}?`;
-    
-      await createConversationMessage(conversation.id, 'ai', messageText, false);
-      await updateConversationLastMessageAt(conversation.id);
-    
-      return {
-        type: 'interactive',
-        interactive: {
-          type: 'button',
-          header: { type: 'text', text: 'Recomendación' },
-          body: { text: messageText },
-          footer: { text: 'Elige una opción' },
-          action: {
-            buttons: [
-              {
-                type: 'reply',
-                reply: {
-                  id: 'ADD_ITEM',
-                  title: 'Agregar'
-                }
-              }
-            ]
-          }
-        }
-      };
-    }
-
-    const listMessage = buildListMessage({
-      headerText: 'Opciones recomendadas',
-      bodyText: reason,
-      footerText: 'Selecciona uno',
-      actionButtonLabel: 'Ver opciones',
-      sections: [
-        {
-          title: 'Recomendaciones',
-          rows: products
-            .filter(p => recommendedIds.includes(p.id))
-            .map(p => ({
-              id: `SELECT_PRODUCT:${p.id}`,
-              title: p.name,
-              description: truncateDescription(p.description ?? '')
-            }))
-        }
-      ]
-    });
-    
-    console.debug('Conversation mode:', 'FILTER_SET');
-    await updateConversationState(conversation.id, {
-      mode: 'FILTER_SET',
-      metadata: buildMetadataValue({
-        pendingProductSelection: true,
-        pendingQuestion: lastUserMessage,
-        candidateProductIds: recommendedIds
-      })
-    } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
-    await createConversationMessage(conversation.id, 'ai', reason, false);
+    await createConversationMessage(conversation.id, 'ai', clarification, false);
     await updateConversationLastMessageAt(conversation.id);
-    
-    return listMessage;
 
+    return clarification;
   }
-
-  // 🔥 CASO 3: No hay contexto → pedir aclaración
-  const clarification =
-    '¿Sobre qué platillo quieres saber eso? Puedes decirme el nombre o pedirme ver opciones.';
-
-  await createConversationMessage(conversation.id, 'ai', clarification, false);
-  await updateConversationLastMessageAt(conversation.id);
-
-  return clarification;
-}
 
   // =========================
   // PRODUCT QUERY
@@ -2683,10 +2717,10 @@ export const processIncomingMessage = async (
     message.type === 'text'
       ? message.text?.body ?? ''
       : message.type === 'interactive'
-      ? message.interactive?.button_reply?.id ??
+        ? message.interactive?.button_reply?.id ??
         message.interactive?.list_reply?.id ??
         '[interactive]'
-      : `[${message.type ?? 'unknown'}]`;
+        : `[${message.type ?? 'unknown'}]`;
 
   const persistedMessage = await createConversationMessage(
     conversation.id,
@@ -2710,10 +2744,10 @@ export const processIncomingMessage = async (
   const formattedMessages: OpenAITypes.Chat.ChatCompletionMessageParam[] =
     existingMessages.map(
       (recentMessage) =>
-        ({
-          role: recentMessage.is_ai_generated ? 'assistant' : 'user',
-          content: recentMessage.message
-        } as OpenAITypes.Chat.ChatCompletionMessageParam)
+      ({
+        role: recentMessage.is_ai_generated ? 'assistant' : 'user',
+        content: recentMessage.message
+      } as OpenAITypes.Chat.ChatCompletionMessageParam)
     );
   formattedMessages.push(newMessage);
   const hasGreeted = conversationState.current_intent === 'greeted';

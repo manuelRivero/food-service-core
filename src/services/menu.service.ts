@@ -306,4 +306,61 @@ export class MenuService {
     }
     return finalResults;
   }
+  static async searchMenuItemsForOrder(params: {
+    businessId: string;
+    keyword: string;
+  }): Promise<MenuItemSearchResult[]> {
+  
+    const { businessId, keyword } = params;
+    const trimmedKeyword = keyword.trim();
+    if (!trimmedKeyword) return [];
+  
+    const business = await prisma.business.findUnique({
+      where: { id: businessId },
+      select: { currency_code: true }
+    });
+  
+    const currency = business?.currency_code ?? null;
+    const now = new Date();
+    const priceWhere = buildPriceWhere(currency, now);
+  
+    return prisma.menu_item.findMany({
+      where: {
+        business_id: businessId,
+        is_available: true,
+        OR: [
+          {
+            name: {
+              equals: trimmedKeyword,
+              mode: 'insensitive'
+            }
+          },
+          {
+            name: {
+              contains: trimmedKeyword,
+              mode: 'insensitive'
+            }
+          }
+        ]
+      },
+      orderBy: { created_at: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        ingredients: true,
+        serves_people: true,
+        is_available: true,
+        menu_item_price: {
+          where: priceWhere,
+          orderBy: { valid_from: 'desc' },
+          take: 1,
+          select: {
+            amount: true,
+            currency_code: true
+          }
+        }
+      }
+    });
+  }
 }
