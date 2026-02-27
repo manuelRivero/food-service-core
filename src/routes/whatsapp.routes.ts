@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import {
+  handleWebhook,
   sendMessage,
   verifyWebhook
 } from '../controllers/whatsapp.controller';
-import { processWebhook } from '../controllers/webhook';
 
 const router = Router();
 
@@ -19,7 +19,7 @@ router.get('/webhook', verifyWebhook);
  * @desc    Recibir webhooks de WhatsApp
  * @access  Public
  */
-router.post('/webhook', processWebhook);
+router.post('/webhook', handleWebhook);
 
 /**
  * @route   POST /api/whatsapp/send
