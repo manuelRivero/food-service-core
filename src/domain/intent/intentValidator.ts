@@ -102,3 +102,36 @@ export const parseIntentResult = (
 
 // NUEVO: Exportar para uso externo
 export { INTENT_ENUM_VALUES };
+
+// En tu servicio de clasificación de intents
+
+export const parseIntentResponse = (llmResponse: string): {
+  intents: string[];
+  entities: {
+    product_name: string | null;
+    quantity: number | null;
+    action: string | null;
+  };
+  confidence: number;
+} => {
+  try {
+    const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return { intents: ['UNKNOWN'], entities: { product_name: null, quantity: null, action: null }, confidence: 0 };
+    }
+    
+    const parsed = JSON.parse(jsonMatch[0]);
+    
+    return {
+      intents: Array.isArray(parsed.intents) ? parsed.intents : ['UNKNOWN'],
+      entities: {
+        product_name: parsed.entities?.product_name || null,
+        quantity: typeof parsed.entities?.quantity === 'number' ? parsed.entities.quantity : null,
+        action: parsed.entities?.action || null
+      },
+      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0
+    };
+  } catch (error) {
+    return { intents: ['UNKNOWN'], entities: { product_name: null, quantity: null, action: null }, confidence: 0 };
+  }
+};

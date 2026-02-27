@@ -1,4 +1,5 @@
 export enum ConversationIntent {
+  // === INTENTS ORIGINALES (lenguaje natural) ===
   SMALL_TALK = 'SMALL_TALK',
   VIEW_MENU = 'VIEW_MENU',
   VIEW_ORDER = 'VIEW_ORDER',
@@ -14,5 +15,27 @@ export enum ConversationIntent {
   PRODUCT_QUERY = 'PRODUCT_QUERY',
   PRODUCT_ATTRIBUTE_QUESTION = 'PRODUCT_ATTRIBUTE_QUESTION',
   GENERAL_QUESTION = 'GENERAL_QUESTION',
+  
+  // === NUEVOS: Acciones específicas de pedido (detectadas por LLM) ===
+  REMOVE_ITEM = 'REMOVE_ITEM',           // "sacá la pizza"
+  MODIFY_QUANTITY = 'MODIFY_QUANTITY',   // "cambiá a 3"
+  ADD_PRODUCT = 'ADD_PRODUCT',           // "quiero una hamburguesa" (específico)
+  
+  // === NUEVOS: Interacciones de botones (payloadId) ===
+  SELECT_PRODUCT = 'SELECT_PRODUCT',
+  SELECT_ORDER_PRODUCT = 'SELECT_ORDER_PRODUCT',
+  ORDER_SEARCH_PAGE = 'ORDER_SEARCH_PAGE',
+  CATEGORY_PAGE = 'CATEGORY_PAGE',
+  CATEGORY_LIST_PAGE = 'CATEGORY_LIST_PAGE',
+  CATEGORY = 'CATEGORY',
+  ADD_ITEM = 'ADD_ITEM',                 // Botón "Agregar al pedido"
+  CHECKOUT = 'CHECKOUT',
+  CANCEL_ORDER = 'CANCEL_ORDER',
+  END_CONVERSATION = 'END_CONVERSATION',
+  VIEW_MENU_RETURN = 'VIEW_MENU_RETURN',
+  VIEW_CATEGORIES = 'VIEW_CATEGORIES',
+  CONFIRM_REMOVE = 'CONFIRM_REMOVE',     // Botón "Sí, remover"
+  CANCEL_REMOVE = 'CANCEL_REMOVE',       // Botón "No, cancelar"
+  
   UNKNOWN = 'UNKNOWN'
 }

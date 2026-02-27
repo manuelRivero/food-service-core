@@ -44,15 +44,13 @@ export interface WhatsAppInteractiveMessage {
       text: string
     },
     action: {
-      buttons: [
-        {
-          type: 'reply',
-          reply: {
-            id: string,
-            title: string
-          }
+      buttons: {
+        type: 'reply',
+        reply: {
+          id: string,
+          title: string
         }
-      ]
+      }[]
     }
   }
 }

@@ -1,47 +1,133 @@
 import { ConversationIntent } from '../../types/conversationIntent';
 
+// UNIFICADO: Todos los intents en orden lógico
 export const INTENT_ENUM_VALUES = [
-  'ORDER_FOOD',
-  'PRODUCT_QUERY',
-  'PRODUCT_ATTRIBUTE_QUESTION',
-  'VIEW_MENU',
-  'VIEW_ORDER',
-  'TRACK_ORDER',
-  'PAYMENT_REQUEST',
-  'SUPPORT',
-  'GENERAL_QUESTION',
-  'SMALL_TALK',
-  'BUSINESS_HOURS',
-  'BUSINESS_LOCATION',
-  'DELIVERY_INFO',
-  'PAYMENT_METHODS',
-  'UNKNOWN'
+  // Botones interactivos (alta prioridad, acciones concretas)
+  ConversationIntent.SELECT_PRODUCT,
+  ConversationIntent.SELECT_ORDER_PRODUCT,
+  ConversationIntent.ORDER_SEARCH_PAGE,
+  ConversationIntent.CATEGORY_PAGE,
+  ConversationIntent.CATEGORY_LIST_PAGE,
+  ConversationIntent.CATEGORY,
+  ConversationIntent.ADD_ITEM,
+  ConversationIntent.CHECKOUT,
+  ConversationIntent.CANCEL_ORDER,
+  ConversationIntent.END_CONVERSATION,
+  ConversationIntent.VIEW_MENU_RETURN,
+  ConversationIntent.VIEW_CATEGORIES,
+  ConversationIntent.CONFIRM_REMOVE,
+  ConversationIntent.CANCEL_REMOVE,
+  
+  // Acciones de pedido por lenguaje natural
+  ConversationIntent.ORDER_FOOD,
+  ConversationIntent.ADD_PRODUCT,        // NUEVO
+  ConversationIntent.REMOVE_ITEM,        // NUEVO
+  ConversationIntent.MODIFY_QUANTITY,    // NUEVO
+  
+  // Consultas y navegación
+  ConversationIntent.VIEW_MENU,
+  ConversationIntent.VIEW_ORDER,
+  ConversationIntent.TRACK_ORDER,
+  ConversationIntent.PRODUCT_QUERY,
+  ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION,
+  
+  // Información del negocio
+  ConversationIntent.PAYMENT_REQUEST,
+  ConversationIntent.PAYMENT_METHODS,
+  ConversationIntent.BUSINESS_HOURS,
+  ConversationIntent.BUSINESS_LOCATION,
+  ConversationIntent.DELIVERY_INFO,
+  
+  // Conversación general
+  ConversationIntent.SUPPORT,
+  ConversationIntent.GENERAL_QUESTION,
+  ConversationIntent.SMALL_TALK,
+  ConversationIntent.ASK_QUESTION,
+  
+  ConversationIntent.UNKNOWN,
 ] as const;
 
 export type IntentString = typeof INTENT_ENUM_VALUES[number];
 
+// PRIORIDAD: Orden de precedencia (más específico = más prioritario)
 export const INTENT_PRIORITY: ConversationIntent[] = [
-  ConversationIntent.ORDER_FOOD,
+  // 1. Botones (acciones concretas del usuario)
+  ConversationIntent.REMOVE_ITEM,        // NUEVO - alta prioridad
+  ConversationIntent.MODIFY_QUANTITY,  
+  ConversationIntent.CONFIRM_REMOVE,
+  ConversationIntent.CANCEL_REMOVE,
+  ConversationIntent.SELECT_PRODUCT,
+  ConversationIntent.SELECT_ORDER_PRODUCT,
+  ConversationIntent.ADD_ITEM,
+  ConversationIntent.CHECKOUT,
+  ConversationIntent.CANCEL_ORDER,
+  ConversationIntent.END_CONVERSATION,
+  
+  // 2. Acciones de pedido (lenguaje natural específico)
+  ConversationIntent.REMOVE_ITEM,        // NUEVO
+  ConversationIntent.MODIFY_QUANTITY,  // NUEVO
+  ConversationIntent.ADD_PRODUCT,        // NUEVO
+  
+  // 3. Navegación
+  ConversationIntent.CATEGORY,
+  ConversationIntent.CATEGORY_PAGE,
+  ConversationIntent.CATEGORY_LIST_PAGE,
+  ConversationIntent.VIEW_MENU,
+  ConversationIntent.VIEW_MENU_RETURN,
+  ConversationIntent.VIEW_CATEGORIES,
+  ConversationIntent.VIEW_ORDER,
+  ConversationIntent.ORDER_SEARCH_PAGE,
+  
+  // 4. Consultas de productos
   ConversationIntent.PRODUCT_QUERY,
   ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION,
-  ConversationIntent.VIEW_MENU,
-  ConversationIntent.VIEW_ORDER,
+  ConversationIntent.ORDER_FOOD,
+  
+  // 5. Información y servicio
   ConversationIntent.TRACK_ORDER,
   ConversationIntent.PAYMENT_REQUEST,
-  ConversationIntent.SUPPORT,
+  ConversationIntent.PAYMENT_METHODS,
   ConversationIntent.BUSINESS_HOURS,
   ConversationIntent.BUSINESS_LOCATION,
   ConversationIntent.DELIVERY_INFO,
-  ConversationIntent.PAYMENT_METHODS,
+  ConversationIntent.SUPPORT,
+  
+  // 6. Conversación general
   ConversationIntent.GENERAL_QUESTION,
   ConversationIntent.SMALL_TALK,
+  ConversationIntent.ASK_QUESTION,
+  
+  // 7. Fallback
   ConversationIntent.UNKNOWN
 ];
 
+// Actualizar normalizeIntent
 export const normalizeIntent = (value: string): ConversationIntent => {
   const trimmed = value.trim().toUpperCase();
 
   switch (trimmed) {
+    // Botones
+    case ConversationIntent.SELECT_PRODUCT:
+    case ConversationIntent.SELECT_ORDER_PRODUCT:
+    case ConversationIntent.ORDER_SEARCH_PAGE:
+    case ConversationIntent.CATEGORY_PAGE:
+    case ConversationIntent.CATEGORY_LIST_PAGE:
+    case ConversationIntent.CATEGORY:
+    case ConversationIntent.ADD_ITEM:
+    case ConversationIntent.CHECKOUT:
+    case ConversationIntent.CANCEL_ORDER:
+    case ConversationIntent.END_CONVERSATION:
+    case ConversationIntent.VIEW_MENU_RETURN:
+    case ConversationIntent.VIEW_CATEGORIES:
+    case ConversationIntent.CONFIRM_REMOVE:
+    case ConversationIntent.CANCEL_REMOVE:
+    
+    // Acciones de pedido (nuevas)
+    case ConversationIntent.REMOVE_ITEM:
+    case ConversationIntent.MODIFY_QUANTITY:
+    case ConversationIntent.ADD_PRODUCT:
+    
+    // Originales
     case ConversationIntent.SMALL_TALK:
     case ConversationIntent.VIEW_MENU:
     case ConversationIntent.VIEW_ORDER:
@@ -64,13 +150,14 @@ export const normalizeIntent = (value: string): ConversationIntent => {
   }
 };
 
+// Funciones sin cambios
 export const mapUnknownIntents = (intents: string[]): IntentString[] => {
   const allowed = new Set<string>(INTENT_ENUM_VALUES);
   return intents.map((intent) => {
     const trimmed = intent.trim().toUpperCase();
     return allowed.has(trimmed)
       ? (trimmed as IntentString)
-      : 'UNKNOWN';
+      : ConversationIntent.UNKNOWN;
   });
 };
 

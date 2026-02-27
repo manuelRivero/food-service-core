@@ -1,9 +1,32 @@
 import OpenAI from 'openai';
-import type { OpenAI as OpenAITypes } from 'openai';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
+
+// En tu servicio de clasificación de intents (donde tengas el prompt)
+
+const INTENTS_DESCRIPTION = `
+INTENCIONES DISPONIBLES:
+
+BOTONES (el usuario tocó un botón):
+- SELECT_PRODUCT, SELECT_ORDER_PRODUCT, ORDER_SEARCH_PAGE, CATEGORY_PAGE, etc.
+
+ACCIONES DE PEDIDO (el usuario escribió texto):
+- ORDER_FOOD: Quiere hacer un pedido general
+- ADD_PRODUCT: "quiero una hamburguesa" (producto específico)
+- REMOVE_ITEM: "sacá la pizza", "quitame la coca" ← NUEVO
+- MODIFY_QUANTITY: "cambiá a 3", "son 4 en total" ← NUEVO
+
+CONSULTAS:
+- PRODUCT_QUERY, PRODUCT_ATTRIBUTE_QUESTION, etc.
+
+INFORMACIÓN:
+- VIEW_MENU, VIEW_ORDER, BUSINESS_HOURS, etc.
+
+CONVERSACIÓN:
+- GREETING, SMALL_TALK, GENERAL_QUESTION, etc.
+`;
 
 export const INTENT_CLASSIFIER_PROMPT = `
 You are an intent classifier for a restaurant WhatsApp assistant.
@@ -60,21 +83,39 @@ Examples:
 - "Agregame tres"
 - "Dame uno"
 
-4) VIEW_MENU
+4) REMOVE_ITEM  ← NUEVO
+User wants to remove or delete an item from their current order/cart.
+Examples:
+- "Sacá la pizza"
+- "Quitame la coca"
+- "No quiero el postre"
+- "Eliminá la hamburguesa"
+- "Borrá el item de ensalada"
+
+5) MODIFY_QUANTITY  ← NUEVO
+User wants to change the quantity of an item in their order.
+Examples:
+- "Cambiá a 3"
+- "Son 4 en total"
+- "Me equivoqué, son 2"
+- "Poné 5 en lugar de 3"
+- "Actualizá a 6"
+
+6) VIEW_MENU
 User wants to see the menu.
 Examples:
 - "Menu"
 - "Ver menu"
 - "Qué tienen?"
 
-5) VIEW_ORDER
+7) VIEW_ORDER
 User wants to see current order.
 Examples:
 - "Cuánto llevo?"
 - "Qué tengo en el pedido?"
 - "Ver mi orden"
 
-6) SMALL_TALK
+8) SMALL_TALK
 Greeting or casual talk without commercial intent.
 Examples:
 - "Hola"
@@ -86,13 +127,13 @@ If a greeting includes a product request, classify as PRODUCT_QUERY.
 Example:
 "Hola buenas, tienen ceviche?" → PRODUCT_QUERY
 
-7) ASK_QUESTION
+9) ASK_QUESTION
 General question not related to products.
 Example:
 - "Dónde están ubicados?"
 - "Cuál es su horario?"
 
-8) UNKNOWN
+10) UNKNOWN
 Use only if the message is impossible to classify.
 
 ----------------------------------------
@@ -107,6 +148,8 @@ DECISION RULES (FOLLOW STRICTLY)
    - If it sounds like a characteristic → PRODUCT_ATTRIBUTE_QUESTION.
 6) Do NOT treat ingredients as product searches automatically.
 7) Do NOT overuse UNKNOWN.
+8) REMOVE_ITEM: Only when user explicitly wants to delete/remove something from existing order.
+9) MODIFY_QUANTITY: Only when user wants to change quantity of existing item.
 
 ----------------------------------------
 OUTPUT FORMAT (STRICT)
@@ -117,21 +160,24 @@ Return ONLY:
 {
   "intents": ["INTENT_NAME"],
   "entities": {
-    "product_name": string | null
+    "product_name": string | null,
+    "quantity": number | null,
+    "action": string | null
   },
   "confidence": number
 }
 
 Rules:
-- product_name should only be filled when user is searching for a product.
-- For PRODUCT_ATTRIBUTE_QUESTION, product_name should usually be null.
+- product_name: fill when user mentions a specific product (for PRODUCT_QUERY, REMOVE_ITEM, MODIFY_QUANTITY).
+- quantity: fill when user mentions a number (for ORDER_FOOD, MODIFY_QUANTITY).
+- action: "add" | "remove" | "modify" | null - helps distinguish sub-actions within ORDER_FOOD.
 - confidence must be between 0 and 1.
 - No extra text.
 - No markdown.
 - No explanation.
 `;
 
-const INTENT_PROMPT_VERSION = 'intent-classifier-v4';
+const INTENT_PROMPT_VERSION = 'intent-classifier-v5';
 
 export const classifyIntent = async (
   lastUserMessage: string
