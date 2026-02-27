@@ -4,7 +4,7 @@ import { WebhookContext, HandlerResult, WebhookHandler } from './types';
 
 export const dispatch = async (ctx: WebhookContext): Promise<HandlerResult | null> => {
   const payloadId = ctx.payloadId ?? '';
-  
+  console.log('payloadId', payloadId);
   // Encontrar handler que matchee
   const handler = handlers.find((h: WebhookHandler) => h.matches(payloadId));
   

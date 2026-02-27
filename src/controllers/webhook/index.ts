@@ -14,8 +14,9 @@ export const processWebhook = async (payload: WhatsAppWebhookPayload): Promise<v
     }
 
     // Ejecutar lógica de negocio
+    console.log('ctx', ctx);
     const result = await dispatch(ctx);
-    
+    console.log('result', result);
     // Enviar respuesta si hay contenido
     if (result) {
       await sendResponse(ctx, result);
