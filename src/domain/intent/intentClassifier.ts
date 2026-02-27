@@ -88,6 +88,7 @@ User wants to remove or delete an item from their current order/cart.
 Examples:
 - "Sacá la pizza"
 - "Quitame la coca"
+- "Quita un ceviche"
 - "No quiero el postre"
 - "Eliminá la hamburguesa"
 - "Borrá el item de ensalada"
@@ -169,7 +170,8 @@ Return ONLY:
 
 Rules:
 - product_name: fill when user mentions a specific product (for PRODUCT_QUERY, REMOVE_ITEM, MODIFY_QUANTITY).
-- quantity: fill when user mentions a number (for ORDER_FOOD, MODIFY_QUANTITY).
+- quantity: fill when user mentions a number (for ORDER_FOOD, MODIFY_QUANTITY, REMOVE_ITEM).
+- if intent is REMOVE_ITEM and quantity is not explicit, set quantity = 1.
 - action: "add" | "remove" | "modify" | null - helps distinguish sub-actions within ORDER_FOOD.
 - confidence must be between 0 and 1.
 - No extra text.
@@ -177,7 +179,7 @@ Rules:
 - No explanation.
 `;
 
-const INTENT_PROMPT_VERSION = 'intent-classifier-v5';
+const INTENT_PROMPT_VERSION = 'intent-classifier-v6';
 
 export const classifyIntent = async (
   lastUserMessage: string
