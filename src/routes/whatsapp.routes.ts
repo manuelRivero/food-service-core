@@ -3,7 +3,7 @@ import {
   sendMessage,
   verifyWebhook
 } from '../controllers/whatsapp.controller';
-import { processWebhook } from 'src/controllers/webhook';
+import { processWebhook } from '../controllers/webhook';
 
 const router = Router();
 
