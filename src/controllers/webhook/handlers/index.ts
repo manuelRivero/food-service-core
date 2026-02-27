@@ -17,6 +17,7 @@ import { ViewCategoriesHandler } from './viewCategoriesHandler';
 import { FallbackHandler } from './fallbackHandler';
 import { ConfirmRemoveItemHandler } from './confirmRemoveItem';
 import { RemoveItemHandler } from './removeItem';
+import { OrderFoodHandler } from './orderFoodHandler';
 
 export const handlers: WebhookHandler[] = [
   // Específicos con parámetros (más específicos primero)
@@ -29,6 +30,7 @@ export const handlers: WebhookHandler[] = [
   new AddItemHandler(),
   new ConfirmRemoveItemHandler(),
   new RemoveItemHandler(),
+  new OrderFoodHandler(),
   
   // Comandos exactos
   new CheckoutHandler(),

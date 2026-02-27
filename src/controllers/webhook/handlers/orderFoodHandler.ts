@@ -20,6 +20,8 @@ export class OrderFoodHandler extends BaseHandler {
       currentOrderItems: orderContext.items
     });
 
+    console.log('resolution orderFoodHandler', resolution);
+
     if (resolution.needs_clarification && orderContext.items.length > 0) {
       return this.buildClarificationList(orderContext.items);
     }
