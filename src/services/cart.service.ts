@@ -7,6 +7,7 @@ import { findOrCreateCustomer } from "../repositories/customer.repository";
 import { createOrGetOpenConversation } from "../repositories/conversation.repository";
 import { WhatsAppWebhookPayload } from "../controllers/webhook/types";
 import { WhatsAppInteractiveMessage } from "src/domain/intent/whatsappTemplates";
+import { extractOrderData } from "./ai/openai.service";
 
 interface ConfirmRemoveItemResult {
   message: WhatsAppInteractiveMessage | null;
@@ -174,6 +175,9 @@ export const handleAddItemFromWebhook = async (
   const customer = await findOrCreateCustomer(business.id, from);
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
   await findOrCreateConversationState(conversation.id);
+
+  const AIResponse = await extractOrderData(message?.text?.body ?? '');
+  console.log('AIResponse',AIResponse);
 
   return await buildAddItemMessage(business, conversation, menuItemId, customer);
 };
