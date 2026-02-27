@@ -3,7 +3,6 @@ import { BaseHandler } from './baseHandler';
 import { WebhookContext, HandlerResult } from '../types';
 import { parseProductId } from '../utils';
 import { handleOrderProductSelectionFromWebhook } from '../../../services/whatsapp.service';
-import { WhatsAppListMessage } from 'src/domain/intent/whatsappTemplates';
 
 export class SelectOrderProductHandler extends BaseHandler {
   readonly command = 'SELECT_ORDER_PRODUCT';

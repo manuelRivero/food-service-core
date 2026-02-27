@@ -1,11 +1,11 @@
 // services/cartService.ts
 
 import { business, conversation, customer } from "@prisma/client";
-import { prisma } from "src/lib/prisma";
-import { createConversationMessage, findBusinessByPhoneNumberId, findOrCreateConversationState, updateConversationLastMessageAt } from "src/repositories";
-import { findOrCreateCustomer } from "src/repositories/customer.repository";
-import { createOrGetOpenConversation } from "src/repositories/conversation.repository";
-import { WhatsAppWebhookPayload } from "src/controllers/webhook/types";
+import { prisma } from "../lib/prisma";
+import { createConversationMessage, findBusinessByPhoneNumberId, findOrCreateConversationState, updateConversationLastMessageAt } from "../repositories";
+import { findOrCreateCustomer } from "../repositories/customer.repository";
+import { createOrGetOpenConversation } from "../repositories/conversation.repository";
+import { WhatsAppWebhookPayload } from "../controllers/webhook/types";
 
 export const buildAddItemMessage = async (
     business: business,

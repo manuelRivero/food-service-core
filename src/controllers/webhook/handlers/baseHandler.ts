@@ -1,4 +1,4 @@
-import { WhatsAppInteractiveMessage, WhatsAppListMessage } from 'src/domain/intent/whatsappTemplates';
+import { WhatsAppInteractiveMessage, WhatsAppListMessage } from '../../../domain/intent/whatsappTemplates';
 import { WebhookContext, HandlerResult, WebhookHandler } from '../types';
 
 export abstract class BaseHandler implements WebhookHandler {

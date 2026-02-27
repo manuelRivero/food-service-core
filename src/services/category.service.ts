@@ -3,7 +3,7 @@ import { WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
 import { prisma } from '../lib/prisma';
 import { createConversationMessage, findOrCreateConversationState, createOrGetOpenConversation, findOrCreateCustomer, updateConversationLastMessageAt, findBusinessByPhoneNumberId } from '../repositories';
 import { truncateDescription, truncateTitle } from '../whatsappBuilders';
-import { WhatsAppWebhookPayload } from 'src/types/whatsapp';
+import { WhatsAppWebhookPayload } from '../controllers/webhook/types';
 
 interface CategoryMessageResult {
     message: WhatsAppListMessage | null;

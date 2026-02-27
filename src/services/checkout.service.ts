@@ -3,7 +3,7 @@
 import { customer as CustomerType, business as BusinessType, conversation as ConversationType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { createConversationMessage, createOrGetOpenConversation, findBusinessByPhoneNumberId, findOrCreateConversationState, findOrCreateCustomer, updateConversationLastMessageAt } from '../repositories';
-import { WhatsAppWebhookPayload } from 'src/types/whatsapp';
+import { WhatsAppWebhookPayload } from '../controllers/webhook/types';
 
 
 interface CheckoutResult {

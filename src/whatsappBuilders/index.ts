@@ -1,4 +1,4 @@
-import { WhatsAppListMessage } from "src/domain/intent/whatsappTemplates";
+import { WhatsAppListMessage } from "../domain/intent/whatsappTemplates";
 
 const buildListMessage = (params: {
     headerText: string;
