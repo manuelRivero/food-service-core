@@ -13,6 +13,68 @@ interface ConfirmRemoveItemResult {
   errorMessage?: string;
 }
 
+interface RemoveItemResult {
+  message: WhatsAppInteractiveMessage | null;
+  errorMessage?: string;
+}
+export const buildRemoveItemMessage = async (
+  business: business,
+  conversation: conversation,
+  itemIdentifier: string
+): Promise<RemoveItemResult> => {
+  const cart = await prisma.orders.findFirst({
+    where: { conversation_id: conversation.id },
+    include: {
+      order_item: {
+        include: { menu_item: true }
+      }
+    }
+  });
+  if (!cart || cart.order_item.length === 0) {
+    const errorText = 'No tenés platillos en tu orden para remover.';
+    await createConversationMessage(conversation.id, 'ai', errorText, false);
+    await updateConversationLastMessageAt(conversation.id);
+    return { message: null, errorMessage: errorText };
+  }
+
+
+  const matchingItem = cart.order_item.find(ci =>
+    ci.menu_item.id === itemIdentifier ||
+    ci.menu_item.name.toLowerCase().includes(itemIdentifier.toLowerCase())
+  );
+
+  if (!matchingItem) {
+    const errorText = `No encontré "${itemIdentifier}" en tu carrito.`;
+    await createConversationMessage(conversation.id, 'ai', errorText, false);
+    await updateConversationLastMessageAt(conversation.id);
+    return { message: null, errorMessage: errorText };
+  }
+  const message: WhatsAppInteractiveMessage = {
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      header: { type: 'text', text: 'Pedido actualizado' },
+      footer: {
+        text: '¿Querés seguir comprando o finalizar tu orden?'
+      },
+      body: {
+        text: `Se removiò el platillo *${matchingItem.menu_item.name}*
+       (cantidad: ${matchingItem.quantity}) de tu orden. 
+       \n¿Querés seguir comprando?
+       \n¿Querés finalizar tu orden?` },
+      action: {
+        buttons: [
+          {
+            type: 'reply',
+            reply: { id: 'VIEW_MENU', title: 'Seguir comprando' }
+          },
+          { type: 'reply', reply: { id: 'CHECKOUT', title: 'Finalizar' } }
+        ]
+      }
+    }
+  };
+return { message: message };
+};
 export const buildAddItemMessage = async (
   business: business,
   conversation: conversation,
@@ -125,7 +187,7 @@ export const buildConfirmRemoveItemMessage = async (
   conversation: conversation,
   itemIdentifier: string // nombre, id, o descripción del ítem
 ): Promise<ConfirmRemoveItemResult> => {
-  
+
   // Buscar carrito activo
   const cart = await prisma.orders.findFirst({
     where: { conversation_id: conversation.id },
@@ -144,7 +206,7 @@ export const buildConfirmRemoveItemMessage = async (
   }
 
   // Buscar ítem que coincida (por nombre o id)
-  const matchingItem = cart.order_item.find(ci => 
+  const matchingItem = cart.order_item.find(ci =>
     ci.menu_item.id === itemIdentifier ||
     ci.menu_item.name.toLowerCase().includes(itemIdentifier.toLowerCase())
   );
@@ -202,9 +264,9 @@ export const buildConfirmRemoveItemMessage = async (
   });
 
   await createConversationMessage(
-    conversation.id, 
-    'ai', 
-    `Solicitud de confirmación para remover ${matchingItem.menu_item.name}`, 
+    conversation.id,
+    'ai',
+    `Solicitud de confirmación para remover ${matchingItem.menu_item.name}`,
     false
   );
   await updateConversationLastMessageAt(conversation.id);
@@ -219,7 +281,7 @@ export const handleConfirmRemoveItemFromWebhook = async (
   payload: WhatsAppWebhookPayload,
   itemIdentifier: string
 ): Promise<WhatsAppInteractiveMessage | string | null> => {
-  
+
   const entry = payload.entry?.[0];
   const change = entry?.changes?.[0];
   const value = change?.value;
@@ -237,11 +299,42 @@ export const handleConfirmRemoveItemFromWebhook = async (
   await findOrCreateConversationState(conversation.id);
 
   const result = await buildConfirmRemoveItemMessage(
-    business, 
-    conversation, 
+    business,
+    conversation,
     itemIdentifier
   );
-  
+
+  if (result.errorMessage) return result.errorMessage;
+  return result.message;
+};
+
+export const handleRemoveItemFromWebhook = async (
+  payload: WhatsAppWebhookPayload,
+  itemIdentifier: string
+): Promise<WhatsAppInteractiveMessage | string | null> => {
+
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
+  if (!phoneNumberId || !from || !itemIdentifier) return null;
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) return null;
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+  await findOrCreateConversationState(conversation.id);
+
+  const result = await buildRemoveItemMessage(
+    business,
+    conversation,
+    itemIdentifier
+  );
+
   if (result.errorMessage) return result.errorMessage;
   return result.message;
 };

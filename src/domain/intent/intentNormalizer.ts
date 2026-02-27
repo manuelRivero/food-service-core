@@ -30,6 +30,9 @@ export const INTENT_ENUM_VALUES = [
   ConversationIntent.TRACK_ORDER,
   ConversationIntent.PRODUCT_QUERY,
   ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION,
+  ConversationIntent.CONFIRM_REMOVE,
+  ConversationIntent.CANCEL_REMOVE,
+  ConversationIntent.REMOVE_ITEM,
   
   // Información del negocio
   ConversationIntent.PAYMENT_REQUEST,
