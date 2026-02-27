@@ -1,0 +1,14 @@
+import { Request, Response } from 'express';
+import { processWebhook } from './webhook';
+import { WhatsAppWebhookPayload } from 'src/types/whatsapp';
+
+export const handleWebhook = async (
+  req: Request<{}, {}, WhatsAppWebhookPayload>,
+  res: Response
+): Promise<void> => {
+  // 1. Responder inmediatamente a WhatsApp
+  res.sendStatus(200);
+  
+  // 2. Delegar TODO el procesamiento
+  await processWebhook(req.body);
+};

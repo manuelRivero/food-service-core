@@ -46,45 +46,87 @@ export const createOrGetOpenConversation = async (
   businessId: string,
   customerId: string
 ): Promise<conversation> => {
-  try {
-    return await createConversation(businessId, customerId);
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      console.warn('P2002 al crear conversación, buscando abierta existente', {
-        businessId,
-        customerId
-      });
-      const existing = await findOpenConversationByCustomer(customerId);
-      if (existing) {
-        console.info('Conversación abierta encontrada', {
-          conversationId: existing.id,
-          customerId
-        });
-        return existing;
+  // 1️⃣ Buscar conversación abierta para este negocio + cliente
+  const existingOpen = await prisma.conversation.findFirst({
+    where: {
+      business_id: businessId,
+      customer_id: customerId,
+      status: 'open'
+      },
+      orderBy: {
+        last_message_at: 'desc'
       }
-      const latest = await findLatestConversationByCustomer(customerId);
-      if (latest) {
-        console.info('Reabriendo conversación existente', {
-          conversationId: latest.id,
-          customerId
-        });
-        return prisma.$transaction(async (tx) => {
-          const reopened = await tx.conversation.update({
-            where: { id: latest.id },
-            data: { status: 'open', last_message_at: new Date() }
-          });
-          await tx.conversation_state.upsert({
-            where: { conversation_id: latest.id },
-            update: { current_intent: null },
-            create: { conversation_id: latest.id }
-          });
-          return reopened;
-        });
-      }
-    }
+  });
 
-    throw error;
+  if (existingOpen) {
+    console.info('Conversación abierta encontrada', {
+      conversationId: existingOpen.id,
+      customerId
+    });
+
+    return existingOpen;
   }
+
+  // 2️⃣ Si no hay abierta, buscar la última (cerrada) para reabrir
+  const latest = await prisma.conversation.findFirst({
+    where: {
+      business_id: businessId,
+      customer_id: customerId
+    },
+    orderBy: {
+      last_message_at: 'desc'
+    }
+  });
+
+  if (latest) {
+    console.info('Reabriendo conversación existente', {
+      conversationId: latest.id,
+      customerId
+    });
+
+    return prisma.$transaction(async (tx) => {
+      const reopened = await tx.conversation.update({
+        where: { id: latest.id },
+        data: {
+          status: 'open',
+          last_message_at: new Date()
+        }
+      });
+
+      await tx.conversation_state.upsert({
+        where: { conversation_id: latest.id },
+        update: { current_intent: null },
+        create: { conversation_id: latest.id }
+      });
+
+      return reopened;
+    });
+  }
+
+  // 3️⃣ Si nunca hubo conversación → crear nueva
+  console.info('Creando nueva conversación', {
+    businessId,
+    customerId
+  });
+
+  return prisma.$transaction(async (tx) => {
+    const created = await tx.conversation.create({
+      data: {
+        business_id: businessId,
+        customer_id: customerId,
+        status: 'open',
+        last_message_at: new Date()
+      }
+    });
+
+    await tx.conversation_state.create({
+      data: {
+        conversation_id: created.id
+      }
+    });
+
+    return created;
+  });
 };
 
 export const updateConversationLastMessageAt = async (

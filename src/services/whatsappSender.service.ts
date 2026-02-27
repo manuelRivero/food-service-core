@@ -128,32 +128,32 @@ export class WhatsAppSenderService {
 
     const interactive = isButton
       ? {
-          type: 'button',
-          body: { text: bodyText },
-          action: {
-            buttons: buttons.map((button) => ({
-              type: 'reply',
-              reply: {
-                id: button.payload,
-                title: this.truncateLabel(button.title)
-              }
-            }))
-          }
+        type: 'button',
+        body: { text: bodyText },
+        action: {
+          buttons: buttons.map((button) => ({
+            type: 'reply',
+            reply: {
+              id: button.payload,
+              title: this.truncateLabel(button.title)
+            }
+          }))
         }
+      }
       : {
-          type: 'list',
-          body: { text: bodyText },
-          action: {
-            button: this.truncateLabel(actionButtonLabel ?? 'Ver categorias'),
-            sections: Array.from(sections.entries()).map(([title, rows]) => ({
-              title,
-              rows: rows.map((row) => ({
-                ...row,
-                title: this.truncateLabel(row.title)
-              }))
+        type: 'list',
+        body: { text: bodyText },
+        action: {
+          button: this.truncateLabel(actionButtonLabel ?? 'Ver categorias'),
+          sections: Array.from(sections.entries()).map(([title, rows]) => ({
+            title,
+            rows: rows.map((row) => ({
+              ...row,
+              title: this.truncateLabel(row.title)
             }))
-          }
-        };
+          }))
+        }
+      };
     try {
       await axios.post(
         `${this.baseUrl}/${phoneNumberId}/messages`,
@@ -267,5 +267,60 @@ export class WhatsAppSenderService {
         messageObject: content
       });
     }
+  }
+
+
+  // Metodos nuevos separados por responsabilidad
+
+  async sendListMessage(params: {
+    phoneNumberId: string;
+    to: string;
+    listMessage: WhatsAppListMessage;
+  }): Promise<void> {
+    const { phoneNumberId, to, listMessage } = params;
+
+    // Reutilizar la lógica que ya tenías en sendResponse
+    const textParts = [
+      listMessage.header?.text,
+      listMessage.body?.text,
+      listMessage.footer?.text
+    ].filter(Boolean);
+
+    const text = textParts.join('\n\n');
+
+    const buttons = listMessage.action.sections?.flatMap((section) =>
+      section.rows.map((row) => ({
+        title: row.title,
+        payload: row.id,
+        description: row.description,
+        sectionTitle: section.title
+      }))
+    ) ?? [];
+
+    await this.sendInteractiveMenu({
+      phoneNumberId,
+      to,
+      text,
+      buttons,
+      actionButtonLabel: listMessage.action.button,
+      forceList: true
+    });
+  }
+
+  async sendButtonMessage(params: {
+    phoneNumberId: string;
+    to: string;
+    interactiveMessage: WhatsAppInteractiveMessage;
+  }): Promise<void> {
+    // Para mensajes de botones (type: 'button')
+    if (params.interactiveMessage.interactive.type !== 'button') {
+      throw new Error('sendButtonMessage solo acepta interactive.type === "button"');
+    }
+
+    await this.sendInteractiveMessage({
+      phoneNumberId: params.phoneNumberId,
+      to: params.to,
+      messageObject: params.interactiveMessage
+    });
   }
 }

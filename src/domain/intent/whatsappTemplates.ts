@@ -1,4 +1,3 @@
-import { ConversationIntent } from '../../types/conversationIntent';
 
 export interface WhatsAppListSection {
   title: string;

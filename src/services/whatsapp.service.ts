@@ -79,7 +79,7 @@ const toRowTitle = (value: string, maxLength = 24): string => value.slice(0, max
 const toRowDescription = (value: string, maxLength = 72): string => value.slice(0, maxLength);
 
 
-const buildCategoryListPages = (
+export const buildCategoryListPages = (
   buttons: { title: string; payload: string; description?: string; sectionTitle?: string }[],
   pageSize = 10
 ): { buttons: typeof buttons; page: number; totalPages: number }[] => {
@@ -125,7 +125,7 @@ const buildCategoryListPages = (
   return pages;
 };
 
-const buildProductListPages = (
+export const buildProductListPages = (
   items: { title: string; payload: string; description?: string; sectionTitle?: string }[],
   categoryId: string,
   pageSize = 10
@@ -1653,9 +1653,6 @@ const buildListMessageFromButtons = (
   });
 };
 
-const truncateDescription = (value: string, maxLength = 60): string =>
-  value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
-
 const buildOrderSearchListMessage = (params: {
   items: Array<{ id: string; name: string; description: string | null; ingredients: string | null }>;
   page: number;
@@ -1703,6 +1700,11 @@ const buildOrderSearchListMessage = (params: {
     ]
   });
 };
+
+const truncateDescription = (value: string, maxLength = 60): string =>
+  value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
+
+
 
 type ConversationMetadata = {
   pendingProductSelection?: boolean;
