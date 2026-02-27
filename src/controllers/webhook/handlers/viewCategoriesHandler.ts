@@ -1,7 +1,7 @@
 // webhooks/handlers/viewCategoriesHandlerV2.ts
 import { BaseHandler } from './baseHandler';
 import { WebhookContext, HandlerResult } from '../types';
-import { handleViewCategories } from 'src/services/category.service';
+import { handleViewCategories } from '../../../services/category.service';
 
 export class ViewCategoriesHandler extends BaseHandler {
   readonly command = 'VIEW_CATEGORIES';

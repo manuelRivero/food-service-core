@@ -1,7 +1,7 @@
 import { BaseHandler } from './baseHandler';
 import { WebhookContext, HandlerResult } from '../types';
 import { parseProductId } from '../utils';
-import { handleCategorySelectionFromWebhook } from 'src/services/category.service';
+import { handleCategorySelectionFromWebhook } from '../../../services/category.service';
 
 export class CategoryHandler extends BaseHandler {
   readonly command = 'CATEGORY';
