@@ -6,9 +6,10 @@ export const IntentEnumSchema = z.enum(INTENT_ENUM_VALUES);
 export const IntentEntitiesSchema = z
   .object({
     product_name: z.union([z.string(), z.null()]).optional(),
-    quantity: z.number().optional(),
+    quantity: z.union([z.number(), z.null()]).optional(),
     modifiers: z.array(z.string()).optional(),
-    size: z.string().optional()
+    size: z.string().optional(),
+    action: z.union([z.enum(['add', 'remove', 'modify']), z.null()]).optional()
   })
   .strict();
 
