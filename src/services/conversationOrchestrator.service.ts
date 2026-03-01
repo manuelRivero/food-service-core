@@ -2,7 +2,6 @@ import OpenAI from 'openai';
 import { classifyIntent } from '../domain/intent/intentClassifier';
 import { evaluateConfidence } from '../domain/intent/confidenceEvaluator';
 import { ConversationIntent, IntentDetectionResult } from '../domain/intent/types';
-import { normalizeIntent } from '../domain/intent/intentNormalizer';
 import { parseIntentResult } from '../domain/intent/intentValidator';
 
 const openai = new OpenAI({
