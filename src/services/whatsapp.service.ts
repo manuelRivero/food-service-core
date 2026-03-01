@@ -2877,7 +2877,13 @@ export const processIncomingMessage = async (
 
   let detectionResult;
   try {
-    detectionResult = await detectIntentWithConfidence(text);
+    detectionResult = await detectIntentWithConfidence(text, {
+      conversationMode: stateMode,
+      lastReferencedProductId: conversation.lastReferencedProductId,
+      candidateProductIds: candidateProductIds,
+      recentMessages: existingMessages.map(m => m.message),
+      lastReferencedProductName: (conversationState.metadata as any)?.lastReferencedProductName || null
+    });
   } catch (error) {
     detectionResult = null;
   }

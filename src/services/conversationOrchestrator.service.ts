@@ -3,15 +3,17 @@ import { classifyIntent } from '../domain/intent/intentClassifier';
 import { evaluateConfidence } from '../domain/intent/confidenceEvaluator';
 import { ConversationIntent, IntentDetectionResult } from '../domain/intent/types';
 import { parseIntentResult } from '../domain/intent/intentValidator';
+import { DetectionContext } from './ai/detection.service';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
 export const detectIntent = async (
-  lastUserMessage: string
+  lastUserMessage: string,
+  context: DetectionContext
 ): Promise<ConversationIntent> => {
-  const result = await detectIntentWithConfidence(lastUserMessage);
+  const result = await detectIntentWithConfidence(lastUserMessage, context);
 
   if (result.type === 'UNCERTAIN') {
     return result.candidates[0].intent;
@@ -21,10 +23,11 @@ export const detectIntent = async (
 };
 
 export const detectIntentWithConfidence = async (
-  lastUserMessage: string
+  lastUserMessage: string,
+  context: DetectionContext
 ): Promise<IntentDetectionResult> => {
   // Intent classifier must remain stateless. Do not pass conversation history.
-  const rawContent = await classifyIntent(lastUserMessage);
+  const rawContent = await classifyIntent(lastUserMessage, context);
   const parsedResult = parseIntentResult(rawContent);
 
   if (!parsedResult) {
