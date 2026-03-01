@@ -21,7 +21,7 @@ export const processWebhook = async (payload: any): Promise<void> => {
 
     try {
         // Extraer contexto
-        console.log('[Orchestrator] Processing payload:', payload);
+        console.log('[Orchestrator] Processing payload:', payload.entry[0].changes[0].value.messages[0]);
         const ctx = extractContext(payload);
         console.log('[Orchestrator] Extracted context:', ctx);
         if (!ctx) {
