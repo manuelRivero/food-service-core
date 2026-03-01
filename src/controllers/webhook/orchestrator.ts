@@ -21,7 +21,9 @@ export const processWebhook = async (payload: any): Promise<void> => {
 
     try {
         // Extraer contexto
+        console.log('[Orchestrator] Processing payload:', payload);
         const ctx = extractContext(payload);
+        console.log('[Orchestrator] Extracted context:', ctx);
         if (!ctx) {
             console.error('[Orchestrator] Invalid payload structure');
             await logFailedProcessing(payload, 'invalid_payload');
@@ -415,6 +417,8 @@ const maybeClearContext = async (
 const logFailedProcessing = async (payload: any, reason: string): Promise<void> => {
     // Log simple para debug, podría guardar en DB para análisis
     console.error('[Orchestrator] Failed processing:', {
+        payloadId: payload.payloadId,
+        payload: payload,
         reason,
         timestamp: new Date().toISOString(),
         payloadKeys: Object.keys(payload || {})
