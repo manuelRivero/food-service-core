@@ -19,6 +19,8 @@ import { ConfirmRemoveActionHandler } from './confirmRemoveActionHandler';
 // Handlers de intención (NLP)
 import { OrderFoodHandler } from './orderFoodHandler';
 import { RemoveItemHandler } from './removeItemHandler';
+import { ProductQueryHandler } from './productQueryHandler';
+import { ProductAttributeQuestionHandler } from './productAttributeQuestionHandler';
 
 // Fallback
 import { FallbackHandler } from './fallbackHandler';
@@ -43,6 +45,8 @@ export const handlers = [
   // === INTENCIONES (NLP) ===
   new OrderFoodHandler(),
   new RemoveItemHandler(),
+  new ProductQueryHandler(),
+  new ProductAttributeQuestionHandler(),
   
   // === FALLBACK (siempre último) ===
   new FallbackHandler()
