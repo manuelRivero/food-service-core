@@ -17,10 +17,13 @@ export const parsePageOnly = (payloadId: string): number => {
 
 export const extractPayloadId = (message: any): string | undefined => {
     if (message.type === 'interactive') {
-        switch (message.interative.type){
+        console.log('[Extractor] Extracted payloadId:', message.interactive);
+        switch (message.interactive.type){
             case 'button_reply':
+                console.log('[Extractor] Extracted payloadId:', message.interactive.button_reply.id);
                 return message.interactive.button_reply.id;
             case 'list_reply':
+                console.log('[Extractor] Extracted payloadId:', message.interactive.list_reply.id);
                 return message.interactive.list_reply.id;
             default:
                 return undefined;
