@@ -1,20 +1,21 @@
 // webhooks/handlers/viewCategoriesHandlerV2.ts
-import { BaseHandler } from './baseHandler';
-import { WebhookContext, HandlerResult } from '../types';
+import { WebhookContext, HandlerResult, IntentHandler } from '../types';
 import { handleViewCategories } from '../../../services/category.service';
+import { listResponse, noResponse, textResponse } from '../utils';
+import { ConversationIntent } from 'src/types/conversationIntent';
 
-export class ViewCategoriesHandler extends BaseHandler {
-  readonly command = 'VIEW_CATEGORIES';
+export class ViewCategoriesHandler implements IntentHandler {
+  readonly command = ConversationIntent.VIEW_CATEGORIES;
   
-  matches(payloadId: string): boolean {
-    return payloadId === 'VIEW_CATEGORIES';
+  canHandle(intent: string): boolean {
+    return intent === ConversationIntent.VIEW_CATEGORIES;
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
     const result = await handleViewCategories(ctx.payload);
     
-    if (result === null) return this.noResponse();
-    if (typeof result === 'string') return this.textResponse(result);
-    return this.listResponse(result);
+    if (result === null) return noResponse();
+    if (typeof result === 'string') return textResponse(result);
+    return listResponse(result);
   }
 }

@@ -1,22 +1,23 @@
 // webhooks/handlers/checkoutHandler.ts
-import { BaseHandler } from './baseHandler';
-import { WebhookContext, HandlerResult } from '../types';
+import { WebhookContext, HandlerResult, IntentHandler } from '../types';
 import { handleCheckoutFromWebhook } from '../../../services/checkout.service';
+import { ConversationIntent } from '../../../types/conversationIntent';
+import { noResponse, textResponse } from '../utils';
 
-export class CheckoutHandler extends BaseHandler {
-  readonly command = 'CHECKOUT';
+export class CheckoutHandler implements IntentHandler {
+  readonly command = ConversationIntent.CHECKOUT;
   
-  matches(payloadId: string): boolean {
-    return payloadId === 'CHECKOUT';
+  canHandle(intent: string): boolean {
+    return intent === ConversationIntent.CHECKOUT;
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
     const content = await handleCheckoutFromWebhook(ctx.payload);
     
     if (!content) {
-      return this.noResponse();
+      return noResponse();
     }
 
-    return this.textResponse(content);
+    return textResponse(content);
   }
 }

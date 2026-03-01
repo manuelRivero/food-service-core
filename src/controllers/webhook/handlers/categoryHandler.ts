@@ -1,16 +1,13 @@
-import { BaseHandler } from './baseHandler';
-import { WebhookContext, HandlerResult } from '../types';
-import { parseProductId } from '../utils';
+import { WebhookContext, HandlerResult, IntentHandler } from '../types';
+import { listResponse, noResponse, parseProductId, textResponse } from '../utils';
 import { handleCategorySelectionFromWebhook } from '../../../services/category.service';
+import { ConversationIntent } from '../../../types/conversationIntent';
 
-export class CategoryHandler extends BaseHandler {
-  readonly command = 'CATEGORY';
+export class CategoryHandler implements IntentHandler {
+  readonly command = ConversationIntent.CATEGORY;
   
-  matches(payloadId: string): boolean {
-    // Evitar conflicto con CATEGORY_PAGE y CATEGORY_LIST_PAGE
-    return payloadId.startsWith('CATEGORY:') && 
-           !payloadId.startsWith('CATEGORY_PAGE:') && 
-           !payloadId.startsWith('CATEGORY_LIST_PAGE:');
+  canHandle(intent: string): boolean {
+    return intent === ConversationIntent.CATEGORY;
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
@@ -19,13 +16,13 @@ export class CategoryHandler extends BaseHandler {
     const result = await handleCategorySelectionFromWebhook(ctx.payload, categoryId, 1);
     
     if (result === null) {
-      return this.noResponse();
+      return noResponse();
     }
 
     if (typeof result === 'string') {
-      return this.textResponse(result);
+      return textResponse(result);
     }
 
-    return this.listResponse(result);
+    return listResponse(result);
   }
 }

@@ -1,18 +1,19 @@
 // webhooks/handlers/askQuestionHandler.ts
-import { BaseHandler } from './baseHandler';
-import { WebhookContext, HandlerResult } from '../types';
+import { WebhookContext, HandlerResult, IntentHandler } from '../types';
 import { handleAskQuestionFromWebhook } from '../../../services/conversation.service';
+import { noResponse, textResponse } from '../utils';
+import { ConversationIntent } from '../../../types/conversationIntent';
 
-export class AskQuestionHandler extends BaseHandler {
-  readonly command = 'ASK_QUESTION';
+export class AskQuestionHandler implements IntentHandler {
+  readonly command = ConversationIntent.ASK_QUESTION;
   
-  matches(payloadId: string): boolean {
-    return payloadId === 'ASK_QUESTION';
+  canHandle(intent: string): boolean {
+    return intent === ConversationIntent.ASK_QUESTION;
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
     const result = await handleAskQuestionFromWebhook(ctx.payload);
-    if (result === null) return this.noResponse();
-    return this.textResponse(result);
+    if (result === null) return noResponse();
+    return textResponse(result);
   }
 }

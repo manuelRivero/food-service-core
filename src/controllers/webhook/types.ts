@@ -1,42 +1,75 @@
-import { WhatsAppInteractiveMessage, WhatsAppListMessage } from "../../domain/intent/whatsappTemplates";
 
+import { ConversationIntent } from '../../types/conversationIntent';
+import { IntentDetectionResult } from '../../services/ai/detection.service';
+
+// Payload de WhatsApp (sin cambios)
 export interface WhatsAppWebhookPayload {
-    entry: Array<{
-      changes: Array<{
-        value: {
-          metadata: { phone_number_id: string };
-          messages: Array<{
-            from: string;
-            type: string;
-            interactive?: {
-              button_reply?: { id: string };
-              list_reply?: { id: string };
-            };
-            text?: { body: string };
-          }>;
-        };
-      }>;
+  entry: Array<{
+    changes: Array<{
+      value: {
+        metadata: { phone_number_id: string };
+        messages: Array<{
+          from: string;
+          type: string;
+          id?: string;
+          text?: { body: string };
+          interactive?: {
+            button_reply?: { id: string; title?: string };
+            list_reply?: { id: string; title?: string };
+          };
+        }>;
+      };
     }>;
-  }
-  
-  export interface WebhookContext {
-    payload: WhatsAppWebhookPayload;
-    phoneNumberId: string;
-    to: string;
-    message: any;
-    value: any;
-    payloadId: string | undefined;
-  }
-  
-  export type WhatsAppResponseMessage = WhatsAppListMessage | WhatsAppInteractiveMessage | string;
-  // TODOS los handlers deben devolver esto
-  export interface HandlerResult {
-    content: WhatsAppResponseMessage;
-    isInteractive: boolean;  // true = sendInteractiveMessage, false = sendResponse
-  }
-  
-  export interface WebhookHandler {
-    readonly command: string;
-    matches(payloadId: string): boolean;
-    execute(ctx: WebhookContext): Promise<HandlerResult | null>;
-  }
+  }>;
+}
+
+// Contexto base
+export interface WebhookContext {
+  payload: WhatsAppWebhookPayload;
+  phoneNumberId: string;
+  to: string;
+  message: any;
+  value: any;
+  payloadId?: string;
+}
+
+// Contexto enriquecido con detección
+export interface EnrichedContext extends WebhookContext {
+  detection: IntentDetectionResult;
+  conversation: any;
+  business: any;
+  customer: any;
+  conversationState: any;
+  conversationId: string;
+}
+
+// Resultado de handler
+export interface HandlerResult {
+  content: string | object;
+  isInteractive: boolean;
+}
+
+// Clasificación de intención
+export interface IntentClassification {
+  intent: ConversationIntent;
+  confidence: number;
+  detectedProductName: string | null;
+  quantity: number | null;
+}
+
+// === INTERFAZ PARA BOTONES ===
+export interface InteractiveHandler {
+  readonly command: string;
+  matches(payloadId: string): boolean;
+  execute(ctx: WebhookContext): Promise<HandlerResult | null>;
+}
+
+// === INTERFAZ PARA INTENCIONES ===
+export interface IntentHandler {
+  readonly command: string;
+  canHandle(intent: string): boolean;
+  execute(ctx: EnrichedContext, classification: IntentClassification): Promise<HandlerResult | null>;
+}
+
+// Tipo unión para registro
+export type WebhookHandler = InteractiveHandler | IntentHandler;

@@ -1,14 +1,14 @@
 // webhooks/handlers/orderSearchPageHandler.ts
-import { BaseHandler } from './baseHandler';
-import { WebhookContext, HandlerResult } from '../types';
-import { parsePageOnly } from '../utils';
+import { WebhookContext, HandlerResult, IntentHandler } from '../types';
+import { listResponse, parsePageOnly, textResponse } from '../utils';
 import { handleOrderSearchPageFromWebhook } from '../../../services/whatsapp.service';
+import { ConversationIntent } from 'src/types/conversationIntent';
 
-export class OrderSearchPageHandler extends BaseHandler {
-    readonly command = 'ORDER_SEARCH_PAGE';
+export class OrderSearchPageHandler implements IntentHandler {
+    readonly command = ConversationIntent.ORDER_SEARCH_PAGE;
     
-    matches(payloadId: string): boolean {
-      return payloadId.startsWith('ORDER_SEARCH_PAGE:');
+    canHandle(intent: string): boolean {
+      return intent === ConversationIntent.ORDER_SEARCH_PAGE;
     }
   
     async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
@@ -23,11 +23,11 @@ export class OrderSearchPageHandler extends BaseHandler {
       
       // Mensaje de texto (error de metadata expirada)
       if (typeof result === 'string') {
-        return this.textResponse(result);
+        return textResponse(result);
       }
       
       // WhatsAppListMessage exitoso
-      return this.listResponse(result);
+      return listResponse(result);
     }
   }
   

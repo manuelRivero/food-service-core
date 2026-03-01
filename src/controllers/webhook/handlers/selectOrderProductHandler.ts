@@ -1,14 +1,14 @@
 // webhooks/handlers/selectOrderProductHandler.ts
-import { BaseHandler } from './baseHandler';
-import { WebhookContext, HandlerResult } from '../types';
-import { parseProductId } from '../utils';
+import { WebhookContext, HandlerResult, IntentHandler } from '../types';
+import { listResponse, noResponse, parseProductId, textResponse } from '../utils';
 import { handleOrderProductSelectionFromWebhook } from '../../../services/whatsapp.service';
+import { ConversationIntent } from 'src/types/conversationIntent';
 
-export class SelectOrderProductHandler extends BaseHandler {
-  readonly command = 'SELECT_ORDER_PRODUCT';
+export class SelectOrderProductHandler implements IntentHandler {
+  readonly command = ConversationIntent.SELECT_ORDER_PRODUCT;
   
-  matches(payloadId: string): boolean {
-    return payloadId.startsWith('SELECT_ORDER_PRODUCT:');
+  canHandle(intent: string): boolean {
+    return intent === ConversationIntent.SELECT_ORDER_PRODUCT;
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
@@ -18,15 +18,15 @@ export class SelectOrderProductHandler extends BaseHandler {
     
     // Manejar string vacío como error silencioso
     if (!content) {
-      return this.noResponse();
+      return noResponse();
     }
 
     // Detectar tipo: string = texto, objeto = lista
     if (typeof content === 'string') {
-      return this.textResponse(content);
+      return textResponse(content);
     }
 
     // Es WhatsAppListMessage
-    return this.listResponse(content);
+    return listResponse(content);
   }
 }

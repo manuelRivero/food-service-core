@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import { processWebhook } from './webhook';
 import { WhatsAppWebhookPayload } from './webhook/types';
+import { processWebhook } from './webhook/orchestrator';
 
 export const handleWebhook = async (
   req: Request<{}, {}, WhatsAppWebhookPayload>,

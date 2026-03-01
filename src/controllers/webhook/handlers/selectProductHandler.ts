@@ -1,10 +1,10 @@
-// webhooks/handlers/selectProductHandler.ts
-import { BaseHandler } from './baseHandler';
-import { WebhookContext, HandlerResult } from '../types';
-import { parseProductId } from '../utils';
+// src/controllers/webhook/handlers/selectProductHandler.ts
+
+import { InteractiveHandler, WebhookContext, HandlerResult } from '../types';
+import { interactiveResponse, noResponse } from '../utils';
 import { handleProductSelectionFromWebhook } from '../../../services/whatsapp.service';
 
-export class SelectProductHandler extends BaseHandler {
+export class SelectProductHandler implements InteractiveHandler {
   readonly command = 'SELECT_PRODUCT';
   
   matches(payloadId: string): boolean {
@@ -12,15 +12,16 @@ export class SelectProductHandler extends BaseHandler {
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
-    const productId = parseProductId(ctx.payloadId!);
+    const productId = ctx.payloadId!.replace('SELECT_PRODUCT:', '');
     
-    // Esta función ahora devuelve el objeto de mensaje, NO envía
-    const messageObject = await handleProductSelectionFromWebhook(ctx.payload, productId);
+    const result = await handleProductSelectionFromWebhook(ctx.payload, productId);
     
-    if (!messageObject) {
-      return this.noResponse();
+    if (result === null) return noResponse();
+    if (typeof result === 'string') {
+      // Si retorna string, convertir a texto (aunque normalmente es interactivo)
+      return { content: result, isInteractive: false };
     }
-
-    return this.interactiveResponse(messageObject);
+    
+    return interactiveResponse(result);
   }
 }

@@ -1,14 +1,14 @@
 // webhooks/handlers/categoryPageHandler.ts
-import { BaseHandler } from './baseHandler';
-import { WebhookContext, HandlerResult } from '../types';
-import { parseCategoryPage } from '../utils';
+import { WebhookContext, HandlerResult, IntentHandler } from '../types';
+import { listResponse, noResponse, parseCategoryPage, textResponse } from '../utils';
 import { handleCategoryPageFromWebhook } from '../../../services/category.service';
+import { ConversationIntent } from '../../../types/conversationIntent';
 
-export class CategoryPageHandler extends BaseHandler {
-  readonly command = 'CATEGORY_PAGE';
+export class CategoryPageHandler implements IntentHandler {
+  readonly command = ConversationIntent.CATEGORY_PAGE;
   
-  matches(payloadId: string): boolean {
-    return payloadId.startsWith('CATEGORY_PAGE:');
+  canHandle(intent: string): boolean {
+    return intent === ConversationIntent.CATEGORY_PAGE;
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
@@ -22,13 +22,13 @@ export class CategoryPageHandler extends BaseHandler {
     );
     
     if (!content) {
-      return this.noResponse();
+      return noResponse();
     }
 
     if (typeof content === 'string') {
-      return this.textResponse(content);
+      return textResponse(content);
     }
 
-    return this.listResponse(content);
+    return listResponse(content);
   }
 }

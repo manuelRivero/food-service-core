@@ -1,6 +1,6 @@
-// webhooks/handlers/index.ts
-import { WebhookHandler } from '../types';
+// src/controllers/webhook/handlers/index.ts
 
+// Handlers de botones (payloadId)
 import { SelectProductHandler } from './selectProductHandler';
 import { SelectOrderProductHandler } from './selectOrderProductHandler';
 import { OrderSearchPageHandler } from './orderSearchPageHandler';
@@ -14,13 +14,17 @@ import { EndConversationHandler } from './endConversationHandler';
 import { AskQuestionHandler } from './askQuestionHandler';
 import { ViewMenuReturnHandler } from './viewMenuReturnHandler';
 import { ViewCategoriesHandler } from './viewCategoriesHandler';
-import { FallbackHandler } from './fallbackHandler';
-import { ConfirmRemoveItemHandler } from './confirmRemoveItem';
-import { RemoveItemHandler } from './removeItem';
-import { OrderFoodHandler } from './orderFoodHandler';
+import { ConfirmRemoveActionHandler } from './confirmRemoveActionHandler';
 
-export const handlers: WebhookHandler[] = [
-  // Específicos con parámetros (más específicos primero)
+// Handlers de intención (NLP)
+import { OrderFoodHandler } from './orderFoodHandler';
+import { RemoveItemHandler } from './removeItemHandler';
+
+// Fallback
+import { FallbackHandler } from './fallbackHandler';
+
+export const handlers = [
+  // === BOTONES (payloadId) - orden: más específicos primero ===
   new SelectProductHandler(),
   new SelectOrderProductHandler(),
   new OrderSearchPageHandler(),
@@ -28,18 +32,18 @@ export const handlers: WebhookHandler[] = [
   new CategoryListPageHandler(),
   new CategoryHandler(),
   new AddItemHandler(),
-  new ConfirmRemoveItemHandler(),
-  new RemoveItemHandler(),
-  new OrderFoodHandler(),
-  
-  // Comandos exactos
   new CheckoutHandler(),
   new CancelOrderHandler(),
   new EndConversationHandler(),
   new AskQuestionHandler(),
   new ViewMenuReturnHandler(),
   new ViewCategoriesHandler(),
+  new ConfirmRemoveActionHandler(), // CONFIRM_REMOVE:id y CANCEL_REMOVE
   
-  // Siempre al final
+  // === INTENCIONES (NLP) ===
+  new OrderFoodHandler(),
+  new RemoveItemHandler(),
+  
+  // === FALLBACK (siempre último) ===
   new FallbackHandler()
 ];

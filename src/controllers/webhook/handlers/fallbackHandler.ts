@@ -1,41 +1,81 @@
-// webhooks/handlers/fallbackHandler.ts
-import { BaseHandler } from './baseHandler';
-import { WebhookContext, HandlerResult } from '../types';
-import { processIncomingMessage } from '../../../services/whatsapp.service';
+// src/controllers/webhook/handlers/fallbackHandler.ts
 
-export class FallbackHandler extends BaseHandler {
-  readonly command = 'FALLBACK';
+import { IntentHandler, IntentClassification, HandlerResult, EnrichedContext, WebhookContext } from '../types';
+import { generateAIResponse } from '../../../services/ai/openai.service';
+import { 
+  createConversationMessage,
+  getRecentMessagesByConversationId,
+  updateConversationLastMessageAt
+} from '../../../repositories';
+import { ConversationIntent } from 'src/types/conversationIntent';
+import { textResponse } from '../utils';
+import { ChatCompletionMessageParam } from 'openai/resources/index';
+
+export class FallbackHandler implements IntentHandler {
+  readonly command = ConversationIntent.UNKNOWN;
   
-  matches(): boolean {
-    return true; // Catch-all para cualquier payloadId (o sin payloadId)
+  canHandle(intent: string): boolean {
+    return intent === ConversationIntent.UNKNOWN;
+    return true; // Catch-all
   }
 
-  async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
-    // Procesa mensajes de texto normales o interacciones no reconocidas
-    const response = await processIncomingMessage(ctx.payload);
+  async execute(
+    ctx: EnrichedContext | WebhookContext,
+    classification?: IntentClassification
+  ): Promise<HandlerResult | null> {
     
-    if (!response) {
-      return this.noResponse();
+    console.log('[FallbackHandler] Executing as last resort');
+
+    // Intentar obtener datos del contexto
+    let business: any = null;
+    let conversation: any = null;
+    let messageContent = '';
+
+    if ('detection' in ctx) {
+      // Contexto enriquecido
+      business = ctx.business;
+      conversation = ctx.conversation;
+      messageContent = ctx.message?.text?.body || '';
+    } else {
+      // Contexto básico - no debería pasar, pero por seguridad
+      messageContent = ctx.message?.text?.body || '';
     }
 
-    console.log('---- FINAL BOT RESPONSE ----');
-    console.log(response);
-    console.log('----------------------------');
+    if (!business || !conversation) {
+      return textResponse('Disculpá, no pude procesar tu mensaje. Intentá de nuevo.');
+    }
 
-    if (!response) {
-      return null;
-    }
-  
-    // Detectar tipo
-    if (typeof response === 'string') {
-      return this.textResponse(response);
-    }
+    // Generar respuesta genérica con LLM
+    const history = await getRecentMessagesByConversationId(conversation.id, 5);
+    const messages: ChatCompletionMessageParam[] = history.map(m => ({
+      role: m.sender === 'ai' ? 'assistant' : 'user',
+      content: m.message
+    }));
     
-    // Es WhatsAppListMessage o WhatsAppInteractiveMessage
-    if (response.type === 'list') {
-      return this.listResponse(response);
-    }
+    const response = await generateAIResponse(business, [
+      ...messages,
+      { role: 'user' as const, content: messageContent }
+    ]);
+
+    // Guardar respuesta
+    await createConversationMessage(conversation.id, 'ai', response.content, true);
+    await updateConversationLastMessageAt(conversation.id);
+
+    return textResponse(response.content);
+  }
+
+  private async getRecentHistory(conversationId: string): Promise<any[]> {
+    const { prisma } = await import('../../../lib/prisma');
     
-    return this.interactiveResponse(response);
+    const messages = await prisma.conversation_message.findMany({
+      where: { conversation_id: conversationId },
+      orderBy: { created_at: 'asc' },
+      take: 10
+    });
+
+    return messages.map(m => ({
+      role: m.sender === 'ai' ? 'assistant' : 'user',
+      content: m.message
+    }));
   }
 }

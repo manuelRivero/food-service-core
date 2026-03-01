@@ -1,0 +1,333 @@
+// src/webhooks/orchestrator.ts
+
+import { extractContext } from './extractor';
+import { dispatchIntent, dispatchInteractive } from './dispachers';
+import { sendResponse } from './sender';
+import { detectIntentWithConfidence, DetectionContext } from '../../services/ai/detection.service';
+import { 
+  findBusinessByPhoneNumberId,
+  findOrCreateCustomer,
+  createOrGetOpenConversation,
+  findOrCreateConversationState,
+  createConversationMessage,
+  updateConversationLastMessageAt
+} from '../../repositories';
+import { prisma } from '../../lib/prisma';
+import { ConversationIntent } from '../../types/conversationIntent';
+import { WebhookContext } from './types';
+
+export const processWebhook = async (payload: any): Promise<void> => {
+  const startTime = Date.now();
+  
+  try {
+    // Extraer contexto
+    const ctx = extractContext(payload);
+    if (!ctx) {
+      console.error('[Orchestrator] Invalid payload structure');
+      await logFailedProcessing(payload, 'invalid_payload');
+      return;
+    }
+
+    console.log('[Orchestrator] Processing message from:', ctx.to);
+
+    // Guardar mensaje del usuario (siempre)
+    const persistResult = await persistUserMessage(ctx, payload);
+    if (!persistResult) {
+      console.error('[Orchestrator] Failed to persist message');
+      return;
+    }
+
+    // CASO 1: Interactivo con payloadId conocido
+    if (ctx.payloadId) {
+      console.log('[Orchestrator] Route: Interactive (payloadId:', ctx.payloadId + ')');
+      
+      const result = await dispatchInteractive(ctx);
+      
+      if (result) {
+        await sendResponse(ctx, result);
+        console.log('[Orchestrator] Response sent in', Date.now() - startTime, 'ms');
+      } else {
+        console.log('[Orchestrator] No handler for payloadId:', ctx.payloadId);
+      }
+      return;
+    }
+
+    // CASO 2: Mensaje de texto → NLP completo
+    console.log('[Orchestrator] Route: NLP (text message)');
+    await processTextMessage(ctx, payload, persistResult.conversationId);
+
+  } catch (error) {
+    console.error('[Orchestrator] Unhandled error:', error);
+    // No lanzar error para no crashear el webhook
+  }
+};
+
+interface PersistResult {
+  success: boolean;
+  conversationId: string;
+  businessId: string;
+  customerId: string;
+}
+
+const persistUserMessage = async (
+  ctx: WebhookContext, 
+  payload: any
+): Promise<PersistResult | null> => {
+  try {
+    const { phoneNumberId, to, message } = ctx;
+    
+    if (!phoneNumberId || !to) {
+      console.error('[Persist] Missing phoneNumberId or to');
+      return null;
+    }
+    
+    const business = await findBusinessByPhoneNumberId(phoneNumberId);
+    if (!business) {
+      console.error('[Persist] Business not found:', phoneNumberId);
+      return null;
+    }
+    
+    const customer = await findOrCreateCustomer(business.id, to);
+    const conversation = await createOrGetOpenConversation(business.id, customer.id);
+    
+    // Extraer contenido del mensaje
+    let messageContent = '';
+    let messageType = 'unknown';
+    
+    if (message?.type === 'text') {
+      messageContent = message.text?.body || '';
+      messageType = 'text';
+    } else if (message?.type === 'interactive') {
+      const interactiveId = message.interactive?.button_reply?.id 
+        || message.interactive?.list_reply?.id;
+      messageContent = `[interactive: ${interactiveId || 'unknown'}]`;
+      messageType = 'interactive';
+    } else {
+      messageContent = `[${message?.type || 'unknown'}]`;
+    }
+
+    // Guardar en DB
+    await createConversationMessage(
+      conversation.id,
+      'user',
+      messageContent,
+      false,
+      message?.id
+    );
+    
+    await updateConversationLastMessageAt(conversation.id);
+    
+    console.log('[Persist] Message saved:', {
+      conversationId: conversation.id,
+      type: messageType,
+      contentPreview: messageContent.substring(0, 50)
+    });
+    
+    return {
+      success: true,
+      conversationId: conversation.id,
+      businessId: business.id,
+      customerId: customer.id
+    };
+    
+  } catch (error) {
+    console.error('[Persist] Error:', error);
+    return null;
+  }
+};
+
+const processTextMessage = async (
+  ctx: WebhookContext,
+  payload: any,
+  conversationId: string
+): Promise<void> => {
+  
+  try {
+    // Obtener contexto completo de la conversación
+    const contextData = await buildDetectionContext(conversationId, ctx);
+    if (!contextData) {
+      console.error('[NLP] Failed to build context');
+      return;
+    }
+
+    const { conversation, business, customer, conversationState, recentMessages } = contextData;
+    
+    // Preparar mensaje para detección
+    const userMessage = ctx.message?.text?.body || '';
+    
+    // Detectar intención
+    const detectionContext: DetectionContext = {
+      conversationMode: (conversationState as any).mode || 'GLOBAL',
+      lastReferencedProductId: conversation.lastReferencedProductId,
+      candidateProductIds: (conversationState.metadata as any)?.candidateProductIds || null,
+      recentMessages: recentMessages.map(m => m.message)
+    };
+
+    console.log('[NLP] Detecting intent for:', userMessage.substring(0, 50));
+    
+    const detection = await detectIntentWithConfidence(userMessage, detectionContext);
+
+    console.log('[NLP] Detection result:', {
+      intent: detection.intent,
+      confidence: detection.confidence,
+      product: detection.detectedProductName,
+      quantity: detection.quantity
+    });
+
+    // Aplicar context clearing si aplica
+    await maybeClearContext(
+      detection.intent,
+      detection.detectedProductName,
+      conversation,
+      conversationState
+    );
+
+    // Enriquecer contexto para handlers
+    const enrichedCtx = {
+      ...ctx,
+      detection,
+      conversation,
+      business,
+      customer,
+      conversationState,
+      conversationId
+    };
+
+    // Dispatch por intención
+    const result = await dispatchIntent(enrichedCtx);
+    console.log('[NLP] Result:', result);
+    
+    if (result) {
+      await sendResponse(ctx, result);
+      
+      // Guardar respuesta AI en DB si es mensaje de texto
+      if (typeof result.content === 'string') {
+        await createConversationMessage(conversation.id, 'ai', result.content, true);
+      } else {
+        // Para mensajes interactivos, guardar descripción
+        const description = (result.content as any)?.body?.text as any
+          || (result.isInteractive as any)?.body?.text as any
+          || '[interactive response]';
+        await createConversationMessage(conversation.id, 'ai', description, true);
+      }
+      
+      await updateConversationLastMessageAt(conversation.id);
+    } else {
+      console.log('[NLP] No handler produced result for intent:', detection.intent);
+      
+      // Fallback genérico
+      const fallbackText = 'No entendí bien. ¿Podés repetir o elegir una opción del menú?';
+      await sendResponse(ctx, { content: fallbackText, isInteractive: false });
+      await createConversationMessage(conversation.id, 'ai', fallbackText, true);
+      await updateConversationLastMessageAt(conversation.id);
+    }
+
+  } catch (error) {
+    console.error('[NLP] Error processing text:', error);
+    
+    // Error graceful
+    const errorText = 'Disculpá, tuve un problema. ¿Podés intentar de nuevo?';
+    await sendResponse(ctx, { content: errorText, isInteractive: false });
+  }
+};
+
+const buildDetectionContext = async (
+  conversationId: string,
+  ctx: WebhookContext
+) => {
+  try {
+    const { phoneNumberId, to } = ctx;
+    
+    const business = await findBusinessByPhoneNumberId(phoneNumberId);
+    if (!business) return null;
+    
+    const customer = await findOrCreateCustomer(business.id, to);
+    const conversation = await createOrGetOpenConversation(business.id, customer.id);
+    const conversationState = await findOrCreateConversationState(conversation.id);
+    
+    // Obtener mensajes recientes para contexto
+    const recentMessages = await prisma.conversation_message.findMany({
+      where: { conversation_id: conversationId },
+      orderBy: { created_at: 'desc' },
+      take: 5
+    });
+    
+    return {
+      conversation,
+      business,
+      customer,
+      conversationState,
+      recentMessages
+    };
+    
+  } catch (error) {
+    console.error('[Context] Error building context:', error);
+    return null;
+  }
+};
+
+const maybeClearContext = async (
+  intent: ConversationIntent,
+  detectedProduct: string | null,
+  conversation: any,
+  conversationState: any
+): Promise<void> => {
+  
+  // Intents que limpian contexto de producto
+  const intentsToClear = new Set([
+    ConversationIntent.SMALL_TALK,
+    ConversationIntent.BUSINESS_HOURS,
+    ConversationIntent.BUSINESS_LOCATION,
+    ConversationIntent.DELIVERY_INFO,
+    ConversationIntent.PAYMENT_METHODS,
+    ConversationIntent.SUPPORT,
+    ConversationIntent.UNKNOWN
+  ]);
+
+  const shouldClear = intentsToClear.has(intent) 
+    && !detectedProduct 
+    && (conversation.lastReferencedProductId || (conversationState.metadata as any)?.candidateProductIds?.length);
+
+  if (!shouldClear) return;
+
+  try {
+    console.log('[Context] Clearing product context');
+    
+    // Limpiar lastReferencedProductId
+    if (conversation.lastReferencedProductId) {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { lastReferencedProductId: null }
+      });
+    }
+
+    // Limpiar metadata
+    const currentMetadata = (conversationState.metadata as any) || {};
+    const cleanedMetadata = {
+      ...currentMetadata,
+      candidateProductIds: null,
+      pendingProductSelection: false,
+      pendingQuestion: null
+    };
+
+    await prisma.conversation_state.update({
+      where: { conversation_id: conversationState.id },
+      data: {
+        mode: 'GLOBAL',
+        metadata: cleanedMetadata
+      }
+    });
+    
+  } catch (error) {
+    console.error('[Context] Error clearing context:', error);
+  }
+};
+
+const logFailedProcessing = async (payload: any, reason: string): Promise<void> => {
+  // Log simple para debug, podría guardar en DB para análisis
+  console.error('[Orchestrator] Failed processing:', {
+    reason,
+    timestamp: new Date().toISOString(),
+    payloadKeys: Object.keys(payload || {})
+  });
+};

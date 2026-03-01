@@ -1,19 +1,20 @@
 // webhooks/handlers/viewMenuReturnHandler.ts
-import { BaseHandler } from './baseHandler';
-import { WebhookContext, HandlerResult } from '../types';
+import { WebhookContext, HandlerResult, IntentHandler } from '../types';
 import { handleViewMenuReturnFromWebhook } from '../../../services/category.service';
+import { listResponse, noResponse, textResponse } from '../utils';
+import { ConversationIntent } from '../../../types/conversationIntent';
 
-export class ViewMenuReturnHandler extends BaseHandler {
-  readonly command = 'VIEW_MENU_RETURN';
+export class ViewMenuReturnHandler implements IntentHandler {
+  readonly command = ConversationIntent.VIEW_MENU_RETURN;
   
-  matches(payloadId: string): boolean {
-    return payloadId === 'VIEW_MENU_RETURN';
+  canHandle(intent: string): boolean {
+    return intent === ConversationIntent.VIEW_MENU_RETURN;
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
     const result = await handleViewMenuReturnFromWebhook(ctx.payload);
-    if (result === null) return this.noResponse();
-    if (typeof result === 'string') return this.textResponse(result);
-    return this.listResponse(result);
+    if (result === null) return noResponse();
+    if (typeof result === 'string') return textResponse(result);
+    return listResponse(result);
   }
 }
