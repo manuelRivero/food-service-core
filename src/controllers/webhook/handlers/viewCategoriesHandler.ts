@@ -2,7 +2,7 @@
 import { WebhookContext, HandlerResult, IntentHandler } from '../types';
 import { handleViewCategories } from '../../../services/category.service';
 import { listResponse, noResponse, textResponse } from '../utils';
-import { ConversationIntent } from 'src/types/conversationIntent';
+import { ConversationIntent } from '../../../types/conversationIntent';
 
 export class ViewCategoriesHandler implements IntentHandler {
   readonly command = ConversationIntent.VIEW_CATEGORIES;

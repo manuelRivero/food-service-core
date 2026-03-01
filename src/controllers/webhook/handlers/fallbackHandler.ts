@@ -7,7 +7,7 @@ import {
   getRecentMessagesByConversationId,
   updateConversationLastMessageAt
 } from '../../../repositories';
-import { ConversationIntent } from 'src/types/conversationIntent';
+import { ConversationIntent } from '../../../types/conversationIntent';
 import { textResponse } from '../utils';
 import { ChatCompletionMessageParam } from 'openai/resources/index';
 

@@ -2,7 +2,7 @@
 import { WebhookContext, HandlerResult, IntentHandler } from '../types';
 import { interactiveResponse, noResponse, parseProductId, textResponse } from '../utils';
 import { handleConfirmRemoveItemFromWebhook } from '../../../services/cart.service';
-import { ConversationIntent } from 'src/types/conversationIntent';
+import { ConversationIntent } from '../../../types/conversationIntent';
 
 export class ConfirmRemoveActionHandler implements IntentHandler {
   readonly command = ConversationIntent.CONFIRM_REMOVE;

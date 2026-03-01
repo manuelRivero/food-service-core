@@ -2,7 +2,7 @@
 import { WebhookContext, HandlerResult, IntentHandler } from '../types';
 import { listResponse, parsePageOnly, textResponse } from '../utils';
 import { handleOrderSearchPageFromWebhook } from '../../../services/whatsapp.service';
-import { ConversationIntent } from 'src/types/conversationIntent';
+import { ConversationIntent } from '../../../types/conversationIntent';
 
 export class OrderSearchPageHandler implements IntentHandler {
     readonly command = ConversationIntent.ORDER_SEARCH_PAGE;
