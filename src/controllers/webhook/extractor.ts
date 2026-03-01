@@ -9,6 +9,12 @@ export const extractContext = (payload: WhatsAppWebhookPayload): WebhookContext 
   const message = value?.messages?.[0];
   const phoneNumberId = value?.metadata?.phone_number_id;
   const to = message?.from;
+  console.log('[Extractor] Extracted context:', {
+    phoneNumberId,
+    to,
+    message,
+    value,
+  });
 
   if (!phoneNumberId || !to || !message) {
     console.error('Invalid webhook payload structure:', {
