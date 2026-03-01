@@ -161,7 +161,8 @@ const processTextMessage = async (
             conversationMode: (conversationState as any).mode || 'GLOBAL',
             lastReferencedProductId: conversation.lastReferencedProductId,
             candidateProductIds: (conversationState.metadata as any)?.candidateProductIds || null,
-            recentMessages: recentMessages.map(m => m.message)
+            recentMessages: recentMessages.map(m => m.message),
+            lastReferencedProductName: (conversationState.metadata as any)?.lastReferencedProductName || null
         };
 
         console.log('[NLP] Detecting intent for:', userMessage.substring(0, 50));

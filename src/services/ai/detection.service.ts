@@ -13,6 +13,7 @@ export interface DetectionContext {
   lastReferencedProductId: string | null;
   candidateProductIds: string[] | null;
   recentMessages: string[];
+  lastReferencedProductName?: string | null;
 }
 
 export interface IntentDetectionResult {

@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { DetectionContext } from 'src/services/ai/detection.service';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -28,13 +29,17 @@ CONVERSACIÓN:
 - GREETING, SMALL_TALK, GENERAL_QUESTION, etc.
 `;
 
-export const INTENT_CLASSIFIER_PROMPT = `
+export const INTENT_CLASSIFIER_PROMPT = (context: DetectionContext) => `
 You are an intent classifier for a restaurant WhatsApp assistant.
 
 Your task is to classify ONLY the user's latest message.
-Do NOT consider previous messages.
+You may use the provided conversation context.
+Only classify the latest message, but consider the current conversation mode.
 Do NOT generate explanations.
 Return ONLY valid JSON in the specified format.
+
+Current mode: ${context.conversationMode}
+Last referenced product: ${context.lastReferencedProductName}
 
 ----------------------------------------
 AVAILABLE INTENTS
@@ -134,7 +139,22 @@ Example:
 - "Dónde están ubicados?"
 - "Cuál es su horario?"
 
-10) UNKNOWN
+10) If Current mode is PRODUCT_FOCUS:
+
+- Assume the user is asking about the last referenced product
+  unless they clearly search for a different dish.
+
+- Short ingredient questions like:
+  "Lleva arroz?"
+  "Tiene papa?"
+  "Es picante?"
+  MUST be classified as PRODUCT_ATTRIBUTE_QUESTION.
+
+- Only classify as PRODUCT_QUERY in PRODUCT_FOCUS mode
+  if the user explicitly mentions another full dish
+  or clearly starts a new search.
+
+11) UNKNOWN
 Use only if the message is impossible to classify.
 
 ----------------------------------------
@@ -179,10 +199,11 @@ Rules:
 - No explanation.
 `;
 
-const INTENT_PROMPT_VERSION = 'intent-classifier-v6';
+const INTENT_PROMPT_VERSION = 'intent-classifier-v7';
 
 export const classifyIntent = async (
-  lastUserMessage: string
+  lastUserMessage: string,
+  context: DetectionContext
 ): Promise<string> => {
   console.log('Intent classifier prompt version:', INTENT_PROMPT_VERSION);
   const response = await openai.chat.completions.create({
@@ -193,7 +214,7 @@ export const classifyIntent = async (
     messages: [
       {
         role: 'system',
-        content: INTENT_CLASSIFIER_PROMPT
+        content: INTENT_CLASSIFIER_PROMPT(context)
       },
       {
         role: 'user',
