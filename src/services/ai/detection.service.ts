@@ -31,9 +31,9 @@ export const detectIntentWithConfidence = async (
   message: string,
   context: DetectionContext
 ): Promise<IntentDetectionResult> => {
-  
+
   const prompt = buildDetectionPrompt(message, context);
-  
+
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -71,26 +71,30 @@ Rules:
     });
 
     const content = response.choices[0]?.message?.content || '{}';
-    
+
     try {
       const parsed = JSON.parse(content);
-      
+
       // Normalizar intent
       let finalIntent = normalizeIntent(parsed.intent);
-      
+
+      // Context override: PRODUCT_FOCUS domina PRODUCT_QUERY
       // Context override: PRODUCT_FOCUS domina PRODUCT_QUERY
       if (
+
         context.conversationMode === 'PRODUCT_FOCUS' &&
-        finalIntent === ConversationIntent.PRODUCT_QUERY &&
-        parsed.detectedProductName
+        finalIntent === ConversationIntent.PRODUCT_QUERY
+
       ) {
-        console.log('[Detection] Override: PRODUCT_QUERY → PRODUCT_ATTRIBUTE_QUESTION (PRODUCT_FOCUS mode)');
-        finalIntent = ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION;
+        if (!parsed.detectedProductName) {
+          console.log('[Detection] Override: PRODUCT_QUERY → PRODUCT_ATTRIBUTE_QUESTION (implicit attribute)');
+          finalIntent = ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION;
+        }
       }
-      
+
       // Extraer cantidad de texto si no viene en JSON
       const quantity = parsed.quantity ?? extractQuantityFromText(message);
-      
+
       return {
         intent: finalIntent,
         confidence: parsed.confidence || 0,
@@ -99,7 +103,7 @@ Rules:
         candidates: parsed.candidates || [],
         raw: content
       };
-      
+
     } catch (parseError) {
       console.error('[Detection] JSON parse error:', parseError);
       return {
@@ -111,7 +115,7 @@ Rules:
         raw: content
       };
     }
-    
+
   } catch (error) {
     console.error('[Detection] OpenAI error:', error);
     return {
@@ -152,12 +156,12 @@ Respond with JSON:
 
 const normalizeIntent = (raw: string): ConversationIntent => {
   const normalized = raw.trim().toUpperCase();
-  
+
   const validIntents = Object.values(ConversationIntent);
   if (validIntents.includes(normalized as ConversationIntent)) {
     return normalized as ConversationIntent;
   }
-  
+
   return ConversationIntent.UNKNOWN;
 };
 
@@ -168,7 +172,7 @@ const extractQuantityFromText = (text: string): number | null => {
     const num = parseInt(numberMatch[1], 10);
     if (num > 0 && num < 100) return num;
   }
-  
+
   // Palabras en español
   const wordMap: Record<string, number> = {
     'uno': 1, 'una': 1, 'un': 1,
@@ -182,11 +186,11 @@ const extractQuantityFromText = (text: string): number | null => {
     'nueve': 9,
     'diez': 10
   };
-  
+
   const lowerText = text.toLowerCase();
   for (const [word, num] of Object.entries(wordMap)) {
     if (lowerText.includes(word)) return num;
   }
-  
+
   return null;
 };
