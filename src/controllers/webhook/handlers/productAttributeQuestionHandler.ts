@@ -22,6 +22,7 @@ import {
 } from '../../../services/ai/openai.service';
 import type { WhatsAppListMessage } from '../../../domain/intent/whatsappTemplates';
 import { truncateDescription } from '../../../whatsappBuilders';
+import { sendResponse } from '../sender';
 
 type ConversationMetadata = {
   pendingProductSelection?: boolean;
@@ -184,7 +185,25 @@ export class ProductAttributeQuestionHandler implements IntentHandler {
       });
 
       if (implicit) {
-        return textResponse(implicit);
+        return {
+          isInteractive: true,
+          content: {
+            type: 'text',
+            body: {text: implicit},
+            footer: {text: 'Agregalo al pedido'},
+            action: {
+              buttons: [
+                {
+                  type: 'reply',
+                  reply: {
+                    id: `ADD_ITEM:${ctx.conversation.lastReferencedProductId}`,
+                    title: 'Agregar'
+                  }
+                }
+              ]
+            }
+          }
+        }
       }
     }
 
