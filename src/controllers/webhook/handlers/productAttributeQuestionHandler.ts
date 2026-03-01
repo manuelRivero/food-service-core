@@ -188,7 +188,7 @@ export class ProductAttributeQuestionHandler implements IntentHandler {
         return {
           isInteractive: true,
           content: {
-            type: 'text',
+            type: 'interactive',
             body: {text: implicit},
             footer: {text: 'Agregalo al pedido'},
             action: {
