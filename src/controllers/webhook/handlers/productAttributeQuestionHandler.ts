@@ -160,7 +160,7 @@ const buildImplicitProductResponse = async (params: {
 
 export class ProductAttributeQuestionHandler implements IntentHandler {
   readonly command = ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION;
-
+  
   canHandle(intent: string): boolean {
     return intent === ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION;
   }
