@@ -80,15 +80,29 @@ Rules:
       let finalIntent = normalizeIntent(parsed.intent);
 
       // Context override: PRODUCT_FOCUS domina PRODUCT_QUERY
-      // Context override: PRODUCT_FOCUS domina PRODUCT_QUERY
-      if (
+      if (context.conversationMode === 'PRODUCT_FOCUS') {
 
-        context.conversationMode === 'PRODUCT_FOCUS' &&
-        finalIntent === ConversationIntent.PRODUCT_QUERY
-
-      ) {
-        if (!parsed.detectedProductName) {
-          console.log('[Detection] Override: PRODUCT_QUERY → PRODUCT_ATTRIBUTE_QUESTION (implicit attribute)');
+        const lower = message.toLowerCase().trim();
+      
+        const isLikelyAttribute =
+          lower.startsWith('lleva') ||
+          lower.startsWith('tiene') ||
+          lower.startsWith('es ') ||
+          lower.startsWith('trae') ||
+          (lower.endsWith('?') && lower.split(' ').length <= 4);
+      
+        const explicitlySearchingNewDish =
+          lower.includes('tienen') ||
+          lower.includes('hay') ||
+          lower.includes('algo con') ||
+          lower.includes('platos con');
+      
+        if (
+          finalIntent === ConversationIntent.PRODUCT_QUERY &&
+          isLikelyAttribute &&
+          !explicitlySearchingNewDish
+        ) {
+          console.log('[Detection] Forced ATTRIBUTE in PRODUCT_FOCUS');
           finalIntent = ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION;
         }
       }
