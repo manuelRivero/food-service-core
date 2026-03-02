@@ -185,9 +185,7 @@ export class ProductAttributeQuestionHandler implements IntentHandler {
       });
 
       if (implicit) {
-        return {
-          isInteractive: true,
-          content: {
+        return  interactiveResponse({
             type: 'interactive',
             body: {text: implicit},
             footer: {text: 'Agregalo al pedido'},
@@ -202,8 +200,8 @@ export class ProductAttributeQuestionHandler implements IntentHandler {
                 }
               ]
             }
-          }
-        }
+          
+        })
       }
     }
 
