@@ -168,7 +168,33 @@ const processTextMessage = async (
         console.log('[NLP] Detecting intent for:', userMessage.substring(0, 50));
 
         const detection = await detectIntentWithConfidence(userMessage, detectionContext);
-
+        if (
+            shouldBreakProductFocus(
+              userMessage,
+              detection.intent,
+              conversationState.mode
+            )
+          ) {
+            console.log('[Context] Breaking PRODUCT_FOCUS due to explicit search');
+          
+            await prisma.conversation.update({
+              where: { id: conversation.id },
+              data: { lastReferencedProductId: null }
+            });
+          
+            await prisma.conversation_state.update({
+              where: { conversation_id: conversationState.conversation_id },
+              data: {
+                mode: 'GLOBAL',
+                metadata: {
+                  ...(JSON.parse(JSON.stringify(conversationState.metadata)) || {}),
+                  candidateProductIds: null,
+                  pendingProductSelection: false,
+                  pendingQuestion: null
+                }
+              }
+            });
+          }
         console.log('[NLP] Detection result:', {
             intent: detection.intent,
             confidence: detection.confidence,
@@ -413,6 +439,33 @@ const maybeClearContext = async (
         console.error('[Context] Error clearing context:', error);
     }
 };
+
+const shouldBreakProductFocus = (
+    userMessage: string,
+    intent: ConversationIntent,
+    mode: string
+  ): boolean => {
+  
+    if (mode !== 'PRODUCT_FOCUS') return false;
+  
+    if (intent !== ConversationIntent.PRODUCT_QUERY) return false;
+  
+    const lower = userMessage.toLowerCase();
+  
+    const explicitSearchPatterns = [
+      'tienen',
+      'hay',
+      'quiero',
+      'busco',
+      'muestrame',
+      'ver ',
+      'algo con'
+    ];
+  
+    return explicitSearchPatterns.some(pattern =>
+      lower.includes(pattern)
+    );
+  };
 
 const logFailedProcessing = async (payload: any, reason: string): Promise<void> => {
     // Log simple para debug, podría guardar en DB para análisis
