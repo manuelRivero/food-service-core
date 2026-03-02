@@ -16,18 +16,8 @@ export const extractContext = (payload: WhatsAppWebhookPayload): WebhookContext 
     value,
   });
 
-  if (!phoneNumberId || !to || !message) {
-    console.error('Invalid webhook payload structure:', {
-      hasEntry: !!payload.entry,
-      hasChanges: !!entry?.changes,
-      hasValue: !!change?.value,
-      hasMessages: !!value?.messages,
-      messageCount: value?.messages?.length,
-      hasPhoneNumberId: !!phoneNumberId,
-      hasFrom: !!to,
-      // NO loguear payload completo por privacidad, solo estructura
-      keys: Object.keys(payload || {})
-    });
+  if (!message) {
+    console.log('[Extractor] No message found, ignoring...');
     return null;
   }
 

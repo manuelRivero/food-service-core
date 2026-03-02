@@ -182,6 +182,10 @@ Rules:
 - Recognize informal expressions.
 - If no quantity can be inferred, return quantity = null.
 - Confidence between 0 and 1.
+- If the user mentions an ingredient (e.g. papa, arroz, tomate),
+interpret it as a question about whether the selected product contains that ingredient.
+Do NOT treat it as a new topic.
+Always answer in relation to the provided product.
 Return ONLY JSON.
 
 Examples:
@@ -313,9 +317,9 @@ No expliques nada. Solo JSON válido.`
     const parsed = JSON.parse(content) as { action?: string };
     const action =
       parsed.action === 'add_same' ||
-      parsed.action === 'add_other' ||
-      parsed.action === 'remove' ||
-      parsed.action === 'unclear'
+        parsed.action === 'add_other' ||
+        parsed.action === 'remove' ||
+        parsed.action === 'unclear'
         ? parsed.action
         : 'unclear';
     return { action };
@@ -376,8 +380,8 @@ Rules:
   });
 
   const content = response.choices[0]?.message?.content ?? '';
-    try {
-      const parsed = JSON.parse(content);
+  try {
+    const parsed = JSON.parse(content);
     return { actions: parsed.actions, needs_clarification: parsed.needs_clarification ?? false };
   } catch (error) {
     return { actions: [], needs_clarification: false };
@@ -457,9 +461,9 @@ ${userQuestion}
   }
 };
 
-  export const getProductEmbedding = async (
-    keyword: string
-  ): Promise<number[]> => {
+export const getProductEmbedding = async (
+  keyword: string
+): Promise<number[]> => {
   // 1️⃣ Generar embedding del query
   const embeddingResponse = await openai.embeddings.create({
     model: "text-embedding-3-small",
