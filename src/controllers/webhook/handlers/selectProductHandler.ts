@@ -3,7 +3,7 @@
 import { WebhookContext, HandlerResult, IntentHandler } from '../types';
 import { interactiveResponse, noResponse, textResponse } from '../utils';
 import { handleProductSelectionFromWebhook } from '../../../services/whatsapp.service';
-import { ConversationIntent } from 'src/types/conversationIntent';
+import { ConversationIntent } from '../../../types/conversationIntent';
 
 export class SelectProductHandler implements IntentHandler {
   readonly command = ConversationIntent.SELECT_PRODUCT;

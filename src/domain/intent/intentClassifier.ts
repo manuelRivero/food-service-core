@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { DetectionContext } from 'src/services/ai/detection.service';
+import { DetectionContext } from '../../services/ai/detection.service';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
