@@ -206,6 +206,7 @@ export const classifyIntent = async (
   context: DetectionContext
 ): Promise<string> => {
   console.log('Intent classifier prompt version:', INTENT_PROMPT_VERSION);
+  console.log('Intent classifier context:', context);
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     temperature: 0.1,

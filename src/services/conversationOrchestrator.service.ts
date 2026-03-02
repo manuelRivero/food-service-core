@@ -26,6 +26,11 @@ export const detectIntentWithConfidence = async (
   lastUserMessage: string,
   context: DetectionContext
 ): Promise<IntentDetectionResult> => {
+  console.log("Classifier context:", {
+    mode: context.conversationMode,
+    lastProduct: context.lastReferencedProductName
+  });
+  console.log("Last user message:", lastUserMessage);
   // Intent classifier must remain stateless. Do not pass conversation history.
   const rawContent = await classifyIntent(lastUserMessage, context);
   const parsedResult = parseIntentResult(rawContent);
