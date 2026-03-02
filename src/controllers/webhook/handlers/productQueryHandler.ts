@@ -113,9 +113,9 @@ export class ProductQueryHandler implements IntentHandler {
 
   async execute(
     ctx: EnrichedContext,
-    classification: IntentClassification
+    classification?: IntentClassification
   ): Promise<HandlerResult | null> {
-    const keyword = classification.detectedProductName?.trim() ?? '';
+    const keyword = classification?.detectedProductName?.trim() ?? '';
     const userMessage = ctx.message?.text?.body || '';
 
     if (!keyword) {

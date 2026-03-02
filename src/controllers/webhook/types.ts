@@ -57,19 +57,12 @@ export interface IntentClassification {
   quantity: number | null;
 }
 
-// === INTERFAZ PARA BOTONES ===
-export interface InteractiveHandler {
-  readonly command: string;
-  matches(payloadId: string): boolean;
-  execute(ctx: WebhookContext): Promise<HandlerResult | null>;
-}
-
 // === INTERFAZ PARA INTENCIONES ===
 export interface IntentHandler {
   readonly command: string;
   canHandle(intent: string): boolean;
-  execute(ctx: EnrichedContext, classification: IntentClassification): Promise<HandlerResult | null>;
+  execute(ctx: EnrichedContext, classification?: IntentClassification): Promise<HandlerResult | null>;
 }
 
 // Tipo unión para registro
-export type WebhookHandler = InteractiveHandler | IntentHandler;
+export type WebhookHandler = IntentHandler;

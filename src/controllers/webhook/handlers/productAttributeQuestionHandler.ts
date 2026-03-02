@@ -167,7 +167,6 @@ export class ProductAttributeQuestionHandler implements IntentHandler {
 
   async execute(
     ctx: EnrichedContext,
-    _classification: IntentClassification
   ): Promise<HandlerResult | null> {
     const userMessage = ctx.message?.text?.body || '';
     const mode =

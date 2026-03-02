@@ -13,7 +13,7 @@ interface OrderAction {
 }
 
 export class OrderFoodHandler implements IntentHandler {
-  readonly command = 'ORDER_FOOD';
+  readonly command = ConversationIntent.ORDER_FOOD;
   private customerPhone: string = '';
   private businessId: string = '';
 
@@ -23,7 +23,6 @@ export class OrderFoodHandler implements IntentHandler {
 
   async execute(
     ctx: EnrichedContext,
-    classification: IntentClassification
   ): Promise<HandlerResult | null> {
 
     this.customerPhone = ctx.to;

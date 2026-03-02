@@ -6,7 +6,7 @@ import { buildConfirmRemoveItemMessage } from '../../../services/cart.service';
 import { ConversationIntent } from '../../../types/conversationIntent';
 
 export class RemoveItemHandler implements IntentHandler {
-  readonly command = 'REMOVE_ITEM';
+  readonly command = ConversationIntent.REMOVE_ITEM;
   
   canHandle(intent: string): boolean {
     return intent === ConversationIntent.REMOVE_ITEM;
@@ -14,12 +14,10 @@ export class RemoveItemHandler implements IntentHandler {
 
   async execute(
     ctx: EnrichedContext, 
-    classification: IntentClassification
+    classification?: IntentClassification
   ): Promise<HandlerResult | null> {
-    
     console.log('[RemoveItemHandler] Executing');
-    
-    const itemName = classification.detectedProductName;
+    const itemName = classification?.detectedProductName;
     
     if (!itemName) {
       console.log('[RemoveItemHandler] No product name detected');

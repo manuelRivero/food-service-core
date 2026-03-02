@@ -1,7 +1,7 @@
 // src/webhooks/orchestrator.ts
 
 import { extractContext } from './extractor';
-import { dispatchIntent, dispatchInteractive } from './dispachers';
+import { dispatchIntent } from './dispachers';
 import { sendResponse } from './sender';
 import { detectIntentWithConfidence, DetectionContext } from '../../services/ai/detection.service';
 import {
@@ -38,20 +38,7 @@ export const processWebhook = async (payload: any): Promise<void> => {
             return;
         }
 
-        // CASO 1: Interactivo con payloadId conocido
-        if (ctx.payloadId) {
-            console.log('[Orchestrator] Route: Interactive (payloadId:', ctx.payloadId + ')');
-
-            const result = await dispatchInteractive(ctx);
-
-            if (result) {
-                await sendResponse(ctx, result);
-                console.log('[Orchestrator] Response sent in', Date.now() - startTime, 'ms');
-            } else {
-                console.log('[Orchestrator] No handler for payloadId:', ctx.payloadId);
-            }
-            return;
-        }
+        
 
         // CASO 2: Mensaje de texto → NLP completo
         console.log('[Orchestrator] Route: NLP (text message)');
