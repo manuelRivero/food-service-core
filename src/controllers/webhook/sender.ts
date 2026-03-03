@@ -9,6 +9,7 @@ export const sendResponse = async (
   ctx: WebhookContext, 
   result: HandlerResult
 ): Promise<void> => {
+  console.log('[SendResponse] Sending response:', result);
   
   if (!result.isInteractive) {
     // Texto plano
