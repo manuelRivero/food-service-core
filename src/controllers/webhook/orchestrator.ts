@@ -168,7 +168,7 @@ const processTextMessage = async (
             });
           
             await prisma.conversation_state.update({
-              where: { conversation_id: contextData.conversation.id },
+              where: { conversation_id: conversation.id },
               data: {
                 mode: 'GLOBAL',
                 metadata: {
