@@ -14,7 +14,7 @@ import {
 } from '../../repositories';
 import { prisma } from '../../lib/prisma';
 import { ConversationIntent } from '../../types/conversationIntent';
-import { WebhookContext } from './types';
+import { EnrichedContext, WebhookContext } from './types';
 
 export const processWebhook = async (payload: any): Promise<void> => {
     const startTime = Date.now();
@@ -32,7 +32,7 @@ export const processWebhook = async (payload: any): Promise<void> => {
         console.log('[Orchestrator] Processing message from:', ctx.to);
 
         // Guardar mensaje del usuario (siempre)
-        const persistResult = await persistUserMessage(ctx, payload);
+        const persistResult = await persistUserMessage(ctx);
         if (!persistResult) {
             console.error('[Orchestrator] Failed to persist message');
             return;
@@ -42,7 +42,7 @@ export const processWebhook = async (payload: any): Promise<void> => {
 
         // CASO 2: Mensaje de texto → NLP completo
         console.log('[Orchestrator] Route: NLP (text message)');
-        await processTextMessage(ctx, payload, persistResult.conversationId);
+        await processTextMessage(ctx, persistResult.conversationId);
 
     } catch (error) {
         console.error('[Orchestrator] Unhandled error:', error);
@@ -58,8 +58,7 @@ interface PersistResult {
 }
 
 const persistUserMessage = async (
-    ctx: WebhookContext,
-    payload: any
+    ctx: WebhookContext
 ): Promise<PersistResult | null> => {
     try {
         const { phoneNumberId, to, message } = ctx;
@@ -126,7 +125,6 @@ const persistUserMessage = async (
 
 const processTextMessage = async (
     ctx: WebhookContext,
-    payload: any,
     conversationId: string
 ): Promise<void> => {
 
@@ -170,7 +168,7 @@ const processTextMessage = async (
             });
           
             await prisma.conversation_state.update({
-              where: { conversation_id: conversationState.conversation_id },
+              where: { conversation_id: contextData.conversation.id },
               data: {
                 mode: 'GLOBAL',
                 metadata: {
