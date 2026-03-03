@@ -1,7 +1,7 @@
 // src/webhooks/orchestrator.ts
 
 import { extractContext } from './extractor';
-import { dispatchIntent } from './dispachers';
+import { dispatchIntent, dispatchInteractive } from './dispachers';
 import { sendResponse } from './sender';
 import { detectIntentWithConfidence, DetectionContext } from '../../services/ai/detection.service';
 import {
@@ -14,41 +14,135 @@ import {
 } from '../../repositories';
 import { prisma } from '../../lib/prisma';
 import { ConversationIntent } from '../../types/conversationIntent';
-import { EnrichedContext, WebhookContext } from './types';
+import { EnrichedContext, IntentClassification, WebhookContext } from './types';
 
 export const processWebhook = async (payload: any): Promise<void> => {
     const startTime = Date.now();
-
+  
     try {
-        // Extraer contexto
-        const ctx = extractContext(payload);
-        console.log('[Orchestrator] Extracted context:', ctx);
-        if (!ctx) {
-            console.error('[Orchestrator] Invalid payload structure');
-            await logFailedProcessing(payload, 'invalid_payload');
-            return;
+      const ctx = extractContext(payload);
+      console.log('[Orchestrator] Extracted context:', ctx);
+  
+      if (!ctx) {
+        console.error('[Orchestrator] Invalid payload structure');
+        await logFailedProcessing(payload, 'invalid_payload');
+        return;
+      }
+  
+      console.log('[Orchestrator] Processing message from:', ctx.to);
+  
+      // Persistir mensaje usuario
+      const persistResult = await persistUserMessage(ctx);
+      if (!persistResult) {
+        console.error('[Orchestrator] Failed to persist message');
+        return;
+      }
+  
+      // 🔹 Construir contexto enriquecido (para ambos caminos)
+      const contextData = await buildDetectionContext(
+        persistResult.conversationId,
+        ctx
+      );
+  
+      if (!contextData) {
+        console.error('[Orchestrator] Failed to build context');
+        return;
+      }
+  
+      const {
+        conversation,
+        business,
+        customer,
+        conversationState,
+        recentMessages
+      } = contextData;
+  
+      const enrichedBase = {
+        ...ctx,
+        conversation,
+        business,
+        customer,
+        conversationState,
+        conversationId: conversation.id
+      };
+       
+  
+      // =========================================================
+      // 🟢 CASO 1: INTERACTIVE
+      // =========================================================
+      if (ctx.message?.type === 'interactive') {
+        console.log('[Orchestrator] Route: Interactive');
+  
+        const result = await dispatchInteractive(enrichedBase);
+  
+        if (result) {
+          await sendResponse(ctx, result);
+  
+          if (typeof result.content === 'string') {
+            await createConversationMessage(
+              conversation.id,
+              'ai',
+              result.content,
+              true
+            );
+          }
+  
+          await updateConversationLastMessageAt(conversation.id);
         }
-
-        console.log('[Orchestrator] Processing message from:', ctx.to);
-
-        // Guardar mensaje del usuario (siempre)
-        const persistResult = await persistUserMessage(ctx);
-        if (!persistResult) {
-            console.error('[Orchestrator] Failed to persist message');
-            return;
+  
+        return;
+      }
+  
+      // =========================================================
+      // 🔵 CASO 2: TEXT → NLP
+      // =========================================================
+      console.log('[Orchestrator] Route: NLP (text message)');
+  
+      const userMessage = ctx.message?.text?.body || '';
+  
+      const detectionContext: DetectionContext = {
+        conversationMode: conversationState.mode || 'GLOBAL',
+        lastReferencedProductId: conversation.lastReferencedProductId,
+        candidateProductIds:
+          (conversationState.metadata as any)?.candidateProductIds || null,
+        recentMessages: recentMessages.map(m => m.message),
+        lastReferencedProductName:
+          (conversationState.metadata as any)?.lastReferencedProductName || null
+      };
+  
+      const detection = await detectIntentWithConfidence(
+        userMessage,
+        detectionContext
+      );
+  
+      console.log('[NLP] Detection result:', detection);
+  
+      const enrichedCtx: EnrichedContext = {
+        ...enrichedBase,
+        detection
+      };
+  
+      const result = await dispatchIntent(enrichedCtx);
+  
+      if (result) {
+        await sendResponse(ctx, result);
+  
+        if (typeof result.content === 'string') {
+          await createConversationMessage(
+            conversation.id,
+            'ai',
+            result.content,
+            true
+          );
         }
-
-        
-
-        // CASO 2: Mensaje de texto → NLP completo
-        console.log('[Orchestrator] Route: NLP (text message)');
-        await processTextMessage(ctx, persistResult.conversationId);
-
+  
+        await updateConversationLastMessageAt(conversation.id);
+      }
+  
     } catch (error) {
-        console.error('[Orchestrator] Unhandled error:', error);
-        // No lanzar error para no crashear el webhook
+      console.error('[Orchestrator] Unhandled error:', error);
     }
-};
+  };
 
 interface PersistResult {
     success: boolean;
@@ -155,31 +249,31 @@ const processTextMessage = async (
         const detection = await detectIntentWithConfidence(userMessage, detectionContext);
         if (
             shouldBreakProductFocus(
-              userMessage,
-              detection.intent,
-              conversationState.mode
+                userMessage,
+                detection.intent,
+                conversationState.mode
             )
-          ) {
+        ) {
             console.log('[Context] Breaking PRODUCT_FOCUS due to explicit search');
-          
+
             await prisma.conversation.update({
-              where: { id: conversation.id },
-              data: { lastReferencedProductId: null }
+                where: { id: conversation.id },
+                data: { lastReferencedProductId: null }
             });
-          
+
             await prisma.conversation_state.update({
-              where: { conversation_id: conversation.id },
-              data: {
-                mode: 'GLOBAL',
-                metadata: {
-                  ...(JSON.parse(JSON.stringify(conversationState.metadata)) || {}),
-                  candidateProductIds: null,
-                  pendingProductSelection: false,
-                  pendingQuestion: null
+                where: { conversation_id: conversation.id },
+                data: {
+                    mode: 'GLOBAL',
+                    metadata: {
+                        ...(JSON.parse(JSON.stringify(conversationState.metadata)) || {}),
+                        candidateProductIds: null,
+                        pendingProductSelection: false,
+                        pendingQuestion: null
+                    }
                 }
-              }
             });
-          }
+        }
         console.log('[NLP] Detection result:', {
             intent: detection.intent,
             confidence: detection.confidence,
@@ -330,7 +424,8 @@ const processTextMessage = async (
                     }
                 ]
             }
-        });    }
+        });
+    }
 };
 
 const buildDetectionContext = async (
@@ -429,28 +524,28 @@ const shouldBreakProductFocus = (
     userMessage: string,
     intent: ConversationIntent,
     mode: string
-  ): boolean => {
-  
+): boolean => {
+
     if (mode !== 'PRODUCT_FOCUS') return false;
-  
+
     if (intent !== ConversationIntent.PRODUCT_QUERY) return false;
-  
+
     const lower = userMessage.toLowerCase();
-  
+
     const explicitSearchPatterns = [
-      'tienen',
-      'hay',
-      'quiero',
-      'busco',
-      'muestrame',
-      'ver ',
-      'algo con'
+        'tienen',
+        'hay',
+        'quiero',
+        'busco',
+        'muestrame',
+        'ver ',
+        'algo con'
     ];
-  
+
     return explicitSearchPatterns.some(pattern =>
-      lower.includes(pattern)
+        lower.includes(pattern)
     );
-  };
+};
 
 const logFailedProcessing = async (payload: any, reason: string): Promise<void> => {
     // Log simple para debug, podría guardar en DB para análisis
