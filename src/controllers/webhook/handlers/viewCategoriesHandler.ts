@@ -1,7 +1,7 @@
 // webhooks/handlers/viewCategoriesHandlerV2.ts
 import { WebhookContext, HandlerResult, IntentHandler } from '../types';
 import { handleViewCategories } from '../../../services/category.service';
-import { listResponse, noResponse, textResponse } from '../utils';
+import { listResponse, noResponse, parsePageOnly, textResponse } from '../utils';
 import { ConversationIntent } from '../../../types/conversationIntent';
 
 export class ViewCategoriesHandler implements IntentHandler {
@@ -12,7 +12,8 @@ export class ViewCategoriesHandler implements IntentHandler {
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
-    const result = await handleViewCategories(ctx.payload);
+    const page = parsePageOnly(ctx.payloadId!);
+    const result = await handleViewCategories(ctx.payload, page);
     
     if (result === null) return noResponse();
     if (typeof result === 'string') return textResponse(result);

@@ -9,6 +9,7 @@ export const INTENT_ENUM_VALUES = [
   ConversationIntent.CATEGORY_PAGE,
   ConversationIntent.CATEGORY_LIST_PAGE,
   ConversationIntent.CATEGORY,
+  ConversationIntent.SELECT_CART_ITEM,
   ConversationIntent.ADD_ITEM,
   ConversationIntent.CHECKOUT,
   ConversationIntent.CANCEL_ORDER,
@@ -17,6 +18,11 @@ export const INTENT_ENUM_VALUES = [
   ConversationIntent.VIEW_CATEGORIES,
   ConversationIntent.CONFIRM_REMOVE,
   ConversationIntent.CANCEL_REMOVE,
+  ConversationIntent.INCREASE_ITEM,
+  ConversationIntent.DECREASE_ITEM,
+  ConversationIntent.CONFIRM_REMOVE,
+  ConversationIntent.CANCEL_REMOVE,
+  ConversationIntent.REMOVE_ITEM,
   
   // Acciones de pedido por lenguaje natural
   ConversationIntent.ORDER_FOOD,
@@ -30,9 +36,6 @@ export const INTENT_ENUM_VALUES = [
   ConversationIntent.TRACK_ORDER,
   ConversationIntent.PRODUCT_QUERY,
   ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION,
-  ConversationIntent.CONFIRM_REMOVE,
-  ConversationIntent.CANCEL_REMOVE,
-  ConversationIntent.REMOVE_ITEM,
   
   // Información del negocio
   ConversationIntent.PAYMENT_REQUEST,
@@ -65,6 +68,9 @@ export const INTENT_PRIORITY: ConversationIntent[] = [
   ConversationIntent.CHECKOUT,
   ConversationIntent.CANCEL_ORDER,
   ConversationIntent.END_CONVERSATION,
+  ConversationIntent.SELECT_CART_ITEM,
+  ConversationIntent.INCREASE_ITEM,
+  ConversationIntent.DECREASE_ITEM,
   
   // 2. Acciones de pedido (lenguaje natural específico)
   ConversationIntent.REMOVE_ITEM,        // NUEVO
