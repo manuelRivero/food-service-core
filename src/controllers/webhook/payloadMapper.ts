@@ -66,12 +66,6 @@ export const detectIntentFromPayload = (
           payloadId
         );
       }
-      if (payloadId.startsWith('CATEGORY_LIST_PAGE:')) {
-        return buildInteractiveResult(
-          ConversationIntent.CANCEL_REMOVE,
-          payloadId
-        );
-      }
 
       if (payloadId.startsWith('CATEGORY_LIST_PAGE:')) {
         return buildInteractiveResult(
