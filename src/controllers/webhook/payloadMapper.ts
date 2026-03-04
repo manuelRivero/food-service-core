@@ -30,12 +30,11 @@ export const detectIntentFromPayload = (
       );
     }
     if (payloadId.startsWith('CONFIRM_REMOVE:')) {
-      return buildInteractiveResult(
-        ConversationIntent.REMOVE_ITEM,
-        payloadId,
-        1
-      );
-    }
+        return buildInteractiveResult(
+          ConversationIntent.CONFIRM_REMOVE,
+          payloadId
+        );
+      }
   
     // IDs estáticos
     const staticMap: Record<string, ConversationIntent> = {
@@ -48,8 +47,8 @@ export const detectIntentFromPayload = (
       END_CONVERSATION: ConversationIntent.END_CONVERSATION,
       VIEW_MENU_RETURN: ConversationIntent.VIEW_MENU_RETURN,
       VIEW_CATEGORIES: ConversationIntent.VIEW_CATEGORIES,
-      CONFIRM_REMOVE: ConversationIntent.CONFIRM_REMOVE,
-      CANCEL_REMOVE: ConversationIntent.CANCEL_REMOVE
+      CANCEL_REMOVE: ConversationIntent.CANCEL_REMOVE,
+      EDIT_CART: ConversationIntent.EDIT_CART
     };
   
     if (staticMap[payloadId]) {

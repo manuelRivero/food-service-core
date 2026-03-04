@@ -1,7 +1,7 @@
 // src/controllers/webhook/handlers/removeItemHandler.ts
 
 import { IntentHandler, EnrichedContext, HandlerResult, IntentClassification } from '../types';
-import { textResponse, interactiveResponse, noResponse } from '../utils';
+import { textResponse, interactiveResponse, noResponse, parseProductId } from '../utils';
 import { buildConfirmRemoveItemMessage } from '../../../services/cart.service';
 import { ConversationIntent } from '../../../types/conversationIntent';
 
@@ -14,22 +14,21 @@ export class RemoveItemHandler implements IntentHandler {
 
   async execute(
     ctx: EnrichedContext, 
-    classification?: IntentClassification
   ): Promise<HandlerResult | null> {
-    console.log('[RemoveItemHandler] Executing');
-    const itemName = classification?.detectedProductName;
+    console.log('[RemoveItemHandler] Executing', ctx.detection);
+    const productId = parseProductId(ctx.payloadId!);
     
-    if (!itemName) {
+    if (!productId) {
       console.log('[RemoveItemHandler] No product name detected');
       return textResponse('¿Qué producto querés remover de tu pedido? Decime el nombre.');
     }
 
-    console.log('[RemoveItemHandler] Removing:', itemName);
+    console.log('[RemoveItemHandler] Removing:', productId);
 
     const result = await buildConfirmRemoveItemMessage(
       ctx.business,
       ctx.conversation,
-      itemName
+      productId
     );
     
     if (result.errorMessage) {

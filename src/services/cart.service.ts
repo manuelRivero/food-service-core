@@ -6,7 +6,7 @@ import { createConversationMessage, findBusinessByPhoneNumberId, findOrCreateCon
 import { findOrCreateCustomer } from "../repositories/customer.repository";
 import { createOrGetOpenConversation } from "../repositories/conversation.repository";
 import { WhatsAppWebhookPayload } from "../controllers/webhook/types";
-import { WhatsAppInteractiveMessage } from "src/domain/intent/whatsappTemplates";
+import { WhatsAppInteractiveMessage, WhatsAppListMessage } from "src/domain/intent/whatsappTemplates";
 import { extractOrderData } from "./ai/openai.service";
 
 interface ConfirmRemoveItemResult {
@@ -18,6 +18,7 @@ interface RemoveItemResult {
   message: WhatsAppInteractiveMessage | null;
   errorMessage?: string;
 }
+
 export const buildRemoveItemMessage = async (
   business: business,
   conversation: conversation,
@@ -76,12 +77,13 @@ export const buildRemoveItemMessage = async (
   };
 return { message: message };
 };
+
 export const buildAddItemMessage = async (
   business: business,
   conversation: conversation,
   menuItemId: string,
   customer: customer
-): Promise<string | null> => {
+): Promise<WhatsAppInteractiveMessage | string | null> => {
 
   let cart = await prisma.orders.findFirst({
     where: { conversation_id: conversation.id }
@@ -152,13 +154,29 @@ export const buildAddItemMessage = async (
   await createConversationMessage(conversation.id, 'ai', messageText, false);
   await updateConversationLastMessageAt(conversation.id);
 
-  return messageText;
+  return {
+    type: 'interactive',
+    interactive: {
+      header: { type: 'text', text: '' },
+      type: 'button',
+      footer: { text: '*Pedido actualizado*\n\n¿Querés seguir comprando o finalizar tu orden?' },
+      body: { text: `*${item.name}* agregado\n\n` +
+        `Articulos en tu pedido: ${itemCount}\n` +
+        `Total: $${total._sum.unit_price || 0}\n\n` +
+        `¿Seguís comprando o querés *finalizar*?` },
+      action: { buttons: [
+        { type: 'reply', reply: { id: 'VIEW_MENU', title: 'Seguir comprando' } }, 
+        { type: 'reply', reply: { id: 'CHECKOUT', title: 'Finalizar pedido' } },
+        { type: 'reply', reply: { id: 'VIEW_CART_FOR_EDITION', title: 'Modificar pedido' } }
+      ] }
+    }
+  }  ;
 };
 
 export const handleAddItemFromWebhook = async (
   payload: WhatsAppWebhookPayload,
   menuItemId: string
-): Promise<string | null> => {
+): Promise<WhatsAppInteractiveMessage | null | string> => {
 
   const entry = payload.entry?.[0];
   const change = entry?.changes?.[0];
@@ -179,13 +197,9 @@ export const handleAddItemFromWebhook = async (
   const AIResponse = await extractOrderData(message?.text?.body ?? '');
   console.log('AIResponse',AIResponse);
 
-  return await buildAddItemMessage(business, conversation, menuItemId, customer);
+  return buildAddItemMessage(business, conversation, menuItemId, customer);
 };
 
-/**
- * Construye mensaje de confirmación para remover ítem del carrito.
- * NO remueve, solo pregunta confirmación.
- */
 export const buildConfirmRemoveItemMessage = async (
   business: business,
   conversation: conversation,
@@ -278,9 +292,6 @@ export const buildConfirmRemoveItemMessage = async (
   return { message: confirmMessage };
 };
 
-/**
- * Wrapper para webhook V2
- */
 export const handleConfirmRemoveItemFromWebhook = async (
   payload: WhatsAppWebhookPayload,
   itemIdentifier: string
@@ -341,4 +352,67 @@ export const handleRemoveItemFromWebhook = async (
 
   if (result.errorMessage) return result.errorMessage;
   return result.message;
+};
+
+export const handleShowCartForEditionFromWebhook = async (
+  payload: WhatsAppWebhookPayload
+): Promise<WhatsAppListMessage | string | null> => {
+
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
+  if (!phoneNumberId || !from) return null;
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) return null;
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+
+  // 🔎 Obtener items del carrito
+  const cartItems = await prisma.order_item.findMany({
+    where: {
+      orders: {
+        conversation_id: conversation.id
+      }
+    },
+    include: {
+      menu_item: true
+    }
+  });
+
+  if (!cartItems.length) {
+    return 'Tu carrito está vacío 🛒';
+  }
+
+  return {
+    type: 'list',
+    header: {
+      type: 'text',
+      text: ''
+    },
+    body: {
+      text: '*Este es tu pedido*\n\nSelecciona el producto que querés modificar 👇'
+    },
+    footer: {
+      text: 'Podrás cambiar cantidad o removerlo'
+    },
+    action: {
+      button: 'Ver platillos',
+      sections: [
+        {
+          title: 'Platillos en tu pedido',
+          rows: cartItems.map(item => ({
+            id: `SELECT_ORDER_PRODUCT:${item.id}`,
+            title: `${item.quantity}x ${item.menu_item.name}`,
+            description: 'Modificar o remover'
+          }))
+        }
+      ]
+    }
+  };
 };

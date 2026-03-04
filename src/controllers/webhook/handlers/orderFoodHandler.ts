@@ -135,7 +135,7 @@ export class OrderFoodHandler implements IntentHandler {
       quantity: action.quantity
     };
 
-    return removeHandler.execute(ctx, artificialClassification);
+    return removeHandler.execute(ctx);
   }
 
   private async handleSetQuantity(ctx: EnrichedContext, action: OrderAction): Promise<HandlerResult | null> {

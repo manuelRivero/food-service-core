@@ -35,7 +35,9 @@ export enum ConversationIntent {
   VIEW_MENU_RETURN = 'VIEW_MENU_RETURN',
   VIEW_CATEGORIES = 'VIEW_CATEGORIES',
   CONFIRM_REMOVE = 'CONFIRM_REMOVE',     // Botón "Sí, remover"
-  CANCEL_REMOVE = 'CANCEL_REMOVE',       // Botón "No, cancelar"
-  
+  CANCEL_REMOVE = 'CANCEL_REMOVE',  
+  EDIT_CART = 'EDIT_CART',        // Botón "Modificar pedido"
+  VIEW_CART = 'VIEW_CART',
+  VIEW_CART_FOR_EDITION = 'VIEW_CART_FOR_EDITION',
   UNKNOWN = 'UNKNOWN'
 }

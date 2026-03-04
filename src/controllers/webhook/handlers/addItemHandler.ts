@@ -1,7 +1,7 @@
 // webhooks/handlers/addItemHandler.ts
 import { IntentHandler } from '../types';
 import { WebhookContext, HandlerResult } from '../types';
-import { noResponse, parseProductId, textResponse } from '../utils';
+import { interactiveResponse, noResponse, parseProductId, textResponse } from '../utils';
 import { handleAddItemFromWebhook } from '../../../services/cart.service';
 import { ConversationIntent } from '../../../types/conversationIntent';
 
@@ -16,6 +16,7 @@ export class AddItemHandler implements IntentHandler {
     const menuItemId = ctx.payloadId!.replace('ADD_ITEM:', '');
     const result = await handleAddItemFromWebhook(ctx.payload, menuItemId);
     if (result === null) return noResponse();
-    return textResponse(result);
+    if (typeof result === 'string') return textResponse(result);
+    return interactiveResponse(result);
   }
 }
