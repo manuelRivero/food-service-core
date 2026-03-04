@@ -13,6 +13,7 @@ export class ViewMenuHandler implements IntentHandler {
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
     const result = await handleViewMenuFromWebhook(ctx.payload);
+    console.log('DEBUG ViewMenuHandler result:', result);
     if (result === null) return noResponse();
     if (typeof result === 'string') return textResponse(result);
     return listResponse(result);

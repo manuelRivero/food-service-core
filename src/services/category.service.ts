@@ -258,6 +258,13 @@ export const handleViewCategories = async (
     const conversation = await createOrGetOpenConversation(business.id, customer.id);
     await findOrCreateConversationState(conversation.id);
 
+    console.log('DEBUG handleViewCategories payload:', payload);
+    console.log('DEBUG handleViewCategories page:', page);
+    console.log('DEBUG handleViewCategories isFromMenuReturn:', isFromMenuReturn);
+    console.log('DEBUG handleViewCategories business:', business);
+    console.log('DEBUG handleViewCategories customer:', customer);
+    console.log('DEBUG handleViewCategories conversation:', conversation);
+
     const result = await buildViewCategoriesMessage(business, conversation, page, isFromMenuReturn);
 
     if (result.errorMessage) return result.errorMessage;
@@ -269,7 +276,7 @@ export const handleViewMenuReturnFromWebhook = async (
 ): Promise<WhatsAppListMessage | string | null> => {
 
     // Es un alias de viewCategories con page=1 y isFromMenuReturn=true
-    return await handleViewCategories(payload, 1, true);
+    return handleViewCategories(payload, 1, true);
 };
 
 export const handleViewMenuFromWebhook = async (
@@ -277,7 +284,7 @@ export const handleViewMenuFromWebhook = async (
 ): Promise<WhatsAppListMessage | string | null> => {
 
     // Es un alias de viewCategories con page=1 y isFromMenuReturn=true
-    return await handleViewCategories(payload, 1, true);
+    return handleViewCategories(payload, 1, true);
 };
 
 export const handleCategoryPageFromWebhook = async (
