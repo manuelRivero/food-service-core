@@ -24,7 +24,7 @@ import { ProductAttributeQuestionHandler } from './productAttributeQuestionHandl
 
 // Fallback
 import { FallbackHandler } from './fallbackHandler';
-import { ViewCartForEditionHandler } from './viewCartForEditionHandler copy';
+import { ViewCartForEditionHandler } from './viewCartForEditionHandler';
 import { ViewCartHandler } from './viewCartHandler';
 
 export const handlers = [

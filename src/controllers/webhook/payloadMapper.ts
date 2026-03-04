@@ -48,7 +48,7 @@ export const detectIntentFromPayload = (
       VIEW_MENU_RETURN: ConversationIntent.VIEW_MENU_RETURN,
       VIEW_CATEGORIES: ConversationIntent.VIEW_CATEGORIES,
       CANCEL_REMOVE: ConversationIntent.CANCEL_REMOVE,
-      EDIT_CART: ConversationIntent.EDIT_CART
+      VIEW_CART_FOR_EDITION: ConversationIntent.VIEW_CART_FOR_EDITION
     };
   
     if (staticMap[payloadId]) {

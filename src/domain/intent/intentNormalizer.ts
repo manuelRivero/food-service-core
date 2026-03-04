@@ -27,7 +27,6 @@ export const INTENT_ENUM_VALUES = [
   // Consultas y navegación
   ConversationIntent.VIEW_MENU,
   ConversationIntent.VIEW_CART,
-  ConversationIntent.VIEW_CART_FOR_EDITION,
   ConversationIntent.TRACK_ORDER,
   ConversationIntent.PRODUCT_QUERY,
   ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION,
