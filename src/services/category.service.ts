@@ -174,67 +174,81 @@ export const buildViewCategoriesMessage = async (
     conversation: ConversationType,
     page = 1,
     isFromMenuReturn = false
-): Promise<ViewCategoriesResult> => {
-
+  ): Promise<ViewCategoriesResult> => {
+  
+    const MAX_ROWS = 10;
+  
     const categories = await prisma.menu_category.findMany({
-        where: { business_id: business.id, is_active: true },
-        orderBy: { name: 'asc' },
-        skip: (page - 1) * 10,
-        take: 11 // 10 + 1 para detectar si hay más
+      where: { business_id: business.id, is_active: true },
+      orderBy: { name: 'asc' },
+      skip: (page - 1) * MAX_ROWS,
+      take: MAX_ROWS + 1 // 10 + 1 para detectar si hay más
     });
-
+  
     if (categories.length === 0) {
-        const errorText = 'No hay categorías disponibles.';
-        await createConversationMessage(conversation.id, 'ai', errorText, false);
-        await updateConversationLastMessageAt(conversation.id);
-        return { message: null, errorMessage: errorText };
+      const errorText = 'No hay categorías disponibles.';
+      await createConversationMessage(conversation.id, 'ai', errorText, false);
+      await updateConversationLastMessageAt(conversation.id);
+      return { message: null, errorMessage: errorText };
     }
-
-    const hasMore = categories.length > 10;
-    const displayCategories = categories.slice(0, 10);
-
-    const rows = displayCategories.map(cat => ({
+  
+    const hasMore = categories.length > MAX_ROWS;
+  
+    // 👇 calcular slots especiales
+    const specialSlots =
+      (isFromMenuReturn ? 1 : 0) +
+      (hasMore ? 1 : 0);
+  
+    const maxCategorySlots = MAX_ROWS - specialSlots;
+  
+    const displayCategories = categories.slice(0, maxCategorySlots);
+  
+    const rows = [];
+  
+    if (isFromMenuReturn) {
+      rows.push({
+        id: 'VIEW_MENU_RETURN',
+        title: '⬅️ Menú principal',
+        description: 'Volver al inicio'
+      });
+    }
+  
+    rows.push(
+      ...displayCategories.map(cat => ({
         id: `CATEGORY:${cat.id}`,
         title: truncateTitle(cat.name),
         description: 'Ver platillos'
-    }));
-
-    if (isFromMenuReturn) {
-        rows.unshift({
-            id: 'VIEW_MENU_RETURN',
-            title: '⬅️ Menú principal',
-            description: 'Volver al inicio'
-        });
-    }
-
+      }))
+    );
+  
     if (hasMore) {
-        rows.push({
-            id: `CATEGORY_LIST_PAGE:${page + 1}`,
-            title: 'Más categorías →',
-            description: 'Siguiente página'
-        });
+      rows.push({
+        id: `CATEGORY_LIST_PAGE:${page + 1}`,
+        title: 'Más categorías →',
+        description: 'Siguiente página'
+      });
     }
-
+  
     const listMessage: WhatsAppListMessage = {
-        type: 'list',
-        header: { type: 'text', text: '📋 Categorías' },
-        body: {
-            text: isFromMenuReturn
-                ? '¿Qué categoría querés explorar?'
-                : 'Elegí una categoría para ver productos:'
-        },
-        footer: { text: `Página ${page}` },
-        action: {
-            button: 'Ver categorías',
-            sections: [{ title: 'Categorías disponibles', rows }]
-        }
+      type: 'list',
+      header: { type: 'text', text: '' },
+      body: {
+        text: isFromMenuReturn
+          ? '*Este es nuestro menú.*\n\n¿Qué categoría querés explorar?'
+          : '*Este es nuestro menú.*\n\nElegí una categoría para ver los platillos:'
+      },
+      footer: { text: `Página ${page}` },
+      action: {
+        button: 'Ver categorías',
+        sections: [{ title: 'Categorías disponibles', rows }]
+      }
     };
-
+  
     await createConversationMessage(conversation.id, 'ai', listMessage.body.text, false);
     await updateConversationLastMessageAt(conversation.id);
-
+  
     return { message: listMessage };
-};
+  };
 
 export const handleViewCategories = async (
     payload: WhatsAppWebhookPayload,
