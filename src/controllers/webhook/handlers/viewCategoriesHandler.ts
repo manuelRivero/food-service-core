@@ -5,10 +5,10 @@ import { listResponse, noResponse, parsePageOnly, textResponse } from '../utils'
 import { ConversationIntent } from '../../../types/conversationIntent';
 
 export class ViewCategoriesHandler implements IntentHandler {
-  readonly command = ConversationIntent.VIEW_CATEGORIES;
+  readonly command = ConversationIntent.CATEGORY_LIST_PAGE;
   
   canHandle(intent: string): boolean {
-    return intent === ConversationIntent.VIEW_CATEGORIES;
+    return intent === ConversationIntent.CATEGORY_LIST_PAGE;
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
