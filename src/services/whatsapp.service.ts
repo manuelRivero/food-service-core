@@ -634,11 +634,17 @@ export const handleOrderProductSelectionFromWebhook = async (
   const conversationState = await findOrCreateConversationState(conversation.id);
   const metadata = normalizeMetadata(conversationState.metadata);
 
+  console.log('DEBUG metadata:', metadata);
+
   if (!metadata.pendingOrderSelection || !metadata.pendingOrderMessage) {
+    console.log('DEBUG metadata.pendingOrderSelection:', metadata.pendingOrderSelection);
+    console.log('DEBUG metadata.pendingOrderMessage:', metadata.pendingOrderMessage);
     return 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.';
   }
 
   if (!metadata.pendingOrderCandidateIds?.includes(productId)) {
+    console.log('DEBUG metadata.pendingOrderCandidateIds:', metadata.pendingOrderCandidateIds);
+    console.log('DEBUG productId:', productId);
     return 'Esa opción ya no está disponible. Por favor realiza una nueva consulta.';
   }
 

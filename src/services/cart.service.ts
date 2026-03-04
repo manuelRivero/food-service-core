@@ -453,7 +453,7 @@ export const handleViewOrderFromWebhook = async (
 
   // 🔢 Construir resumen
   const summary = cartItems
-    .map(item => `${item.quantity}x ${item.menu_item.name} ${item.unit_price}`)
+    .map(item => `${item.quantity}x ${item.menu_item.name} ${item.unit_price.toNumber()}${business.currency_code ?? 'ARS'}`)
     .join('\n');
   const total = cartItems.reduce((acc: number, item) => acc + item.unit_price.toNumber() * item.quantity, 0);
 
@@ -464,7 +464,7 @@ export const handleViewOrderFromWebhook = async (
       text: ''
     },
     body: {
-      text: `*Tu pedido actual*\n\n${summary}\n\nTotal: ${total}\n\n¿Qué deseas hacer ahora?`
+      text: `*Tu pedido actual*\n\n${summary}\n\nTotal: ${total}${business.currency_code ?? 'ARS'}\n\n¿Qué deseas hacer ahora?`
     },
     footer: {
       text: 'Selecciona una opción'

@@ -272,6 +272,14 @@ export const handleViewMenuReturnFromWebhook = async (
     return await handleViewCategories(payload, 1, true);
 };
 
+export const handleViewMenuFromWebhook = async (
+    payload: WhatsAppWebhookPayload
+): Promise<WhatsAppListMessage | string | null> => {
+
+    // Es un alias de viewCategories con page=1 y isFromMenuReturn=true
+    return await handleViewCategories(payload, 1, true);
+};
+
 export const handleCategoryPageFromWebhook = async (
     payload: WhatsAppWebhookPayload,
     categoryId: string,
