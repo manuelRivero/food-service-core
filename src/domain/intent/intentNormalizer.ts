@@ -79,7 +79,8 @@ export const INTENT_PRIORITY: ConversationIntent[] = [
   ConversationIntent.VIEW_MENU,
   ConversationIntent.VIEW_MENU_RETURN,
   ConversationIntent.VIEW_CATEGORIES,
-  ConversationIntent.VIEW_ORDER,
+  ConversationIntent.VIEW_CART,
+  ConversationIntent.VIEW_CART_FOR_EDITION,
   ConversationIntent.ORDER_SEARCH_PAGE,
   
   // 4. Consultas de productos
@@ -134,7 +135,8 @@ export const normalizeIntent = (value: string): ConversationIntent => {
     // Originales
     case ConversationIntent.SMALL_TALK:
     case ConversationIntent.VIEW_MENU:
-    case ConversationIntent.VIEW_ORDER:
+    case ConversationIntent.VIEW_CART:
+    case ConversationIntent.VIEW_CART_FOR_EDITION:
     case ConversationIntent.ASK_QUESTION:
     case ConversationIntent.ORDER_FOOD:
     case ConversationIntent.TRACK_ORDER:

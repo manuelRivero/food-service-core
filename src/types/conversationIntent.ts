@@ -2,7 +2,6 @@ export enum ConversationIntent {
   // === INTENTS ORIGINALES (lenguaje natural) ===
   SMALL_TALK = 'SMALL_TALK',
   VIEW_MENU = 'VIEW_MENU',
-  VIEW_ORDER = 'VIEW_ORDER',
   ASK_QUESTION = 'ASK_QUESTION',
   ORDER_FOOD = 'ORDER_FOOD',
   TRACK_ORDER = 'TRACK_ORDER',

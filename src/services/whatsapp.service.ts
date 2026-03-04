@@ -2345,7 +2345,7 @@ const buildResponse = async ({
   // =========================
   // VIEW ORDER
   // =========================
-  if (intent === ConversationIntent.VIEW_ORDER) {
+  if (intent === ConversationIntent.VIEW_CART) {
     return buildViewOrderResponse(business, conversation, customer, from);
   }
 
@@ -2811,9 +2811,9 @@ export const processIncomingMessage = async (
             candidateProductIds
           });
 
-        case 'VIEW_ORDER':
+        case 'VIEW_CART':
           return await buildResponse({
-            intent: ConversationIntent.VIEW_ORDER,
+            intent:ConversationIntent.VIEW_CART,
             business,
             customer,
             conversation,

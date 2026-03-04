@@ -53,7 +53,8 @@ Available intents:
 - PRODUCT_QUERY: searching for a product (e.g., "tienen ceviche?", "hay postres")
 - PRODUCT_ATTRIBUTE_QUESTION: asking about product details (e.g., "cuánto cuesta?", "es picante?")
 - VIEW_MENU: wants to see menu (e.g., "ver menú", "qué tienen?")
-- VIEW_ORDER: wants to see current order (e.g., "cuánto llevo?", "ver mi pedido")
+- VIEW_CART: wants to see current cart (e.g., "cuánto llevo?", "ver mi pedido")
+- VIEW_CART_FOR_EDITION: wants to see current cart for edition (e.g., "modificar mi pedido")
 - SMALL_TALK: greeting or casual (e.g., "hola", "buenas")
 - ASK_QUESTION: general question (e.g., "dónde están?", "cuál es el horario?")
 - UNKNOWN: cannot classify
