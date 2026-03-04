@@ -66,12 +66,31 @@ export const detectIntentFromPayload = (
           payloadId
         );
       }
+      if (payloadId.startsWith('CATEGORY_LIST_PAGE:')) {
+        return buildInteractiveResult(
+          ConversationIntent.CANCEL_REMOVE,
+          payloadId
+        );
+      }
+
+      if (payloadId.startsWith('CATEGORY_LIST_PAGE:')) {
+        return buildInteractiveResult(
+          ConversationIntent.CATEGORY_LIST_PAGE,
+          payloadId
+        );
+      }
+
+      if (payloadId.startsWith('ORDER_SEARCH_PAGE:')) {
+        return buildInteractiveResult(
+          ConversationIntent.ORDER_SEARCH_PAGE,
+          payloadId
+        );
+      }
   
     // IDs estáticos
     const staticMap: Record<string, ConversationIntent> = {
       ORDER_SEARCH_PAGE: ConversationIntent.ORDER_SEARCH_PAGE,
       CATEGORY_PAGE: ConversationIntent.CATEGORY_PAGE,
-      CATEGORY_LIST_PAGE: ConversationIntent.CATEGORY_LIST_PAGE,
       CATEGORY: ConversationIntent.CATEGORY,
       CHECKOUT: ConversationIntent.CHECKOUT,
       CANCEL_ORDER: ConversationIntent.CANCEL_ORDER,
@@ -79,7 +98,6 @@ export const detectIntentFromPayload = (
       VIEW_MENU_RETURN: ConversationIntent.VIEW_MENU_RETURN,
       VIEW_MENU: ConversationIntent.VIEW_MENU,
       VIEW_CATEGORIES: ConversationIntent.VIEW_CATEGORIES,
-      CANCEL_REMOVE: ConversationIntent.CANCEL_REMOVE,
       VIEW_CART_FOR_EDITION: ConversationIntent.VIEW_CART_FOR_EDITION,
       VIEW_ORDER: ConversationIntent.VIEW_ORDER
     };
