@@ -475,7 +475,7 @@ export const handleViewOrderFromWebhook = async (
           title: 'Gestión del pedido',
           rows: [
             {
-              id: 'EDIT_CART',
+              id: 'VIEW_CART_FOR_EDITION',
               title: 'Modificar pedido',
               description: 'Cambiar cantidades o remover productos'
             },
