@@ -75,7 +75,7 @@ export const buildRemoveItemMessage = async (
       }
     }
   };
-return { message: message };
+  return { message: message };
 };
 
 export const buildAddItemMessage = async (
@@ -160,17 +160,21 @@ export const buildAddItemMessage = async (
       header: { type: 'text', text: '' },
       type: 'button',
       footer: { text: '*Pedido actualizado*\n\n¿Querés seguir comprando o finalizar tu orden?' },
-      body: { text: `*${item.name}* agregado\n\n` +
-        `Articulos en tu pedido: ${itemCount}\n` +
-        `Total: $${total._sum.unit_price || 0}\n\n` +
-        `¿Seguís comprando o querés *finalizar*?` },
-      action: { buttons: [
-        { type: 'reply', reply: { id: 'VIEW_MENU', title: 'Seguir comprando' } }, 
-        { type: 'reply', reply: { id: 'CHECKOUT', title: 'Finalizar pedido' } },
-        { type: 'reply', reply: { id: 'VIEW_CART_FOR_EDITION', title: 'Modificar pedido' } }
-      ] }
+      body: {
+        text: `*${item.name}* agregado\n\n` +
+          `Articulos en tu pedido: ${itemCount}\n` +
+          `Total: $${total._sum.unit_price || 0}\n\n` +
+          `¿Seguís comprando o querés *finalizar*?`
+      },
+      action: {
+        buttons: [
+          { type: 'reply', reply: { id: 'VIEW_MENU', title: 'Seguir comprando' } },
+          { type: 'reply', reply: { id: 'CHECKOUT', title: 'Finalizar pedido' } },
+          { type: 'reply', reply: { id: 'VIEW_CART_FOR_EDITION', title: 'Modificar pedido' } }
+        ]
+      }
     }
-  }  ;
+  };
 };
 
 export const handleAddItemFromWebhook = async (
@@ -195,7 +199,7 @@ export const handleAddItemFromWebhook = async (
   await findOrCreateConversationState(conversation.id);
 
   const AIResponse = await extractOrderData(message?.text?.body ?? '');
-  console.log('AIResponse',AIResponse);
+  console.log('AIResponse', AIResponse);
 
   return buildAddItemMessage(business, conversation, menuItemId, customer);
 };
@@ -407,7 +411,7 @@ export const handleShowCartForEditionFromWebhook = async (
         {
           title: 'Platillos en tu pedido',
           rows: cartItems.map(item => ({
-            id: `SELECT_ORDER_PRODUCT:${item.id}`,
+            id: `SELECT_CART_ITEM:${item.id}`,
             title: `${item.quantity}x ${item.menu_item.name}`,
             description: 'Modificar o remover'
           }))
@@ -500,4 +504,122 @@ export const handleViewOrderFromWebhook = async (
       ]
     }
   };
+};
+
+export const handleCartItemSelectionFromWebhook = async (
+  payload: WhatsAppWebhookPayload,
+  orderItemId: string | undefined
+): Promise<WhatsAppListMessage | string | null> => {
+
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
+  if (!phoneNumberId || !from || !orderItemId || orderItemId === undefined) {
+    return null;
+  }
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) return null;
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+
+  const conversationState = await findOrCreateConversationState(conversation.id);
+
+  // Buscar item del carrito
+  const orderItem = await prisma.order_item.findUnique({
+    where: { id: orderItemId },
+    include: {
+      menu_item: {
+        select: {
+          id: true,
+          name: true
+        }
+      }
+    }
+  });
+
+  if (!orderItem) {
+    return 'Ese producto ya no está disponible en tu pedido.';
+  }
+
+  // Validar que el item pertenezca a la conversación
+  if (orderItem.order_id !== conversation.id) {
+    return 'Ese producto no pertenece a tu pedido actual.';
+  }
+
+  console.log('---- CART ITEM SELECTED ----');
+  console.log('OrderItemId:', orderItem.id);
+  console.log('Product:', orderItem.menu_item.name);
+  console.log('Quantity:', orderItem.quantity);
+  console.log('----------------------------');
+
+  // Guardar estado conversacional
+  await updateConversationState(conversation.id, {
+    metadata: {
+      pendingAction: 'EDIT_CART',
+      pendingItemId: orderItem.id,
+      pendingItemName: orderItem.menu_item.name
+    }
+  });
+
+  const bodyText =
+    `Seleccionaste *${orderItem.menu_item.name}*\n` +
+    `Cantidad actual: ${orderItem.quantity}\n\n` +
+    `¿Qué deseas hacer?`;
+
+  const interactiveMessage: WhatsAppListMessage = {
+    type: 'list',
+    header: {
+      type: 'text',
+      text: ''
+    },
+    body: {
+      text: bodyText
+    },
+    footer: {
+      text: 'Selecciona una opción'
+    },
+    action: {
+      button: 'Opciones',
+      sections: [
+        {
+          title: 'Gestión del pedido',
+          rows: [
+            {
+              id: `INCREASE_ITEM:${orderItem.id}`,
+              title: '➕ Aumentar',
+              description: 'Aumentar la cantidad del producto'
+            },
+            {
+              id: `DECREASE_ITEM:${orderItem.id}`,
+              title: '➖ Disminuir',
+              description: 'Disminuir la cantidad del producto'
+            },
+            {
+              id: `CONFIRM_REMOVE:${orderItem.id}`,
+              title: '🗑 Remover',
+              description: 'Remover el producto del pedido'
+            },
+            {
+              id: 'VIEW_ORDER',
+              title: '⬅ Volver',
+              description: 'Volver a la lista de productos'
+            }
+          ]
+        }
+      ]
+    }
+  };
+
+
+await createConversationMessage(conversation.id, 'ai', bodyText, false);
+await updateConversationLastMessageAt(conversation.id);
+
+return interactiveMessage;
 };
