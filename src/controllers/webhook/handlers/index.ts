@@ -24,6 +24,8 @@ import { ProductAttributeQuestionHandler } from './productAttributeQuestionHandl
 
 // Fallback
 import { FallbackHandler } from './fallbackHandler';
+import { ViewCartForEditionHandler } from './viewCartForEditionHandler copy';
+import { ViewCartHandler } from './viewCartHandler';
 
 export const handlers = [
   // === BOTONES (payloadId) - orden: más específicos primero ===
@@ -41,7 +43,8 @@ export const handlers = [
   new ViewMenuReturnHandler(),
   new ViewCategoriesHandler(),
   new ConfirmRemoveActionHandler(), // CONFIRM_REMOVE:id y CANCEL_REMOVE
-  
+  new ViewCartForEditionHandler(),
+  new ViewCartHandler(),
   // === INTENCIONES (NLP) ===
   new OrderFoodHandler(),
   new RemoveItemHandler(),

@@ -23,7 +23,7 @@ CONSULTAS:
 - PRODUCT_QUERY, PRODUCT_ATTRIBUTE_QUESTION, etc.
 
 INFORMACIÓN:
-- VIEW_MENU, VIEW_ORDER, BUSINESS_HOURS, etc.
+- VIEW_MENU, VIEW_CART, BUSINESS_HOURS, etc.
 
 CONVERSACIÓN:
 - GREETING, SMALL_TALK, GENERAL_QUESTION, etc.
@@ -114,7 +114,7 @@ Examples:
 - "Ver menu"
 - "Qué tienen?"
 
-7) VIEW_ORDER
+7) VIEW_CART
 User wants to see current order.
 Examples:
 - "Cuánto llevo?"
@@ -127,6 +127,11 @@ Examples:
 - "Hola"
 - "Buenas"
 - "Cómo estás?"
+
+8) VIEW_CART_FOR_EDITION
+User wants to see current order for edition.
+Examples:
+- "Modificar mi pedido"
 
 IMPORTANT:
 If a greeting includes a product request, classify as PRODUCT_QUERY.

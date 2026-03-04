@@ -416,3 +416,87 @@ export const handleShowCartForEditionFromWebhook = async (
     }
   };
 };
+
+export const handleViewOrderFromWebhook = async (
+  payload: WhatsAppWebhookPayload
+): Promise<WhatsAppListMessage | string | null> => {
+
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
+  if (!phoneNumberId || !from) return null;
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) return null;
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+
+  const cartItems = await prisma.order_item.findMany({
+    where: {
+      orders: {
+        conversation_id: conversation.id
+      }
+    },
+    include: {
+      menu_item: true
+    }
+  });
+
+  if (!cartItems.length) {
+    return 'Tu carrito está vacío 🛒';
+  }
+
+  // 🔢 Construir resumen
+  const summary = cartItems
+    .map(item => `${item.quantity}x ${item.menu_item.name}`)
+    .join('\n');
+
+  return {
+    type: 'list',
+    header: {
+      type: 'text',
+      text: ''
+    },
+    body: {
+      text: `*Tu pedido actual*\n\n${summary}\n\n¿Qué deseas hacer ahora?`
+    },
+    footer: {
+      text: 'Selecciona una opción'
+    },
+    action: {
+      button: 'Opciones',
+      sections: [
+        {
+          title: 'Gestión del pedido',
+          rows: [
+            {
+              id: 'EDIT_CART',
+              title: 'Modificar pedido',
+              description: 'Cambiar cantidades o remover productos'
+            },
+            {
+              id: 'VIEW_MENU',
+              title: 'Seguir comprando',
+              description: 'Agregar más productos'
+            },
+            {
+              id: 'CHECKOUT',
+              title: 'Finalizar pedido',
+              description: 'Proceder al pago'
+            },
+            {
+              id: 'CANCEL_ORDER',
+              title: 'Cancelar pedido',
+              description: 'Eliminar el pedido actual'
+            }
+          ]
+        }
+      ]
+    }
+  };
+};
