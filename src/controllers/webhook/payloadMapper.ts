@@ -46,6 +46,7 @@ export const detectIntentFromPayload = (
       CANCEL_ORDER: ConversationIntent.CANCEL_ORDER,
       END_CONVERSATION: ConversationIntent.END_CONVERSATION,
       VIEW_MENU_RETURN: ConversationIntent.VIEW_MENU_RETURN,
+      VIEW_MENU: ConversationIntent.VIEW_MENU,
       VIEW_CATEGORIES: ConversationIntent.VIEW_CATEGORIES,
       CANCEL_REMOVE: ConversationIntent.CANCEL_REMOVE,
       VIEW_CART_FOR_EDITION: ConversationIntent.VIEW_CART_FOR_EDITION

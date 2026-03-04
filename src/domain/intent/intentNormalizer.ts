@@ -75,7 +75,6 @@ export const INTENT_PRIORITY: ConversationIntent[] = [
   ConversationIntent.CATEGORY,
   ConversationIntent.CATEGORY_PAGE,
   ConversationIntent.CATEGORY_LIST_PAGE,
-  ConversationIntent.VIEW_MENU,
   ConversationIntent.VIEW_MENU_RETURN,
   ConversationIntent.VIEW_CATEGORIES,
   ConversationIntent.VIEW_CART,
@@ -122,6 +121,7 @@ export const normalizeIntent = (value: string): ConversationIntent => {
     case ConversationIntent.CANCEL_ORDER:
     case ConversationIntent.END_CONVERSATION:
     case ConversationIntent.VIEW_MENU_RETURN:
+    case ConversationIntent.VIEW_MENU:
     case ConversationIntent.VIEW_CATEGORIES:
     case ConversationIntent.CONFIRM_REMOVE:
     case ConversationIntent.CANCEL_REMOVE:
@@ -133,7 +133,6 @@ export const normalizeIntent = (value: string): ConversationIntent => {
     
     // Originales
     case ConversationIntent.SMALL_TALK:
-    case ConversationIntent.VIEW_MENU:
     case ConversationIntent.VIEW_CART:
     case ConversationIntent.VIEW_CART_FOR_EDITION:
     case ConversationIntent.ASK_QUESTION:
