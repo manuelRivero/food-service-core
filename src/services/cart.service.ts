@@ -1,6 +1,6 @@
 // services/cartService.ts
 
-import { business, conversation, customer, menu_item } from "@prisma/client";
+import { business, conversation, customer, draft_order_item, menu_item } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { createConversationMessage, findBusinessByPhoneNumberId, findOrCreateConversationState, updateConversationLastMessageAt, updateConversationState } from "../repositories";
 import { findOrCreateCustomer } from "../repositories/customer.repository";
@@ -653,20 +653,28 @@ export const handleSelectQuantityDecreaseItemFromWebhook = async (
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
   await findOrCreateConversationState(conversation.id);
 
-  const orderItem = await prisma.order_item.findUnique({
-    where: { id: itemID },
+  const draftOrderItem = await prisma.draft_order_item.findFirst({
+    where: {
+      draft_order: {
+        business_id: business.id,
+        customer_phone: customer.phone_number,
+        status: 'active'
+      }
+    },
     include: {
-      menu_item: true,
+      menu_item: true
     }
   });
 
-  if (!orderItem) return 'Ese producto ya no está disponible en tu pedido.';
+  const itemName = draftOrderItem?.menu_item?.name;
 
-  return await buildSelectQuatityDecreaseItemMessage(orderItem);
+  if (!draftOrderItem) return 'Ese producto ya no está disponible en tu pedido.';
+
+  return await buildSelectQuatityDecreaseItemMessage({...draftOrderItem, menuItemName: itemName!});
 };
 
 const buildSelectQuatityDecreaseItemMessage = async (
-  orderItem: order_item & { menu_item: menu_item },
+  draftOrderItem: draft_order_item & { menuItemName: string },
 ): Promise<WhatsAppListMessage> => {
 
   const rowsList: {
@@ -675,13 +683,13 @@ const buildSelectQuatityDecreaseItemMessage = async (
     description: string
   }[] = [];
 
-  const currentQty = orderItem.quantity;
+  const currentQty = draftOrderItem.quantity;
 
   // Caso especial: solo hay 1 unidad
   if (currentQty === 1) {
 
     rowsList.push({
-      id: `CONFIRM_REMOVE:${orderItem.id}`,
+      id: `CONFIRM_REMOVE:${draftOrderItem.id}`,
       title: '❌ Remover',
       description: 'Remover el platillo del pedido'
     });
@@ -696,14 +704,14 @@ const buildSelectQuatityDecreaseItemMessage = async (
 
     for (let amount = 1; amount <= allowedOptions; amount++) {
       rowsList.push({
-        id: `DECREASE_ITEM:${orderItem.id}:${amount}`,
+        id: `DECREASE_ITEM:${draftOrderItem.id}:${amount}`,
         title: `Disminuir ${amount}`,
         description: `Reducir ${amount} del pedido`
       });
     }
 
     rowsList.push({
-      id: `CONFIRM_REMOVE:${orderItem.id}`,
+      id: `CONFIRM_REMOVE:${draftOrderItem.id}`,
       title: '❌ Remover',
       description: 'Remover el platillo del pedido'
     });
@@ -720,7 +728,7 @@ const buildSelectQuatityDecreaseItemMessage = async (
     type: 'list',
     header: {
       type: 'text',
-      text: orderItem.menu_item.name
+      text: draftOrderItem.menuItemName
     },
     body: {
       text: `Cantidad actual: ${currentQty}`
