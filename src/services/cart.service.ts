@@ -1,6 +1,6 @@
 // services/cartService.ts
 
-import { business, conversation, customer } from "@prisma/client";
+import { business, conversation, customer, menu_item } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { createConversationMessage, findBusinessByPhoneNumberId, findOrCreateConversationState, updateConversationLastMessageAt, updateConversationState } from "../repositories";
 import { findOrCreateCustomer } from "../repositories/customer.repository";
@@ -8,6 +8,9 @@ import { createOrGetOpenConversation } from "../repositories/conversation.reposi
 import { WhatsAppWebhookPayload } from "../controllers/webhook/types";
 import { WhatsAppInteractiveMessage, WhatsAppListMessage } from "src/domain/intent/whatsappTemplates";
 import { extractOrderData } from "./ai/openai.service";
+import { order_item } from "@prisma/client";
+import { listResponse } from "src/controllers/webhook/utils";
+import { ConversationIntent } from "src/types/conversationIntent";
 
 interface ConfirmRemoveItemResult {
   message: WhatsAppInteractiveMessage | null;
@@ -622,4 +625,80 @@ await createConversationMessage(conversation.id, 'ai', bodyText, false);
 await updateConversationLastMessageAt(conversation.id);
 
 return interactiveMessage;
+};
+
+export const handleSelectQuantityDecreaseItemFromWebhook = async (
+  payload: WhatsAppWebhookPayload,
+  itemID: string | undefined
+): Promise<WhatsAppListMessage | string | null> => {
+
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
+  if (!phoneNumberId || !from || !itemID || itemID === undefined) return null;
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) return null;
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+  await findOrCreateConversationState(conversation.id);
+
+  const orderItem = await prisma.order_item.findUnique({
+    where: { id: itemID },
+    include: {
+      menu_item: true,
+    }
+  });
+
+  if (!orderItem) return 'Ese producto ya no está disponible en tu pedido.';
+
+  return await buildSelectQuatityDecreaseItemMessage(orderItem);
+};
+
+const buildSelectQuatityDecreaseItemMessage = async (
+  orderItem: order_item & { menu_item: menu_item },
+): Promise<WhatsAppListMessage> => {
+  const ListAmounts = Array.from({ length: orderItem.quantity }, (_, index) => index + 1).slice(0, 8);
+  const rowsList = ListAmounts.map(amount => ({
+    id: `DECREASE_ITEM:${orderItem.id}:${amount}`,
+    title: `Disminuir ${amount} en el pedido`,
+    description: 'Disminuir la cantidad del platillo en el pedido'
+  }));
+    rowsList.push({
+      id: `CONFIRM_REMOVE:${orderItem.id}`,
+      title: '❌ Remover',
+      description: 'Remover el platillo del pedido'
+    });
+    rowsList.push({
+      id: ConversationIntent.VIEW_ORDER,
+      title: '⬅ Volver',
+      description: 'Volver a al pedido'
+    });
+  return {
+    type: 'list',
+    header: {
+      type: 'text',
+      text: `${orderItem.menu_item.name}`
+    },
+    body: {
+      text: `cantidad actual: ${orderItem.quantity}`
+    },
+    footer: {
+      text: 'Selecciona una cantidad'
+    },
+    action: {
+      button: 'Seleccionar',
+      sections: [
+        {
+          title: 'Cantidad',
+          rows: rowsList
+        }
+      ]
+    }
+  };
 };
