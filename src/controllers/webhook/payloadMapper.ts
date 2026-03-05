@@ -48,9 +48,9 @@ export const detectIntentFromPayload = (
           payloadId
         );
       }
-      if (payloadId.startsWith('DECREASE_ITEM:')) {
+      if (payloadId.startsWith('DECREASE_ITEM_QUANTITY:')) {
         return buildInteractiveResult(
-          ConversationIntent.DECREASE_ITEM,
+          ConversationIntent.DECREASE_ITEM_QUANTITY,
           payloadId
         );
       }

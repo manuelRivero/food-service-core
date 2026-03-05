@@ -14,7 +14,7 @@ export enum ConversationIntent {
   PRODUCT_QUERY = 'PRODUCT_QUERY',
   PRODUCT_ATTRIBUTE_QUESTION = 'PRODUCT_ATTRIBUTE_QUESTION',
   GENERAL_QUESTION = 'GENERAL_QUESTION',
-  
+  DECREASE_ITEM_QUANTITY = 'DECREASE_ITEM_QUANTITY',
   // === NUEVOS: Acciones específicas de pedido (detectadas por LLM) ===
   REMOVE_ITEM = 'REMOVE_ITEM',           // "sacá la pizza"
   MODIFY_QUANTITY = 'MODIFY_QUANTITY',   // "cambiá a 3"

@@ -6,10 +6,10 @@ import {  handleSelectQuantityDecreaseItemFromWebhook } from '../../../services/
 import { ConversationIntent } from '../../../types/conversationIntent';
 
 export class SelectDecreaseItemQuantityHandler implements IntentHandler {
-  readonly command = ConversationIntent.DECREASE_ITEM;
+  readonly command = ConversationIntent.DECREASE_ITEM_QUANTITY;
   
   canHandle(intent: string): boolean {
-    return intent === ConversationIntent.DECREASE_ITEM;
+    return intent === ConversationIntent.DECREASE_ITEM_QUANTITY;
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {

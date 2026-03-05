@@ -605,7 +605,7 @@ export const handleCartItemSelectionFromWebhook = async (
               description: 'Aumentar la cantidad del producto'
             },
             {
-              id: `DECREASE_ITEM:${orderItem.id}`,
+              id: `DECREASE_ITEM_QUANTITY:${orderItem.id}`,
               title: '➖ Disminuir',
               description: 'Disminuir la cantidad del producto'
             },

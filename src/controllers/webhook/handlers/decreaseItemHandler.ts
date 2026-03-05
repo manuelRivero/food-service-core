@@ -2,7 +2,7 @@
 import { IntentHandler } from '../types';
 import { WebhookContext, HandlerResult } from '../types';
 import { interactiveResponse, noResponse, parseProductId, textResponse } from '../utils';
-import {  decreaseItemQuantityFromWebhook, handleSelectQuantityDecreaseItemFromWebhook } from '../../../services/cart.service';
+import {  decreaseItemQuantityFromWebhook } from '../../../services/cart.service';
 import { ConversationIntent } from '../../../types/conversationIntent';
 
 export class DecreaseItemHandler implements IntentHandler {
@@ -16,6 +16,7 @@ export class DecreaseItemHandler implements IntentHandler {
     const splitPayloadId = parseProductId(ctx.payloadId!);
     if (!splitPayloadId) return noResponse();
     const quantity = parseProductId(splitPayloadId[1]);
+    // esto no và
     const result = await decreaseItemQuantityFromWebhook(ctx.payload, splitPayloadId, Number(quantity));
     if (result === null) return noResponse();
     if (typeof result === 'string') return textResponse(result);
