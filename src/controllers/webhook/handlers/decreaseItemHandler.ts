@@ -16,7 +16,7 @@ export class DecreaseItemHandler implements IntentHandler {
     const splitPayloadId = parseProductId(ctx.payloadId!);
     if (!splitPayloadId) return noResponse();
     const quantity = parseProductId(splitPayloadId[1]);
-    const result = await decreaseItemQuantityFromWebhook(ctx.payload, splitPayloadId[0], Number(quantity));
+    const result = await decreaseItemQuantityFromWebhook(ctx.payload, splitPayloadId, Number(quantity));
     if (result === null) return noResponse();
     if (typeof result === 'string') return textResponse(result);
     return interactiveResponse(result);
