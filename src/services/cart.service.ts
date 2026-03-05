@@ -10,7 +10,7 @@ import { WhatsAppInteractiveMessage, WhatsAppListMessage } from "src/domain/inte
 import { extractOrderData } from "./ai/openai.service";
 import { order_item } from "@prisma/client";
 import { listResponse } from "src/controllers/webhook/utils";
-import { ConversationIntent } from "src/types/conversationIntent";
+import { ConversationIntent } from "../types/conversationIntent";
 
 interface ConfirmRemoveItemResult {
   message: WhatsAppInteractiveMessage | null;
