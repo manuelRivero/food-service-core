@@ -54,12 +54,7 @@ export const detectIntentFromPayload = (
           payloadId
         );
       }
-      if (payloadId.startsWith('CONFIRM_REMOVE:')) {
-        return buildInteractiveResult(
-          ConversationIntent.CONFIRM_REMOVE,
-          payloadId
-        );
-      }
+      
       if (payloadId.startsWith('CANCEL_REMOVE:')) {
         return buildInteractiveResult(
           ConversationIntent.CANCEL_REMOVE,
@@ -77,13 +72,6 @@ export const detectIntentFromPayload = (
         if (payloadId.startsWith('ORDER_SEARCH_PAGE:')) {
           return buildInteractiveResult(
             ConversationIntent.ORDER_SEARCH_PAGE,
-            payloadId
-          );
-        }
-
-        if (payloadId.startsWith('DECREASE_ITEM:')) {
-          return buildInteractiveResult(
-            ConversationIntent.DECREASE_ITEM,
             payloadId
           );
         }
@@ -114,12 +102,14 @@ export const detectIntentFromPayload = (
   const buildInteractiveResult = (
     intent: ConversationIntent,
     raw: string,
-    quantity: number | null = null
-  ): IntentDetectionResult => ({
+    quantity: number | null = null,
+    productId: string | null = null
+  ): IntentDetectionResult & { productId: string | null } => ({
     intent,
     confidence: 1,
     detectedProductName: null,
     quantity,
     candidates: [],
-    raw
+    raw,
+    productId
   });
