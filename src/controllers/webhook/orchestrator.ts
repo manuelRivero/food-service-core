@@ -72,9 +72,9 @@ export const processWebhook = async (payload: any): Promise<void> => {
       // =========================================================
       if (ctx.message?.type === 'interactive') {
         console.log('[Orchestrator] Route: Interactive');
-  
+        console.log('[Orchestrator] Enriched base:', enrichedBase);
         const result = await dispatchInteractive(enrichedBase);
-  
+        console.log('[Orchestrator] Result:', result);
         if (result) {
           await sendResponse(ctx, result);
   
