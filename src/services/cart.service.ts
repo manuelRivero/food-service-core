@@ -380,10 +380,10 @@ export const handleShowCartForEditionFromWebhook = async (
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
   // 🔎 Obtener items del carrito
-  const cartItems = await prisma.order_item.findMany({
+  const cartItems = await prisma.draft_order_item.findMany({
     where: {
-      orders: {
-        conversation_id: conversation.id
+      draft_order: {
+        customer_phone: customer.phone_number
       }
     },
     include: {
@@ -414,7 +414,7 @@ export const handleShowCartForEditionFromWebhook = async (
           title: 'Platillos en tu pedido',
           rows: cartItems.map(item => ({
             id: `SELECT_CART_ITEM:${item.id}`,
-            title: `${item.quantity}x ${item.menu_item.name}`,
+            title: `${item.quantity}x ${item.menu_item?.name}`,
             description: 'Modificar o remover'
           }))
         }
