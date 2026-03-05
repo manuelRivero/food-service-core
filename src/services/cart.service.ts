@@ -380,18 +380,21 @@ export const handleShowCartForEditionFromWebhook = async (
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
   // 🔎 Obtener items del carrito
-  const cartItems = await prisma.draft_order_item.findMany({
+
+  const cartItems = await prisma.draft_order.findFirst({
     where: {
-      draft_order: {
-        customer_phone: customer.phone_number
-      }
+      business_id: business.id,
+      customer_phone: customer.phone_number,
+      status: 'active'
     },
     include: {
-      menu_item: true
+      draft_order_item: {  // ← Nombre correcto según tu schema
+        include: { menu_item: true }
+      }
     }
   });
 
-  if (!cartItems.length) {
+  if (!cartItems?.draft_order_item.length) {
     return 'Tu carrito está vacío 🛒';
   }
 
@@ -412,9 +415,9 @@ export const handleShowCartForEditionFromWebhook = async (
       sections: [
         {
           title: 'Platillos en tu pedido',
-          rows: cartItems.map(item => ({
-            id: `SELECT_CART_ITEM:${item.id}`,
-            title: `${item.quantity}x ${item.menu_item?.name}`,
+          rows: cartItems.draft_order_item.map(item => ({
+            id: `SELECT_CART_ITEM:${item.menu_item?.id ?? ''}`,
+            title: `${item.quantity}x ${item.menu_item?.name ?? ''}`,
             description: 'Modificar o remover'
           }))
         }
