@@ -1,5 +1,5 @@
 // webhooks/handlers/addItemHandler.ts
-import { WebhookContext, HandlerResult, IntentHandler } from '../types';
+import { WebhookContext, HandlerResult, IntentHandler, EnrichedContext } from '../types';
 import { extractPayloadId, listResponse, noResponse, parseProductId, textResponse } from '../utils';
 import { handleCartItemSelectionFromWebhook } from '../../../services/cart.service';
 import { ConversationIntent } from '../../../types/conversationIntent';
@@ -11,7 +11,8 @@ export class SelectCartItemForEditionHandler implements IntentHandler {
     return intent === ConversationIntent.SELECT_CART_ITEM;
   }
 
-  async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
+  async execute(ctx: EnrichedContext): Promise<HandlerResult | null> {
+    console.log('[SelectCartItemForEditionHandler] Executing', ctx.payload, ctx.payloadId);
     const payloadId = extractPayloadId(ctx.payloadId!);
     if (!payloadId) return noResponse();
     const result = await handleCartItemSelectionFromWebhook(ctx.payload, payloadId);
