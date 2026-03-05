@@ -551,12 +551,7 @@ export const handleCartItemSelectionFromWebhook = async (
   const orderItem = draftOrder.draft_order_item.find(item => item.id === orderItemId);
 
   if (!orderItem) {
-    return 'Ese producto ya no está disponible en tu pedido.';
-  }
-
-  // Validar que el item pertenezca a la conversación
-  if (orderItem.draft_order_id !== draftOrder.id) {
-    return 'Ese producto no pertenece a tu pedido actual.';
+    return 'Ese producto no está en tu pedido.';
   }
 
   console.log('---- CART ITEM SELECTED ----');
