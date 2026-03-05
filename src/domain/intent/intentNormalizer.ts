@@ -72,7 +72,6 @@ export const INTENT_PRIORITY: ConversationIntent[] = [
   ConversationIntent.SELECT_CART_ITEM,
   ConversationIntent.INCREASE_ITEM,
   ConversationIntent.DECREASE_ITEM,
-  ConversationIntent.ADD_CART_ITEM,
   
   // 2. Acciones de pedido (lenguaje natural específico)
   ConversationIntent.REMOVE_ITEM,        // NUEVO
