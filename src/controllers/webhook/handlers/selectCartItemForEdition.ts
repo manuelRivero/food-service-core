@@ -13,6 +13,7 @@ export class SelectCartItemForEditionHandler implements IntentHandler {
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
     const payloadId = extractPayloadId(ctx.payload);
+    console.log('SELECT_CART_ITEM payloadId', payloadId);
     const result = await handleCartItemSelectionFromWebhook(ctx.payload, payloadId);
     if (result === null) return noResponse();
     if (typeof result === 'string') return textResponse(result);
