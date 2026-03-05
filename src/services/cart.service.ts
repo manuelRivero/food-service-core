@@ -551,7 +551,7 @@ export const handleCartItemSelectionFromWebhook = async (
     return 'No se encontró el pedido.'}
 
   // Buscar item del carrito
-  const orderItem = draftOrder.draft_order_item.find(item => item.id === orderItemId);
+  const orderItem = draftOrder.draft_order_item.find(item => item.product_id === orderItemId);
 
   console.log('orderItem', orderItem);
   console.log('draftOrder', draftOrder);
