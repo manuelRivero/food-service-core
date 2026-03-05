@@ -23,6 +23,8 @@ export const INTENT_ENUM_VALUES = [
   ConversationIntent.CONFIRM_REMOVE,
   ConversationIntent.CANCEL_REMOVE,
   ConversationIntent.REMOVE_ITEM,
+  ConversationIntent.DECREASE_ITEM,
+  ConversationIntent.SELECT_CART_ITEM,
   
   // Acciones de pedido por lenguaje natural
   ConversationIntent.ORDER_FOOD,
@@ -33,7 +35,6 @@ export const INTENT_ENUM_VALUES = [
   // Consultas y navegación
   ConversationIntent.VIEW_MENU,
   ConversationIntent.VIEW_CART,
-  ConversationIntent.TRACK_ORDER,
   ConversationIntent.PRODUCT_QUERY,
   ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION,
   
@@ -71,6 +72,7 @@ export const INTENT_PRIORITY: ConversationIntent[] = [
   ConversationIntent.SELECT_CART_ITEM,
   ConversationIntent.INCREASE_ITEM,
   ConversationIntent.DECREASE_ITEM,
+  ConversationIntent.ADD_CART_ITEM,
   
   // 2. Acciones de pedido (lenguaje natural específico)
   ConversationIntent.REMOVE_ITEM,        // NUEVO
@@ -131,6 +133,7 @@ export const normalizeIntent = (value: string): ConversationIntent => {
     case ConversationIntent.VIEW_CATEGORIES:
     case ConversationIntent.CONFIRM_REMOVE:
     case ConversationIntent.CANCEL_REMOVE:
+    case ConversationIntent.SELECT_CART_ITEM:
     
     // Acciones de pedido (nuevas)
     case ConversationIntent.REMOVE_ITEM:

@@ -13,7 +13,7 @@ export class AddItemHandler implements IntentHandler {
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
-    const menuItemId = ctx.payloadId!.replace('ADD_ITEM:', '');
+      const menuItemId = parseProductId(ctx.payloadId!);
     const result = await handleAddItemFromWebhook(ctx.payload, menuItemId);
     if (result === null) return noResponse();
     if (typeof result === 'string') return textResponse(result);
