@@ -74,12 +74,27 @@ export const detectIntentFromPayload = (
         );
       }
 
-      if (payloadId.startsWith('ORDER_SEARCH_PAGE:')) {
-        return buildInteractiveResult(
-          ConversationIntent.ORDER_SEARCH_PAGE,
-          payloadId
-        );
-      }
+        if (payloadId.startsWith('ORDER_SEARCH_PAGE:')) {
+          return buildInteractiveResult(
+            ConversationIntent.ORDER_SEARCH_PAGE,
+            payloadId
+          );
+        }
+
+        if (payloadId.startsWith('DECREASE_ITEM_QUANTITY:')) {
+          return buildInteractiveResult(
+            ConversationIntent.DECREASE_ITEM_QUANTITY,
+            payloadId
+          );
+        }
+
+        if (payloadId.startsWith('DECREASE_ITEM:')) {
+          return buildInteractiveResult(
+            ConversationIntent.DECREASE_ITEM,
+            payloadId
+          );
+        }
+
   
     // IDs estáticos
     const staticMap: Record<string, ConversationIntent> = {

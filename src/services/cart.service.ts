@@ -702,3 +702,63 @@ const buildSelectQuatityDecreaseItemMessage = async (
     }
   };
 };
+
+const buildDecreaseItemQuantitySuccessMessage = async (
+  orderItem: order_item & { menu_item: menu_item },
+  quantity: number
+): Promise<WhatsAppInteractiveMessage> => {
+  return {
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      header: { type: 'text', text: 'Pedido actualizado' },
+      body: { text: `Se disminuyò la cantidad de ${quantity} en para el platillo ${orderItem.menu_item.name} en el pedido. \n\n¿Querés seguir comprando? \n\nEscribe "Ver menu" para agregar más platillos.` },
+      footer: { text: '¿Querés seguir comprando o finalizar tu orden?' },
+      action: { buttons: [
+        { type: 'reply', reply: { id: 'VIEW_ORDER', title: 'Volver al pedido' } },
+        { type: 'reply', reply: { id: 'CHECKOUT', title: 'Finalizar pedido' } },
+        { type: 'reply', reply: { id: 'CANCEL_ORDER', title: 'Cancelar pedido' } }
+      ] }
+    }
+  };
+};
+
+export const decreaseItemQuantityFromWebhook = async (
+  payload: WhatsAppWebhookPayload,
+  itemID: string | undefined,
+  quantity: number
+): Promise<WhatsAppInteractiveMessage | string | null> => {
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+  if (!phoneNumberId || !from || !itemID || itemID === undefined) return null;
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) return null;
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+  await findOrCreateConversationState(conversation.id);
+
+  const orderItem = await prisma.order_item.findUnique({
+    where: { id: itemID },
+    include: {
+      menu_item: true,
+    }
+  });
+
+  if (!orderItem) return 'Ese producto ya no está disponible en tu pedido.';
+
+  const newQuantity = orderItem.quantity - quantity;
+  if (newQuantity < 1) return 'La cantidad del platillo no puede ser menor a 1.';
+  await prisma.order_item.update({
+    where: { id: orderItem.id },
+    data: { quantity: newQuantity }
+  });
+  return await buildDecreaseItemQuantitySuccessMessage(orderItem, quantity);
+};
+
+
