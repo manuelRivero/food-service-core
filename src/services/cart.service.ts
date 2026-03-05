@@ -9,7 +9,6 @@ import { WhatsAppWebhookPayload } from "../controllers/webhook/types";
 import { WhatsAppInteractiveMessage, WhatsAppListMessage } from "src/domain/intent/whatsappTemplates";
 import { extractOrderData } from "./ai/openai.service";
 import { order_item } from "@prisma/client";
-import { listResponse } from "src/controllers/webhook/utils";
 import { ConversationIntent } from "../types/conversationIntent";
 
 interface ConfirmRemoveItemResult {

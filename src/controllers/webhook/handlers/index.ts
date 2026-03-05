@@ -27,6 +27,9 @@ import { FallbackHandler } from './fallbackHandler';
 import { ViewCartForEditionHandler } from './viewCartForEditionHandler';
 import { ViewCartHandler } from './viewCartHandler';
 import { ViewMenuHandler } from './viewMenuHandler';
+import { SelectCartItemForEditionHandler } from './selectCartItemForEdition';
+import { SelectDecreaseItemQuantityHandler } from './selectDecreaseItemQuantityHandler';
+import { DecreaseItemHandler } from './decreaseItemHandler';
 
 export const handlers = [
   // === BOTONES (payloadId) - orden: más específicos primero ===
@@ -47,6 +50,10 @@ export const handlers = [
   new ViewCartForEditionHandler(),
   new ViewCartHandler(),
   new ViewMenuHandler(),
+  new SelectCartItemForEditionHandler(),
+  new DecreaseItemHandler(),
+  new SelectDecreaseItemQuantityHandler(),
+
   // === INTENCIONES (NLP) ===
   new OrderFoodHandler(),
   new RemoveItemHandler(),

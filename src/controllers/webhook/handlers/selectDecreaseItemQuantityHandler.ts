@@ -5,7 +5,7 @@ import { extractPayloadId, interactiveResponse, noResponse, textResponse } from 
 import {  handleSelectQuantityDecreaseItemFromWebhook } from '../../../services/cart.service';
 import { ConversationIntent } from '../../../types/conversationIntent';
 
-export class DecreaseItemQuantityHandler implements IntentHandler {
+export class SelectDecreaseItemQuantityHandler implements IntentHandler {
   readonly command = ConversationIntent.DECREASE_ITEM;
   
   canHandle(intent: string): boolean {
