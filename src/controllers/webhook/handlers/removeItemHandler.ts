@@ -2,7 +2,7 @@
 
 import { IntentHandler, EnrichedContext, HandlerResult, IntentClassification } from '../types';
 import { textResponse, interactiveResponse, noResponse, parseProductId } from '../utils';
-import { buildConfirmRemoveItemMessage } from '../../../services/cart.service';
+import { buildConfirmRemoveItemMessage, handleConfirmRemoveItemFromWebhook } from '../../../services/cart.service';
 import { ConversationIntent } from '../../../types/conversationIntent';
 
 export class RemoveItemHandler implements IntentHandler {
@@ -25,22 +25,18 @@ export class RemoveItemHandler implements IntentHandler {
 
     console.log('[RemoveItemHandler] Removing:', productId);
 
-    const result = await buildConfirmRemoveItemMessage(
+    const result = await handleConfirmRemoveItemFromWebhook(
       ctx.business,
-      ctx.conversation,
       productId
     );
     
-    if (result.errorMessage) {
-      console.log('[RemoveItemHandler] Error:', result.errorMessage);
-      return textResponse(result.errorMessage);
-    }
-    
-    if (!result.message) {
+    if (!result) {
       return noResponse();
     }
+    if (typeof result === 'string') {
+      return textResponse(result);
+    }
 
-    console.log('[RemoveItemHandler] Confirmation built');
-    return interactiveResponse(result.message);
+    return interactiveResponse(result);
   }
 }
