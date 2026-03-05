@@ -1,7 +1,7 @@
 // webhooks/handlers/addItemHandler.ts
 import { IntentHandler } from '../types';
 import { WebhookContext, HandlerResult } from '../types';
-import { extractPayloadId, interactiveResponse, noResponse, parseProductId, textResponse } from '../utils';
+import { interactiveResponse, noResponse, parseProductId, textResponse } from '../utils';
 import {  decreaseItemQuantityFromWebhook, handleSelectQuantityDecreaseItemFromWebhook } from '../../../services/cart.service';
 import { ConversationIntent } from '../../../types/conversationIntent';
 
@@ -13,7 +13,7 @@ export class DecreaseItemHandler implements IntentHandler {
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
-    const splitPayloadId = extractPayloadId(ctx.payloadId!);
+    const splitPayloadId = parseProductId(ctx.payloadId!);
     if (!splitPayloadId) return noResponse();
     const quantity = parseProductId(splitPayloadId[1]);
     const result = await decreaseItemQuantityFromWebhook(ctx.payload, splitPayloadId[0], Number(quantity));
