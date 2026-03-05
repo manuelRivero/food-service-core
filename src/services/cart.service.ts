@@ -445,10 +445,11 @@ export const handleViewOrderFromWebhook = async (
   const customer = await findOrCreateCustomer(business.id, from);
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
-  const cartItems = await prisma.order_item.findMany({
+  const cartItems = await prisma.draft_order_item.findMany({
     where: {
-      orders: {
-        conversation_id: conversation.id
+      draft_order: {
+        customer_phone: customer.phone_number,
+        status: 'active'
       }
     },
     include: {
@@ -462,7 +463,7 @@ export const handleViewOrderFromWebhook = async (
 
   // 🔢 Construir resumen
   const summary = cartItems
-    .map(item => `${item.quantity}x ${item.menu_item.name} ${item.unit_price.toNumber()}${business.currency_code ?? 'ARS'}`)
+    .map(item => `${item.quantity}x ${item.menu_item?.name ?? ''} ${item.unit_price.toNumber()}${business.currency_code ?? 'ARS'}`)
     .join('\n');
   const total = cartItems.reduce((acc: number, item) => acc + item.unit_price.toNumber() * item.quantity, 0);
 
