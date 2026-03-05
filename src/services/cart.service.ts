@@ -760,12 +760,11 @@ export const decreaseItemQuantityFromWebhook = async (
   const newQuantity = orderItem.quantity - quantity;
   if (newQuantity < 1) return 'La cantidad del platillo no puede ser menor a 1.';
   await prisma.draft_order_item.update({
-    where: { id: orderItem.menu_item?.id ?? '' },
+    where: { id: orderItem.id },
     data: { quantity: newQuantity }
   });
-  if (!orderItem.menu_item) return 'Ese producto ya no está disponible en tu pedido.';
-  
-  return await buildDecreaseItemQuantitySuccessMessage(orderItem.menu_item, quantity);
+
+  return await buildDecreaseItemQuantitySuccessMessage(orderItem.menu_item!, quantity);
 };
 
 
