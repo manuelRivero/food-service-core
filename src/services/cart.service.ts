@@ -709,7 +709,7 @@ const buildSelectQuatityDecreaseItemMessage = async (
 };
 
 const buildDecreaseItemQuantitySuccessMessage = async (
-  orderItem: order_item & { menu_item: menu_item },
+  orderItem:menu_item,
   quantity: number
 ): Promise<WhatsAppInteractiveMessage> => {
   return {
@@ -717,7 +717,7 @@ const buildDecreaseItemQuantitySuccessMessage = async (
     interactive: {
       type: 'button',
       header: { type: 'text', text: 'Pedido actualizado' },
-      body: { text: `Se disminuyò la cantidad de ${quantity} en para el platillo ${orderItem.menu_item.name} en el pedido. \n\n¿Querés seguir comprando? \n\nEscribe "Ver menu" para agregar más platillos.` },
+      body: { text: `Se disminuyò la cantidad de ${quantity} en para el platillo ${orderItem.name} en el pedido. \n\n¿Querés seguir comprando? \n\nEscribe "Ver menu" para agregar más platillos.` },
       footer: { text: '¿Querés seguir comprando o finalizar tu orden?' },
       action: { buttons: [
         { type: 'reply', reply: { id: 'VIEW_ORDER', title: 'Volver al pedido' } },
@@ -748,7 +748,7 @@ export const decreaseItemQuantityFromWebhook = async (
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
   await findOrCreateConversationState(conversation.id);
 
-  const orderItem = await prisma.order_item.findUnique({
+  const orderItem = await prisma.draft_order_item.findUnique({
     where: { id: itemID },
     include: {
       menu_item: true,
@@ -759,11 +759,13 @@ export const decreaseItemQuantityFromWebhook = async (
 
   const newQuantity = orderItem.quantity - quantity;
   if (newQuantity < 1) return 'La cantidad del platillo no puede ser menor a 1.';
-  await prisma.order_item.update({
-    where: { id: orderItem.id },
+  await prisma.draft_order_item.update({
+    where: { id: orderItem.menu_item?.id ?? '' },
     data: { quantity: newQuantity }
   });
-  return await buildDecreaseItemQuantitySuccessMessage(orderItem, quantity);
+  if (!orderItem.menu_item) return 'Ese producto ya no está disponible en tu pedido.';
+  
+  return await buildDecreaseItemQuantitySuccessMessage(orderItem.menu_item, quantity);
 };
 
 
