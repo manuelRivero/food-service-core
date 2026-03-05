@@ -668,39 +668,73 @@ export const handleSelectQuantityDecreaseItemFromWebhook = async (
 const buildSelectQuatityDecreaseItemMessage = async (
   orderItem: order_item & { menu_item: menu_item },
 ): Promise<WhatsAppListMessage> => {
-  const ListAmounts = Array.from({ length: orderItem.quantity }, (_, index) => index + 1).slice(0, 8);
-  const rowsList = ListAmounts.map(amount => ({
-    id: `DECREASE_ITEM:${orderItem.id}:${amount}`,
-    title: `Disminuir ${amount} en el pedido`,
-    description: 'Disminuir la cantidad del platillo en el pedido'
-  }));
+
+  const rowsList: {
+    id: string
+    title: string
+    description: string
+  }[] = [];
+
+  const currentQty = orderItem.quantity;
+
+  // Caso especial: solo hay 1 unidad
+  if (currentQty === 1) {
+
     rowsList.push({
       id: `CONFIRM_REMOVE:${orderItem.id}`,
       title: '❌ Remover',
       description: 'Remover el platillo del pedido'
     });
+
+  } else {
+
+    // Nunca permitir disminuir hasta 0
+    const maxDecrease = currentQty - 1;
+
+    // Limitar para evitar listas gigantes
+    const allowedOptions = Math.min(maxDecrease, 7);
+
+    for (let amount = 1; amount <= allowedOptions; amount++) {
+      rowsList.push({
+        id: `DECREASE_ITEM:${orderItem.id}:${amount}`,
+        title: `Disminuir ${amount}`,
+        description: `Reducir ${amount} del pedido`
+      });
+    }
+
     rowsList.push({
-      id: ConversationIntent.VIEW_ORDER,
-      title: '⬅ Volver',
-      description: 'Volver a al pedido'
+      id: `CONFIRM_REMOVE:${orderItem.id}`,
+      title: '❌ Remover',
+      description: 'Remover el platillo del pedido'
     });
+  }
+
+  // siempre permitir volver
+  rowsList.push({
+    id: ConversationIntent.VIEW_ORDER,
+    title: '⬅ Volver',
+    description: 'Volver al pedido'
+  });
+
   return {
     type: 'list',
     header: {
       type: 'text',
-      text: `${orderItem.menu_item.name}`
+      text: orderItem.menu_item.name
     },
     body: {
-      text: `cantidad actual: ${orderItem.quantity}`
+      text: `Cantidad actual: ${currentQty}`
     },
     footer: {
-      text: 'Selecciona una cantidad'
+      text: currentQty === 1
+        ? 'Solo puedes remover el platillo'
+        : 'Selecciona cuánto deseas disminuir'
     },
     action: {
       button: 'Seleccionar',
       sections: [
         {
-          title: 'Cantidad',
+          title: 'Opciones',
           rows: rowsList
         }
       ]
