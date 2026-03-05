@@ -209,20 +209,25 @@ export const handleAddItemFromWebhook = async (
 export const buildConfirmRemoveItemMessage = async (
   business: business,
   conversation: conversation,
-  itemIdentifier: string // nombre, id, o descripción del ítem
+  customer: customer,
+  itemIdentifier: string // id del item
 ): Promise<ConfirmRemoveItemResult> => {
 
   // Buscar carrito activo
-  const cart = await prisma.orders.findFirst({
-    where: { conversation_id: conversation.id },
+  const cartItems = await prisma.draft_order.findFirst({
+    where: {
+      business_id: business.id,
+      customer_phone: customer.phone_number,
+      status: 'active'
+    },
     include: {
-      order_item: {
+      draft_order_item: {  // ← Nombre correcto según tu schema
         include: { menu_item: true }
       }
     }
   });
 
-  if (!cart || cart.order_item.length === 0) {
+  if (!cartItems || cartItems.draft_order_item.length === 0) {
     const errorText = 'No tenés items en tu carrito para remover.';
     await createConversationMessage(conversation.id, 'ai', errorText, false);
     await updateConversationLastMessageAt(conversation.id);
@@ -230,9 +235,8 @@ export const buildConfirmRemoveItemMessage = async (
   }
 
   // Buscar ítem que coincida (por nombre o id)
-  const matchingItem = cart.order_item.find(ci =>
-    ci.menu_item.id === itemIdentifier ||
-    ci.menu_item.name.toLowerCase().includes(itemIdentifier.toLowerCase())
+  const matchingItem = cartItems.draft_order_item.find(ci =>
+    ci.menu_item?.id === itemIdentifier
   );
 
   if (!matchingItem) {
@@ -252,7 +256,7 @@ export const buildConfirmRemoveItemMessage = async (
         text: '¿Remover ítem?'
       },
       body: {
-        text: `¿Querés remover *${matchingItem.menu_item.name}* (cantidad: ${matchingItem.quantity}) de tu carrito?`
+        text: `¿Querés remover *${matchingItem.menu_item?.name}* (cantidad: ${matchingItem.quantity}) de tu carrito?`
       },
       footer: {
         text: 'Esta acción no se puede deshacer'
@@ -283,14 +287,14 @@ export const buildConfirmRemoveItemMessage = async (
     metadata: {
       pendingAction: 'CONFIRM_REMOVE',
       pendingItemId: matchingItem.id,
-      pendingItemName: matchingItem.menu_item.name
+      pendingItemName: matchingItem.menu_item?.name ?? ''
     }
   });
 
   await createConversationMessage(
     conversation.id,
     'ai',
-    `Solicitud de confirmación para remover ${matchingItem.menu_item.name}`,
+    `Solicitud de confirmación para remover ${matchingItem.menu_item?.name ?? ''}`,
     false
   );
   await updateConversationLastMessageAt(conversation.id);
@@ -322,6 +326,7 @@ export const handleConfirmRemoveItemFromWebhook = async (
   const result = await buildConfirmRemoveItemMessage(
     business,
     conversation,
+    customer,
     itemIdentifier
   );
 
