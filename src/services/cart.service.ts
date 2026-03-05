@@ -532,32 +532,36 @@ export const handleCartItemSelectionFromWebhook = async (
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
   const conversationState = await findOrCreateConversationState(conversation.id);
-
-  // Buscar item del carrito
-  const orderItem = await prisma.order_item.findUnique({
-    where: { id: orderItemId },
+  const draftOrder = await prisma.draft_order.findFirst({
+    where: {
+      business_id: business.id,
+      customer_phone: customer.phone_number,
+      status: 'active'
+    },
     include: {
-      menu_item: {
-        select: {
-          id: true,
-          name: true
-        }
+      draft_order_item: {  // ← Nombre correcto según tu schema
+        include: { menu_item: true }
       }
     }
   });
+  if (!draftOrder) {
+    return 'No se encontró el pedido.'}
+
+  // Buscar item del carrito
+  const orderItem = draftOrder.draft_order_item.find(item => item.id === orderItemId);
 
   if (!orderItem) {
     return 'Ese producto ya no está disponible en tu pedido.';
   }
 
   // Validar que el item pertenezca a la conversación
-  if (orderItem.order_id !== conversation.id) {
+  if (orderItem.draft_order_id !== draftOrder.id) {
     return 'Ese producto no pertenece a tu pedido actual.';
   }
 
   console.log('---- CART ITEM SELECTED ----');
   console.log('OrderItemId:', orderItem.id);
-  console.log('Product:', orderItem.menu_item.name);
+  console.log('Product:', orderItem);
   console.log('Quantity:', orderItem.quantity);
   console.log('----------------------------');
 
@@ -566,12 +570,12 @@ export const handleCartItemSelectionFromWebhook = async (
     metadata: {
       pendingAction: 'EDIT_CART',
       pendingItemId: orderItem.id,
-      pendingItemName: orderItem.menu_item.name
+      pendingItemName: orderItem.menu_item?.name
     }
   });
 
   const bodyText =
-    `Seleccionaste *${orderItem.menu_item.name}*\n` +
+    `Seleccionaste *${orderItem.menu_item?.name}*\n` +
     `Cantidad actual: ${orderItem.quantity}\n\n` +
     `¿Qué deseas hacer?`;
 
