@@ -761,7 +761,7 @@ const buildSelectQuatityDecreaseItemMessage = async (
 
     for (let amount = 1; amount <= allowedOptions; amount++) {
       rowsList.push({
-        id: `DECREASE_ITEM_QUANTITY:${draftOrderItem.menu_item?.id}:${amount}`,
+        id: `DECREASE_ITEM:${draftOrderItem.menu_item?.id}:${amount}`,
         title: `Disminuir ${amount}`,
         description: `Reducir ${amount} del pedido`
       });
@@ -859,15 +859,21 @@ const buildSelectQuantityIncreaseItemMessage = async (
 };
 
 const buildDecreaseItemQuantitySuccessMessage = async (
-  orderItem: menu_item,
-  quantity: number
+  draftOrderItem: draft_order_item & { menu_item: menu_item | null },
+  quantity: number,
+  currencyCode: string,
+  newQuantity: number
 ): Promise<WhatsAppInteractiveMessage> => {
   return {
     type: 'interactive',
     interactive: {
       type: 'button',
       header: { type: 'text', text: 'Pedido actualizado' },
-      body: { text: `Se disminuyò la cantidad de ${quantity} en para el platillo ${orderItem.name} en el pedido. \n\n¿Querés seguir comprando? \n\nEscribe "Ver menu" para agregar más platillos.` },
+      body: { text: `Se disminuyò la cantidad de ${quantity}
+      para el platillo ${draftOrderItem.menu_item?.name} en el pedido. \n\n
+      \n\nCantidad actual: ${newQuantity} \n\n
+      \n\nTotal: ${draftOrderItem.total_price.toNumber()} ${currencyCode} \n\n
+      \n\n¿Querés seguir comprando? \n\nEscribe "Ver menu" para agregar más platillos.` },
       footer: { text: '¿Querés seguir comprando o finalizar tu orden?' },
       action: {
         buttons: [
@@ -881,15 +887,20 @@ const buildDecreaseItemQuantitySuccessMessage = async (
 };
 
 const buildIncreaseItemQuantitySuccessMessage = async (
-  orderItem: menu_item,
-  quantity: number
+  draftOrderItem: draft_order_item & { menu_item: menu_item | null },
+  quantity: number,
+  newQuantity: number,
+  currencyCode: string
 ): Promise<WhatsAppInteractiveMessage> => {
   return {
     type: 'interactive',
     interactive: {
       type: 'button',
       header: { type: 'text', text: 'Pedido actualizado' },
-      body: { text: `Se aumentò la cantidad de ${quantity} en para el platillo ${orderItem.name} en el pedido. \n\n¿Querés seguir comprando? \n\nEscribe "Ver menu" para agregar más platillos.` },
+      body: { text: `Se aumentò la cantidad de ${quantity} para el platillo ${draftOrderItem.menu_item?.name} en el pedido. 
+      \n\nCantidad actual: ${newQuantity} \n\n
+      \n\nTotal: ${draftOrderItem.total_price.toNumber()} ${currencyCode} \n\n
+      \n\n¿Querés seguir comprando? \n\nEscribe "Ver menu" para agregar más platillos.` },
       footer: { text: '¿Querés seguir comprando o finalizar tu orden?' },
       action: {
         buttons: [
@@ -936,7 +947,7 @@ export const decreaseItemQuantityFromWebhook = async (
     data: { quantity: newQuantity }
   });
 
-  return await buildDecreaseItemQuantitySuccessMessage(draftOrderItem.menu_item!, quantity);
+  return await buildDecreaseItemQuantitySuccessMessage(draftOrderItem, quantity, draftOrder.currency ?? 'ARS', newQuantity);
 };
 
 export const increaseItemQuantityFromWebhook = async (
@@ -974,7 +985,7 @@ export const increaseItemQuantityFromWebhook = async (
     data: { quantity: newQuantity }
   });
 
-  return await buildIncreaseItemQuantitySuccessMessage(draftOrderItem.menu_item!, quantity);
+  return await buildIncreaseItemQuantitySuccessMessage(draftOrderItem, quantity, newQuantity, business.currency_code ?? 'ARS');
 };
 
 export const handleConfirmAddItemFromWebhook = async (
