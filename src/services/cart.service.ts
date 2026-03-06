@@ -88,15 +88,11 @@ export const buildAddItemMessage = async (
   customer: customer
 ): Promise<WhatsAppInteractiveMessage | string | null> => {
 
-  let cart = await prisma.orders.findFirst({
-    where: { conversation_id: conversation.id }
-  });
+  
 
-  if (!cart) {
-    cart = await prisma.orders.create({
-      data: { business_id: business.id, customer_id: customer.id, conversation_id: conversation.id, currency_code: business.currency_code ?? 'ARS' }
-    });
-  }
+    const cart = await handleDraftOrder(business, customer);
+    if (!cart) return 'Error al crear el pedido.';
+  
 
   const item = await prisma.menu_item.findFirst({
     where: { id: menuItemId, business_id: business.id, is_available: true },
@@ -123,25 +119,15 @@ export const buildAddItemMessage = async (
 
 
   const existingItem = await prisma.draft_order_item.findFirst({
-    where: { draft_order_id: cart.id, menu_item: { id: menuItemId } }
+    where: { draft_order_id: cart.id, product_id: menuItemId }
   });
 
   if (existingItem) {
-    await prisma.draft_order_item.update({
-      where: { id: existingItem.id },
-      data: { quantity: existingItem.quantity + 1 }
+    await prisma.draft_order_item.update({  
+      where: { draft_order_id: cart.id, id: existingItem.id },
+      data: { quantity: existingItem.quantity + 1, total_price: existingItem.total_price.add(item.menu_item_price[0]?.amount.toNumber() || 0 * existingItem.quantity) }
     });
-  } else {
-    await prisma.draft_order_item.create({
-      data: {
-        draft_order_id: cart.id,
-        product_id: menuItemId,
-        quantity: 1,
-        unit_price: item.menu_item_price[0]?.amount.toNumber() || 0,
-        total_price: item.menu_item_price[0]?.amount.toNumber() || 0 * 1
-      }
-    });
-  }
+  } 
 
   const itemCount = await prisma.draft_order_item.count({ where: { draft_order_id: cart.id } });
   const total = await prisma.draft_order_item.aggregate({
