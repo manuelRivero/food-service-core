@@ -100,6 +100,18 @@ export const detectIntentFromPayload = (
             payloadId
           );
         }
+        if (payloadId.startsWith('INCREASE_ITEM_QUANTITY:')) {
+          return buildInteractiveResult(
+            ConversationIntent.INCREASE_ITEM_QUANTITY,
+            payloadId
+          );
+        }
+        if (payloadId.startsWith('DECREASE_ITEM_QUANTITY:')) {
+          return buildInteractiveResult(
+            ConversationIntent.DECREASE_ITEM_QUANTITY,
+            payloadId
+          );
+        }
 
   
     // IDs estáticos
