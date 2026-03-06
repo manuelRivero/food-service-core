@@ -122,36 +122,36 @@ export const buildAddItemMessage = async (
 
 
 
-  const existingItem = await prisma.order_item.findFirst({
-    where: { order_id: cart.id, menu_item_id: menuItemId }
+  const existingItem = await prisma.draft_order_item.findFirst({
+    where: { draft_order_id: cart.id, menu_item: { id: menuItemId } }
   });
 
   if (existingItem) {
-    await prisma.order_item.update({
+    await prisma.draft_order_item.update({
       where: { id: existingItem.id },
       data: { quantity: existingItem.quantity + 1 }
     });
   } else {
-    await prisma.order_item.create({
+    await prisma.draft_order_item.create({
       data: {
-        order_id: cart.id,
-        menu_item_id: menuItemId,
+        draft_order_id: cart.id,
+        product_id: menuItemId,
         quantity: 1,
         unit_price: item.menu_item_price[0]?.amount.toNumber() || 0,
-
+        total_price: item.menu_item_price[0]?.amount.toNumber() || 0 * 1
       }
     });
   }
 
-  const itemCount = await prisma.order_item.count({ where: { order_id: cart.id } });
-  const total = await prisma.order_item.aggregate({
-    where: { order_id: cart.id },
-    _sum: { unit_price: true }
+  const itemCount = await prisma.draft_order_item.count({ where: { draft_order_id: cart.id } });
+  const total = await prisma.draft_order_item.aggregate({
+    where: { draft_order_id: cart.id },
+    _sum: { total_price: true }
   });
 
   const messageText = `🛒 *${item.name}* agregado\n\n` +
     `Items en carrito: ${itemCount}\n` +
-    `Total: $${total._sum.unit_price || 0}\n\n` +
+    `Total: $${total._sum.total_price || 0}\n\n` +
     `¿Seguís comprando o querés *finalizar*?`;
 
   await createConversationMessage(conversation.id, 'ai', messageText, false);
@@ -166,7 +166,7 @@ export const buildAddItemMessage = async (
       body: {
         text: `*${item.name}* agregado\n\n` +
           `Articulos en tu pedido: ${itemCount}\n` +
-          `Total: $${total._sum.unit_price || 0}\n\n` +
+          `Total: $${total._sum.total_price?.toNumber() || 0}\n\n` +
           `¿Seguís comprando o querés *finalizar*?`
       },
       action: {
