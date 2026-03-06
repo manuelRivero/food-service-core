@@ -119,17 +119,20 @@ export const buildAddItemMessage = async (
 
 
   const existingItem = await prisma.draft_order_item.findFirst({
-    where: { draft_order_id: cart.id, product_id: menuItemId }
+    where: { draft_order_id: cart.id, product_id: item.id }
   });
 
+  console.log('debug: existingItem', existingItem);
+
   if (existingItem) {
+    console.log('debug: existingItem found, updating quantity and total price');
     await prisma.draft_order_item.update({  
       where: { draft_order_id: cart.id, id: existingItem.id },
       data: { quantity: existingItem.quantity + 1, total_price: existingItem.total_price.add(item.menu_item_price[0]?.amount.toNumber() || 0 * existingItem.quantity) }
     });
   } 
 
-  const itemCount = await prisma.draft_order_item.count({ where: { id: cart.id } });
+  const itemCount = await prisma.draft_order_item.count({ where: { draft_order_id: cart.id } });
   const total = await prisma.draft_order_item.aggregate({
     where: { draft_order_id: cart.id },
     _sum: { total_price: true }
