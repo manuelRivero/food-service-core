@@ -480,7 +480,16 @@ const maybeClearContext = async (
         ConversationIntent.SUPPORT,
         ConversationIntent.CONFIRM_ADD,
         ConversationIntent.CONFIRM_REMOVE,
-        ConversationIntent.UNKNOWN
+        ConversationIntent.UNKNOWN,
+        ConversationIntent.CATEGORY,
+        ConversationIntent.CATEGORY_LIST_PAGE,
+        ConversationIntent.CHECKOUT,
+        ConversationIntent.CANCEL_ORDER,
+        ConversationIntent.END_CONVERSATION,
+        ConversationIntent.VIEW_MENU,
+        ConversationIntent.VIEW_CART,
+        ConversationIntent.VIEW_ORDER,
+
     ]);
 
     const shouldClear = intentsToClear.has(intent)
