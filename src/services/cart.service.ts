@@ -638,12 +638,12 @@ export const handleCartItemSelectionFromWebhook = async (
           rows: [
             {
               id: `INCREASE_ITEM_QUANTITY:${orderItem.menu_item?.id}`,
-              title: '➕ Aumentar',
+              title: '➕ Aumentar cantidad',
               description: 'Aumentar la cantidad del producto'
             },
             {
               id: `DECREASE_ITEM_QUANTITY:${orderItem.menu_item?.id}`,
-              title: '➖ Disminuir',
+              title: '➖ Disminuir cantidad',
               description: 'Disminuir la cantidad del producto'
             },
             {
@@ -818,7 +818,7 @@ const buildSelectQuantityIncreaseItemMessage = async (
   }[] = [];
 
   const currentQty = draftOrderItem.quantity;
-  const maxIncrease = 10;
+  const maxIncrease = 9;
   for (let amount = 1; amount <= maxIncrease; amount++) {
     rowsList.push({
       id: `INCREASE_ITEM:${draftOrderItem.menu_item?.id}:${amount}`,
@@ -829,7 +829,7 @@ const buildSelectQuantityIncreaseItemMessage = async (
 
   // siempre permitir volver
   rowsList.push({
-    id: ConversationIntent.VIEW_ORDER,
+    id: ConversationIntent.VIEW_CART,
     title: '⬅ Volver',
     description: 'Volver al pedido'
   });
