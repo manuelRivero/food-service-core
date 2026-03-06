@@ -129,7 +129,7 @@ export const buildAddItemMessage = async (
     });
   } 
 
-  const itemCount = await prisma.draft_order_item.count({ where: { draft_order_id: cart.id } });
+  const itemCount = await prisma.draft_order_item.count({ where: { id: cart.id } });
   const total = await prisma.draft_order_item.aggregate({
     where: { draft_order_id: cart.id },
     _sum: { total_price: true }
