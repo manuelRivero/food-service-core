@@ -10,6 +10,7 @@ import { WhatsAppInteractiveMessage, WhatsAppListMessage } from "src/domain/inte
 import { extractOrderData } from "./ai/openai.service";
 import { order_item } from "@prisma/client";
 import { ConversationIntent } from "../types/conversationIntent";
+import { handleDraftOrder, handleDraftOrderItem } from "./order.service";
 
 interface ConfirmRemoveItemResult {
   message: WhatsAppInteractiveMessage | null;
@@ -202,6 +203,19 @@ export const handleAddItemFromWebhook = async (
 
   const AIResponse = await extractOrderData(message?.text?.body ?? '');
   console.log('AIResponse', AIResponse);
+
+  const draftOrder = await prisma.draft_order.findFirst({
+    where: {
+      business_id: business.id,
+      customer_phone: customer.phone_number,
+      status: 'active'
+    },
+    include: {
+      draft_order_item: {  // ← Nombre correcto según tu schema
+        include: { menu_item: true }
+      }
+    }
+  });
 
   return buildAddItemMessage(business, conversation, menuItemId, customer);
 };
@@ -452,7 +466,7 @@ export const handleShowCartForEditionFromWebhook = async (
   };
 };
 
-export const handleViewOrderFromWebhook = async (
+export const handleViewCartFromWebhook = async (
   payload: WhatsAppWebhookPayload
 ): Promise<WhatsAppListMessage | string | null> => {
 
@@ -682,18 +696,9 @@ export const handleSelectQuantityDecreaseItemFromWebhook = async (
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
   await findOrCreateConversationState(conversation.id);
 
-  const draftOrderItem = await prisma.draft_order_item.findFirst({
-    where: {
-      draft_order: {
-        business_id: business.id,
-        customer_phone: customer.phone_number,
-        status: 'active'
-      }
-    },
-    include: {
-      menu_item: true
-    }
-  });
+  const draftOrder = await handleDraftOrder(business, customer);
+
+  const draftOrderItem = await handleDraftOrderItem(draftOrder, itemID);
 
 
   if (!draftOrderItem) return 'Ese producto ya no está disponible en tu pedido.';
@@ -722,18 +727,8 @@ export const handleSelectQuantityIncreaseItemFromWebhook = async (
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
   await findOrCreateConversationState(conversation.id);
 
-  const draftOrderItem = await prisma.draft_order_item.findFirst({
-    where: {
-      draft_order: {
-        business_id: business.id,
-        customer_phone: customer.phone_number,
-        status: 'active'
-      }
-    },
-    include: {
-      menu_item: true
-    }
-  });
+  const draftOrder = await handleDraftOrder(business, customer);
+  const draftOrderItem = await handleDraftOrderItem(draftOrder, itemID);
 
   console.log('draftOrderItem handleSelectQuantityIncreaseItemFromWebhook', draftOrderItem);
   if (!draftOrderItem) return 'Ese producto ya no está disponible en tu pedido.';
@@ -911,23 +906,21 @@ export const decreaseItemQuantityFromWebhook = async (
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
   await findOrCreateConversationState(conversation.id);
 
-  const orderItem = await prisma.draft_order_item.findUnique({
-    where: { id: itemID },
-    include: {
-      menu_item: true,
-    }
-  });
+  const draftOrder = await handleDraftOrder(business, customer);
 
-  if (!orderItem) return 'Ese producto ya no está disponible en tu pedido.';
+  const draftOrderItem = await handleDraftOrderItem(draftOrder, itemID);
 
-  const newQuantity = orderItem.quantity - quantity;
+
+  if (!draftOrderItem) return 'Ese producto ya no está disponible en tu pedido.';
+
+  const newQuantity = draftOrderItem.quantity - quantity;
   if (newQuantity < 1) return 'La cantidad del platillo no puede ser menor a 1.';
   await prisma.draft_order_item.update({
-    where: { id: orderItem.id },
+    where: { id: draftOrderItem.id },
     data: { quantity: newQuantity }
   });
 
-  return await buildDecreaseItemQuantitySuccessMessage(orderItem.menu_item!, quantity);
+  return await buildDecreaseItemQuantitySuccessMessage(draftOrderItem.menu_item!, quantity);
 };
 
 export const handleConfirmAddItemFromWebhook = async (

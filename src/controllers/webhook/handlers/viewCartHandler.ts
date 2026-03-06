@@ -1,7 +1,7 @@
 // webhooks/handlers/addItemHandler.ts
 import { WebhookContext, HandlerResult, IntentHandler } from '../types';
 import { interactiveResponse, noResponse, parseProductId, textResponse } from '../utils';
-import { handleViewOrderFromWebhook } from '../../../services/cart.service';
+import { handleViewCartFromWebhook } from '../../../services/cart.service';
 import { ConversationIntent } from '../../../types/conversationIntent';
 
 export class ViewCartHandler implements IntentHandler {
@@ -12,7 +12,7 @@ export class ViewCartHandler implements IntentHandler {
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
-    const result = await handleViewOrderFromWebhook(ctx.payload);
+    const result = await handleViewCartFromWebhook(ctx.payload);
     if (result === null) return noResponse();
     if (typeof result === 'string') return textResponse(result);
     return interactiveResponse(result);
