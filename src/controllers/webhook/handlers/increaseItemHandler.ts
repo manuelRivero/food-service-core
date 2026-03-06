@@ -2,14 +2,14 @@
 import { IntentHandler } from '../types';
 import { WebhookContext, HandlerResult } from '../types';
 import { interactiveResponse, noResponse, parseProductId, textResponse } from '../utils';
-import {  decreaseItemQuantityFromWebhook } from '../../../services/cart.service';
+import { increaseItemQuantityFromWebhook } from '../../../services/cart.service';
 import { ConversationIntent } from '../../../types/conversationIntent';
 
-export class DecreaseItemHandler implements IntentHandler {
-  readonly command = ConversationIntent.DECREASE_ITEM;
+export class IncreaseItemHandler implements IntentHandler {
+  readonly command = ConversationIntent.INCREASE_ITEM;
   
   canHandle(intent: string): boolean {
-    return intent === ConversationIntent.DECREASE_ITEM;
+    return intent === ConversationIntent.INCREASE_ITEM;
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
@@ -17,7 +17,7 @@ export class DecreaseItemHandler implements IntentHandler {
     if (!splitPayloadId) return noResponse();
     const quantity = parseProductId(splitPayloadId[1]);
     // esto no và
-    const result = await decreaseItemQuantityFromWebhook(ctx.payload, splitPayloadId, Number(quantity));
+    const result = await increaseItemQuantityFromWebhook(ctx.payload, splitPayloadId, Number(quantity));
     if (result === null) return noResponse();
     if (typeof result === 'string') return textResponse(result);
     return interactiveResponse(result);

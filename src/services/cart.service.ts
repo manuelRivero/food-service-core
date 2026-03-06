@@ -880,6 +880,28 @@ const buildDecreaseItemQuantitySuccessMessage = async (
   };
 };
 
+const buildIncreaseItemQuantitySuccessMessage = async (
+  orderItem: menu_item,
+  quantity: number
+): Promise<WhatsAppInteractiveMessage> => {
+  return {
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      header: { type: 'text', text: 'Pedido actualizado' },
+      body: { text: `Se aumentò la cantidad de ${quantity} en para el platillo ${orderItem.name} en el pedido. \n\n¿Querés seguir comprando? \n\nEscribe "Ver menu" para agregar más platillos.` },
+      footer: { text: '¿Querés seguir comprando o finalizar tu orden?' },
+      action: {
+        buttons: [
+          { type: 'reply', reply: { id: 'VIEW_ORDER', title: 'Volver al pedido' } },
+          { type: 'reply', reply: { id: 'CHECKOUT', title: 'Finalizar pedido' } },
+          { type: 'reply', reply: { id: 'CANCEL_ORDER', title: 'Cancelar pedido' } }
+        ]
+      }
+    }
+  };
+};
+
 export const decreaseItemQuantityFromWebhook = async (
   payload: WhatsAppWebhookPayload,
   itemID: string | undefined,
@@ -915,6 +937,44 @@ export const decreaseItemQuantityFromWebhook = async (
   });
 
   return await buildDecreaseItemQuantitySuccessMessage(draftOrderItem.menu_item!, quantity);
+};
+
+export const increaseItemQuantityFromWebhook = async (
+  payload: WhatsAppWebhookPayload,
+  itemID: string | undefined,
+  quantity: number
+): Promise<WhatsAppInteractiveMessage | string | null> => {
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+  const maxQuantity = 10;
+  if (!phoneNumberId || !from || !itemID || itemID === undefined) return null;
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) return null;
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+  await findOrCreateConversationState(conversation.id);
+
+  const draftOrder = await handleDraftOrder(business, customer);
+
+  const draftOrderItem = await handleDraftOrderItem(draftOrder, itemID);
+
+
+  if (!draftOrderItem) return 'Ese producto ya no está disponible en tu pedido.';
+
+  const newQuantity = draftOrderItem.quantity + quantity;
+  if (newQuantity > maxQuantity) return 'La cantidad del platillo no puede ser mayor a 10.';
+  await prisma.draft_order_item.update({
+    where: { id: draftOrderItem.id },
+    data: { quantity: newQuantity }
+  });
+
+  return await buildIncreaseItemQuantitySuccessMessage(draftOrderItem.menu_item!, quantity);
 };
 
 export const handleConfirmAddItemFromWebhook = async (
