@@ -75,6 +75,13 @@ export const detectIntentFromPayload = (
         );
       }
 
+      if (payloadId.startsWith('CATEGORY:')) {
+        return buildInteractiveResult(
+          ConversationIntent.CATEGORY,
+          payloadId
+        );
+      }
+
         if (payloadId.startsWith('ORDER_SEARCH_PAGE:')) {
           return buildInteractiveResult(
             ConversationIntent.ORDER_SEARCH_PAGE,
@@ -86,8 +93,6 @@ export const detectIntentFromPayload = (
     // IDs estáticos
     const staticMap: Record<string, ConversationIntent> = {
       ORDER_SEARCH_PAGE: ConversationIntent.ORDER_SEARCH_PAGE,
-      CATEGORY_PAGE: ConversationIntent.CATEGORY_PAGE,
-      CATEGORY: ConversationIntent.CATEGORY,
       CHECKOUT: ConversationIntent.CHECKOUT,
       CANCEL_ORDER: ConversationIntent.CANCEL_ORDER,
       END_CONVERSATION: ConversationIntent.END_CONVERSATION,

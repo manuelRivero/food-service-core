@@ -711,7 +711,7 @@ export const handleSelectQuantityIncreaseItemFromWebhook = async (
     }
   });
 
-
+  console.log('draftOrderItem handleSelectQuantityIncreaseItemFromWebhook', draftOrderItem);
   if (!draftOrderItem) return 'Ese producto ya no está disponible en tu pedido.';
 
   return await buildSelectQuantityIncreaseItemMessage(draftOrderItem);
@@ -797,7 +797,7 @@ const buildSelectQuatityDecreaseItemMessage = async (
 const buildSelectQuantityIncreaseItemMessage = async (
   draftOrderItem: draft_order_item & { menu_item: menu_item | null } ,
 ): Promise<WhatsAppListMessage> => {
-
+  console.log('draftOrderItem buildSelectQuantityIncreaseItemMessage', draftOrderItem);
   const rowsList: {
     id: string
     title: string
