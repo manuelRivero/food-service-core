@@ -637,12 +637,12 @@ export const handleCartItemSelectionFromWebhook = async (
           title: 'Gestión del pedido',
           rows: [
             {
-              id: `INCREASE_ITEM_QUANTITY:${orderItem.menu_item?.id}`,
+              id: `INCREASE_ITEM:${orderItem.menu_item?.id}`,
               title: '➕ Aumentar',
               description: 'Aumentar la cantidad del producto'
             },
             {
-              id: `DECREASE_ITEM_QUANTITY:${orderItem.menu_item?.id}`,
+              id: `DECREASE_ITEM:${orderItem.menu_item?.id}`,
               title: '➖ Disminuir',
               description: 'Disminuir la cantidad del producto'
             },
@@ -652,7 +652,7 @@ export const handleCartItemSelectionFromWebhook = async (
               description: 'Remover el producto del pedido'
             },
             {
-              id: 'VIEW_ORDER',
+              id: 'VIEW_CART',
               title: '⬅ Volver',
               description: 'Volver a la lista de productos'
             }
@@ -776,7 +776,7 @@ const buildSelectQuatityDecreaseItemMessage = async (
 
   // siempre permitir volver
   rowsList.push({
-    id: ConversationIntent.VIEW_ORDER,
+    id: ConversationIntent.VIEW_CART,
     title: '⬅ Volver',
     description: 'Volver al pedido'
   });
@@ -871,7 +871,7 @@ const buildDecreaseItemQuantitySuccessMessage = async (
       footer: { text: '¿Querés seguir comprando o finalizar tu orden?' },
       action: {
         buttons: [
-          { type: 'reply', reply: { id: 'VIEW_ORDER', title: 'Volver al pedido' } },
+          { type: 'reply', reply: { id: 'VIEW_CART', title: 'Volver al pedido' } },
           { type: 'reply', reply: { id: 'CHECKOUT', title: 'Finalizar pedido' } },
           { type: 'reply', reply: { id: 'CANCEL_ORDER', title: 'Cancelar pedido' } }
         ]
@@ -893,7 +893,7 @@ const buildIncreaseItemQuantitySuccessMessage = async (
       footer: { text: '¿Querés seguir comprando o finalizar tu orden?' },
       action: {
         buttons: [
-          { type: 'reply', reply: { id: 'VIEW_ORDER', title: 'Volver al pedido' } },
+          { type: 'reply', reply: { id: 'VIEW_CART', title: 'Volver al pedido' } },
           { type: 'reply', reply: { id: 'CHECKOUT', title: 'Finalizar pedido' } },
           { type: 'reply', reply: { id: 'CANCEL_ORDER', title: 'Cancelar pedido' } }
         ]
