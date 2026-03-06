@@ -3,7 +3,15 @@ import { HandlerResult } from '../types';
 export const parseProductId = (payloadId: string): string => {
     return payloadId.split(':')[1] ?? '';
 };
-
+export const parseQuantity = (payload: string): number | null => {
+    const parts = payload.split(":");
+    const last = parts[2];
+  
+    if (!last) return null;
+  
+    const amount = Number(last);
+    return isNaN(amount) ? null : amount;
+  };
 export const parseCategoryPage = (payloadId: string): { categoryId: string; page: number } => {
     const [, categoryId, pageValue] = payloadId.split(':');
     const page = Number.isFinite(Number(pageValue)) ? Number(pageValue) : 1;

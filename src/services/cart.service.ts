@@ -484,7 +484,6 @@ export const handleViewCartFromWebhook = async (
       business_id: business.id,
       customer_phone: customer.phone_number,
       status: 'active'
-
     },
     include: {
       draft_order_item: {  // ← Nombre correcto según tu schema
@@ -493,6 +492,7 @@ export const handleViewCartFromWebhook = async (
     }
   });
 
+  console.log(' handleViewCartFromWebhook debug:cartItems', cartItems?.draft_order_item.map(item => item.menu_item?.name));
   if (!cartItems?.draft_order_item.length) {
     return 'Tu carrito está vacío 🛒';
   }
