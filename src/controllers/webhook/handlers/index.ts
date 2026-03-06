@@ -30,6 +30,8 @@ import { ViewMenuHandler } from './viewMenuHandler';
 import { SelectCartItemForEditionHandler } from './selectCartItemForEdition';
 import { SelectDecreaseItemQuantityHandler } from './selectDecreaseItemQuantityHandler';
 import { DecreaseItemHandler } from './decreaseItemHandler';
+import { SelectIncreaseItemQuantityHandler } from './selectIncreaseItemQuantityHandler';
+import { IncreaseItemHandler } from './increaseItemHandler';
 
 export const handlers = [
   // === BOTONES (payloadId) - orden: más específicos primero ===
@@ -53,6 +55,8 @@ export const handlers = [
   new SelectCartItemForEditionHandler(),
   new DecreaseItemHandler(),
   new SelectDecreaseItemQuantityHandler(),
+  new IncreaseItemHandler(),
+  new SelectIncreaseItemQuantityHandler(),
 
   // === INTENCIONES (NLP) ===
   new OrderFoodHandler(),
