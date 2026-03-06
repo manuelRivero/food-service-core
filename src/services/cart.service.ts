@@ -386,19 +386,21 @@ export const handleShowCartForEditionFromWebhook = async (
 
   // 🔎 Obtener items del carrito
 
-  const cartItems = await prisma.draft_order_item.findMany({
+  const cartItems = await prisma.draft_order.findFirst({
     where: {
-      draft_order: {
-        customer_phone: customer.phone_number,
-        status: 'active'
-      }
+      business_id: business.id,
+      customer_phone: customer.phone_number,
+      status: 'active'
+
     },
     include: {
-      menu_item: true
+      draft_order_item: {  // ← Nombre correcto según tu schema
+        include: { menu_item: true }
+      }
     }
   });
 
-  if (!cartItems?.length) {
+  if (!cartItems?.draft_order_item.length) {
     return {
       type: 'interactive',
       interactive: {
@@ -408,7 +410,7 @@ export const handleShowCartForEditionFromWebhook = async (
           text: ''
         },
         body: {
-          text: 'Tu pedido está vacío �'
+          text: 'Tu pedido está vacío 🛒'
         },
         footer: {
           text: 'Mira nuestro menú'
@@ -439,7 +441,7 @@ export const handleShowCartForEditionFromWebhook = async (
       sections: [
         {
           title: 'Platillos en tu pedido',
-          rows: cartItems.map(item => ({
+          rows: cartItems.draft_order_item.map(item => ({
             id: `SELECT_CART_ITEM:${item.menu_item?.id ?? ''}`,
             title: `${item.quantity}x ${item.menu_item?.name ?? ''}`,
             description: 'Modificar o remover'
@@ -469,27 +471,29 @@ export const handleViewOrderFromWebhook = async (
   const customer = await findOrCreateCustomer(business.id, from);
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
-  const cartItems = await prisma.draft_order_item.findMany({
+  const cartItems = await prisma.draft_order.findFirst({
     where: {
-      draft_order: {
-        customer_phone: customer.phone_number,
-        status: 'active'
-      }
+      business_id: business.id,
+      customer_phone: customer.phone_number,
+      status: 'active'
+
     },
     include: {
-      menu_item: true
+      draft_order_item: {  // ← Nombre correcto según tu schema
+        include: { menu_item: true }
+      }
     }
   });
 
-  if (!cartItems.length) {
+  if (!cartItems?.draft_order_item.length) {
     return 'Tu carrito está vacío 🛒';
   }
 
   // 🔢 Construir resumen
   const summary = cartItems
-    .map(item => `${item.quantity}x ${item.menu_item?.name ?? ''} ${item.unit_price.toNumber()}${business.currency_code ?? 'ARS'}`)
+    .draft_order_item.map((item: draft_order_item & { menu_item: menu_item | null }) => `${item.quantity}x ${item.menu_item?.name ?? ''} ${item.unit_price.toNumber()}${business.currency_code ?? 'ARS'}`)
     .join('\n');
-  const total = cartItems.reduce((acc: number, item) => acc + item.unit_price.toNumber() * item.quantity, 0);
+  const total = cartItems.draft_order_item.reduce((acc: number, item) => acc + item.unit_price.toNumber() * item.quantity, 0);
 
   return {
     type: 'list',
