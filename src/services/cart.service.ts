@@ -367,7 +367,7 @@ export const handleRemoveItemFromWebhook = async (
 
 export const handleShowCartForEditionFromWebhook = async (
   payload: WhatsAppWebhookPayload
-): Promise<WhatsAppListMessage | string | null> => {
+): Promise<WhatsAppListMessage | WhatsAppInteractiveMessage | string | null> => {
 
   const entry = payload.entry?.[0];
   const change = entry?.changes?.[0];
@@ -386,21 +386,40 @@ export const handleShowCartForEditionFromWebhook = async (
 
   // 🔎 Obtener items del carrito
 
-  const cartItems = await prisma.draft_order.findFirst({
+  const cartItems = await prisma.draft_order_item.findMany({
     where: {
-      business_id: business.id,
-      customer_phone: customer.phone_number,
-      status: 'active'
+      draft_order: {
+        customer_phone: customer.phone_number,
+        status: 'active'
+      }
     },
     include: {
-      draft_order_item: {  // ← Nombre correcto según tu schema
-        include: { menu_item: true }
-      }
+      menu_item: true
     }
   });
 
-  if (!cartItems?.draft_order_item.length) {
-    return 'Tu carrito está vacío 🛒';
+  if (!cartItems?.length) {
+    return {
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        header: {
+          type: 'text',
+          text: ''
+        },
+        body: {
+          text: 'Tu pedido está vacío �'
+        },
+        footer: {
+          text: 'Mira nuestro menú'
+        },
+        action: {
+          buttons: [
+            { type: 'reply', reply: { id: 'VIEW_MENU', title: 'Seguir comprando' } },
+          ]
+        }
+      }
+    };
   }
 
   return {
@@ -420,7 +439,7 @@ export const handleShowCartForEditionFromWebhook = async (
       sections: [
         {
           title: 'Platillos en tu pedido',
-          rows: cartItems.draft_order_item.map(item => ({
+          rows: cartItems.map(item => ({
             id: `SELECT_CART_ITEM:${item.menu_item?.id ?? ''}`,
             title: `${item.quantity}x ${item.menu_item?.name ?? ''}`,
             description: 'Modificar o remover'
@@ -554,7 +573,8 @@ export const handleCartItemSelectionFromWebhook = async (
     }
   });
   if (!draftOrder) {
-    return 'No se encontró el pedido.'}
+    return 'No se encontró el pedido.'
+  }
 
   // Buscar item del carrito
   const orderItem = draftOrder.draft_order_item.find(item => item.product_id === orderItemId);
@@ -631,10 +651,10 @@ export const handleCartItemSelectionFromWebhook = async (
   };
 
 
-await createConversationMessage(conversation.id, 'ai', bodyText, false);
-await updateConversationLastMessageAt(conversation.id);
+  await createConversationMessage(conversation.id, 'ai', bodyText, false);
+  await updateConversationLastMessageAt(conversation.id);
 
-return interactiveMessage;
+  return interactiveMessage;
 };
 
 export const handleSelectQuantityDecreaseItemFromWebhook = async (
@@ -718,7 +738,7 @@ export const handleSelectQuantityIncreaseItemFromWebhook = async (
 };
 
 const buildSelectQuatityDecreaseItemMessage = async (
-  draftOrderItem: draft_order_item & { menu_item: menu_item | null } ,
+  draftOrderItem: draft_order_item & { menu_item: menu_item | null },
 ): Promise<WhatsAppListMessage> => {
 
   const rowsList: {
@@ -795,7 +815,7 @@ const buildSelectQuatityDecreaseItemMessage = async (
 };
 
 const buildSelectQuantityIncreaseItemMessage = async (
-  draftOrderItem: draft_order_item & { menu_item: menu_item | null } ,
+  draftOrderItem: draft_order_item & { menu_item: menu_item | null },
 ): Promise<WhatsAppListMessage> => {
   console.log('draftOrderItem buildSelectQuantityIncreaseItemMessage', draftOrderItem);
   const rowsList: {
@@ -846,7 +866,7 @@ const buildSelectQuantityIncreaseItemMessage = async (
 };
 
 const buildDecreaseItemQuantitySuccessMessage = async (
-  orderItem:menu_item,
+  orderItem: menu_item,
   quantity: number
 ): Promise<WhatsAppInteractiveMessage> => {
   return {
@@ -856,11 +876,13 @@ const buildDecreaseItemQuantitySuccessMessage = async (
       header: { type: 'text', text: 'Pedido actualizado' },
       body: { text: `Se disminuyò la cantidad de ${quantity} en para el platillo ${orderItem.name} en el pedido. \n\n¿Querés seguir comprando? \n\nEscribe "Ver menu" para agregar más platillos.` },
       footer: { text: '¿Querés seguir comprando o finalizar tu orden?' },
-      action: { buttons: [
-        { type: 'reply', reply: { id: 'VIEW_ORDER', title: 'Volver al pedido' } },
-        { type: 'reply', reply: { id: 'CHECKOUT', title: 'Finalizar pedido' } },
-        { type: 'reply', reply: { id: 'CANCEL_ORDER', title: 'Cancelar pedido' } }
-      ] }
+      action: {
+        buttons: [
+          { type: 'reply', reply: { id: 'VIEW_ORDER', title: 'Volver al pedido' } },
+          { type: 'reply', reply: { id: 'CHECKOUT', title: 'Finalizar pedido' } },
+          { type: 'reply', reply: { id: 'CANCEL_ORDER', title: 'Cancelar pedido' } }
+        ]
+      }
     }
   };
 };
@@ -964,12 +986,12 @@ const buildConfirmAddItemMessage = async (
       header: { type: 'text', text: '¿Agregar ítem?' },
       body: { text: `¿Querés agregar *${matchingItem.menu_item?.name}* al pedido?` },
       footer: { text: '¿Querés agregar *${matchingItem.menu_item?.name}* al pedido?' },
-    action: {
-      buttons: [
-        { type: 'reply', reply: { id: `CONFIRM_ADD:${matchingItem.menu_item?.id}`, title: '✅ Sí, agregar' } },
-        { type: 'reply', reply: { id: 'VIEW_MENU', title: '⬅ Volver' } }
-      ]
-    }
+      action: {
+        buttons: [
+          { type: 'reply', reply: { id: `CONFIRM_ADD:${matchingItem.menu_item?.id}`, title: '✅ Sí, agregar' } },
+          { type: 'reply', reply: { id: 'VIEW_MENU', title: '⬅ Volver' } }
+        ]
+      }
     }
   };
 };
