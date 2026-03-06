@@ -671,11 +671,10 @@ export const handleSelectQuantityDecreaseItemFromWebhook = async (
     }
   });
 
-  const itemName = draftOrderItem?.menu_item?.name;
 
   if (!draftOrderItem) return 'Ese producto ya no está disponible en tu pedido.';
 
-  return await buildSelectQuatityDecreaseItemMessage({...draftOrderItem, menuItemName: itemName!});
+  return await buildSelectQuatityDecreaseItemMessage({...draftOrderItem, menuItemName: draftOrderItem.menu_item?.name!});
 };
 
 const buildSelectQuatityDecreaseItemMessage = async (
