@@ -130,7 +130,12 @@ export const buildAddItemMessage = async (
       where: { draft_order_id: cart.id, id: existingItem.id },
       data: { quantity: existingItem.quantity + 1, total_price: existingItem.total_price.add(item.menu_item_price[0]?.amount.toNumber() || 0 * existingItem.quantity) }
     });
-  } 
+  } else {
+    console.log('debug: existingItem not found, creating new item');
+    await prisma.draft_order_item.create({
+      data: { draft_order_id: cart.id, product_id: item.id, quantity: 1, unit_price: item.menu_item_price[0]?.amount.toNumber() || 0, total_price: item.menu_item_price[0]?.amount.toNumber() || 0 * 1 }
+    });
+  }
 
   const itemCount = await prisma.draft_order_item.count({ where: { draft_order_id: cart.id } });
   const total = await prisma.draft_order_item.aggregate({
