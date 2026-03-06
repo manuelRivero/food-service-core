@@ -674,11 +674,11 @@ export const handleSelectQuantityDecreaseItemFromWebhook = async (
 
   if (!draftOrderItem) return 'Ese producto ya no está disponible en tu pedido.';
 
-  return await buildSelectQuatityDecreaseItemMessage({...draftOrderItem, menuItemName: draftOrderItem.menu_item?.name!});
+  return await buildSelectQuatityDecreaseItemMessage(draftOrderItem);
 };
 
 const buildSelectQuatityDecreaseItemMessage = async (
-  draftOrderItem: draft_order_item & { menuItemName: string },
+  draftOrderItem: draft_order_item & { menu_item: menu_item | null } ,
 ): Promise<WhatsAppListMessage> => {
 
   const rowsList: {
@@ -693,7 +693,7 @@ const buildSelectQuatityDecreaseItemMessage = async (
   if (currentQty === 1) {
 
     rowsList.push({
-      id: `CONFIRM_REMOVE:${draftOrderItem.id}`,
+      id: `CONFIRM_REMOVE:${draftOrderItem.menu_item?.id}`,
       title: '❌ Remover',
       description: 'Remover el platillo del pedido'
     });
@@ -708,14 +708,14 @@ const buildSelectQuatityDecreaseItemMessage = async (
 
     for (let amount = 1; amount <= allowedOptions; amount++) {
       rowsList.push({
-        id: `DECREASE_ITEM:${draftOrderItem.id}:${amount}`,
+        id: `DECREASE_ITEM:${draftOrderItem.menu_item?.id}:${amount}`,
         title: `Disminuir ${amount}`,
         description: `Reducir ${amount} del pedido`
       });
     }
 
     rowsList.push({
-      id: `CONFIRM_REMOVE:${draftOrderItem.id}`,
+      id: `CONFIRM_REMOVE:${draftOrderItem.menu_item?.id}`,
       title: '❌ Remover',
       description: 'Remover el platillo del pedido'
     });
@@ -732,7 +732,7 @@ const buildSelectQuatityDecreaseItemMessage = async (
     type: 'list',
     header: {
       type: 'text',
-      text: draftOrderItem.menuItemName
+      text: draftOrderItem.menu_item?.name ?? 'Platillo'
     },
     body: {
       text: `Cantidad actual: ${currentQty}`
