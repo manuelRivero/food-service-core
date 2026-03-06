@@ -161,7 +161,7 @@ export const buildAddItemMessage = async (
     interactive: {
       header: { type: 'text', text: '' },
       type: 'button',
-      footer: { text: '*Pedido actualizado*\n\n¿Querés seguir comprando o finalizar tu orden?' },
+      footer: { text: '*Pedido actualizado*' },
       body: {
         text: `*${item.name}* agregado\n\n` +
           `Articulos en tu pedido: ${itemCount}\n` +
