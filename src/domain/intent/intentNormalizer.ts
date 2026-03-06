@@ -18,12 +18,11 @@ export const INTENT_ENUM_VALUES = [
   ConversationIntent.VIEW_CATEGORIES,
   ConversationIntent.CONFIRM_REMOVE,
   ConversationIntent.CANCEL_REMOVE,
-  ConversationIntent.INCREASE_ITEM,
-  ConversationIntent.DECREASE_ITEM,
+  ConversationIntent.INCREASE_ITEM_QUANTITY,
   ConversationIntent.CONFIRM_REMOVE,
   ConversationIntent.CANCEL_REMOVE,
   ConversationIntent.REMOVE_ITEM,
-  ConversationIntent.DECREASE_ITEM,
+  ConversationIntent.DECREASE_ITEM_QUANTITY,
   ConversationIntent.SELECT_CART_ITEM,
   
   // Acciones de pedido por lenguaje natural
@@ -70,8 +69,8 @@ export const INTENT_PRIORITY: ConversationIntent[] = [
   ConversationIntent.CANCEL_ORDER,
   ConversationIntent.END_CONVERSATION,
   ConversationIntent.SELECT_CART_ITEM,
-  ConversationIntent.INCREASE_ITEM,
-  ConversationIntent.DECREASE_ITEM,
+  ConversationIntent.INCREASE_ITEM_QUANTITY,
+  ConversationIntent.DECREASE_ITEM_QUANTITY,
   
   // 2. Acciones de pedido (lenguaje natural específico)
   ConversationIntent.REMOVE_ITEM,        // NUEVO

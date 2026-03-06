@@ -478,6 +478,8 @@ const maybeClearContext = async (
         ConversationIntent.DELIVERY_INFO,
         ConversationIntent.PAYMENT_METHODS,
         ConversationIntent.SUPPORT,
+        ConversationIntent.CONFIRM_ADD,
+        ConversationIntent.CONFIRM_REMOVE,
         ConversationIntent.UNKNOWN
     ]);
 

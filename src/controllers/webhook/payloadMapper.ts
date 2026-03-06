@@ -35,6 +35,12 @@ export const detectIntentFromPayload = (
           payloadId
         );
       }
+      if (payloadId.startsWith('CONFIRM_ADD:')) {
+        return buildInteractiveResult(
+          ConversationIntent.CONFIRM_ADD,
+          payloadId
+        );
+      }
 
       if (payloadId.startsWith('SELECT_CART_ITEM:')) {
         return buildInteractiveResult(
@@ -42,9 +48,9 @@ export const detectIntentFromPayload = (
           payloadId
         );
       }
-      if (payloadId.startsWith('INCREASE_ITEM:')) {
+      if (payloadId.startsWith('INCREASE_ITEM_QUANTITY:')) {
         return buildInteractiveResult(
-          ConversationIntent.INCREASE_ITEM,
+          ConversationIntent.INCREASE_ITEM_QUANTITY,
           payloadId
         );
       }

@@ -266,7 +266,7 @@ export const buildConfirmRemoveItemMessage = async (
           {
             type: 'reply',
             reply: {
-              id: `CONFIRM_REMOVE:${matchingItem.id}`,
+              id: `CONFIRM_REMOVE:${matchingItem.menu_item?.id}`,
               title: '✅ Sí, remover'
             }
           },
@@ -286,7 +286,7 @@ export const buildConfirmRemoveItemMessage = async (
   await updateConversationState(conversation.id, {
     metadata: {
       pendingAction: 'CONFIRM_REMOVE',
-      pendingItemId: matchingItem.id,
+      pendingItemId: matchingItem.menu_item?.id ?? '',
       pendingItemName: matchingItem.menu_item?.name ?? ''
     }
   });
@@ -605,7 +605,7 @@ export const handleCartItemSelectionFromWebhook = async (
           title: 'Gestión del pedido',
           rows: [
             {
-              id: `INCREASE_ITEM:${orderItem.id}`,
+              id: `INCREASE_ITEM_QUANTITY:${orderItem.menu_item?.id}`,
               title: '➕ Aumentar',
               description: 'Aumentar la cantidad del producto'
             },
@@ -677,6 +677,46 @@ export const handleSelectQuantityDecreaseItemFromWebhook = async (
   return await buildSelectQuatityDecreaseItemMessage(draftOrderItem);
 };
 
+export const handleSelectQuantityIncreaseItemFromWebhook = async (
+  payload: WhatsAppWebhookPayload,
+  itemID: string | undefined
+): Promise<WhatsAppListMessage | string | null> => {
+
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
+  if (!phoneNumberId || !from || !itemID || itemID === undefined) return null;
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) return null;
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+  await findOrCreateConversationState(conversation.id);
+
+  const draftOrderItem = await prisma.draft_order_item.findFirst({
+    where: {
+      draft_order: {
+        business_id: business.id,
+        customer_phone: customer.phone_number,
+        status: 'active'
+      }
+    },
+    include: {
+      menu_item: true
+    }
+  });
+
+
+  if (!draftOrderItem) return 'Ese producto ya no está disponible en tu pedido.';
+
+  return await buildSelectQuantityIncreaseItemMessage(draftOrderItem);
+};
+
 const buildSelectQuatityDecreaseItemMessage = async (
   draftOrderItem: draft_order_item & { menu_item: menu_item | null } ,
 ): Promise<WhatsAppListMessage> => {
@@ -708,7 +748,7 @@ const buildSelectQuatityDecreaseItemMessage = async (
 
     for (let amount = 1; amount <= allowedOptions; amount++) {
       rowsList.push({
-        id: `DECREASE_ITEM:${draftOrderItem.menu_item?.id}:${amount}`,
+        id: `DECREASE_ITEM_QUANTITY:${draftOrderItem.menu_item?.id}:${amount}`,
         title: `Disminuir ${amount}`,
         description: `Reducir ${amount} del pedido`
       });
@@ -741,6 +781,57 @@ const buildSelectQuatityDecreaseItemMessage = async (
       text: currentQty === 1
         ? 'Solo puedes remover el platillo'
         : 'Selecciona cuánto deseas disminuir'
+    },
+    action: {
+      button: 'Seleccionar',
+      sections: [
+        {
+          title: 'Opciones',
+          rows: rowsList
+        }
+      ]
+    }
+  };
+};
+
+const buildSelectQuantityIncreaseItemMessage = async (
+  draftOrderItem: draft_order_item & { menu_item: menu_item | null } ,
+): Promise<WhatsAppListMessage> => {
+
+  const rowsList: {
+    id: string
+    title: string
+    description: string
+  }[] = [];
+
+  const currentQty = draftOrderItem.quantity;
+  const maxIncrease = 10;
+  for (let amount = 1; amount <= maxIncrease; amount++) {
+    rowsList.push({
+      id: `INCREASE_ITEM:${draftOrderItem.menu_item?.id}:${amount}`,
+      title: `Aumentar ${amount}`,
+      description: `Aumentar ${amount} del pedido`
+    });
+  }
+
+  // siempre permitir volver
+  rowsList.push({
+    id: ConversationIntent.VIEW_ORDER,
+    title: '⬅ Volver',
+    description: 'Volver al pedido'
+  });
+
+  return {
+    type: 'list',
+    header: {
+      type: 'text',
+      text: draftOrderItem.menu_item?.name ?? 'Platillo'
+    },
+    body: {
+      text: `Cantidad actual: ${currentQty}`
+    },
+    footer: {
+      text: 'Selecciona cuánto deseas aumentar'
     },
     action: {
       button: 'Seleccionar',
@@ -811,6 +902,76 @@ export const decreaseItemQuantityFromWebhook = async (
   });
 
   return await buildDecreaseItemQuantitySuccessMessage(orderItem.menu_item!, quantity);
+};
+
+export const handleConfirmAddItemFromWebhook = async (
+  payload: WhatsAppWebhookPayload,
+  itemIdentifier: string
+): Promise<WhatsAppInteractiveMessage | string | null> => {
+
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
+  if (!phoneNumberId || !from || !itemIdentifier) return null;
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) return null;
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+  await findOrCreateConversationState(conversation.id);
+
+  return await buildConfirmAddItemMessage(
+    business,
+    conversation,
+    customer,
+    itemIdentifier
+  );
+
+};
+
+const buildConfirmAddItemMessage = async (
+  business: business,
+  conversation: conversation,
+  customer: customer,
+  itemIdentifier: string
+): Promise<WhatsAppInteractiveMessage | string | null> => {
+  const cartItems = await prisma.draft_order.findFirst({
+    where: {
+      business_id: business.id,
+      customer_phone: customer.phone_number,
+      status: 'active'
+    },
+    include: {
+      draft_order_item: {
+        include: { menu_item: true }
+      }
+    }
+  });
+  if (!cartItems) return 'No se encontró el platillo.';
+  const matchingItem = cartItems.draft_order_item.find(ci =>
+    ci.menu_item?.id === itemIdentifier
+  );
+  if (!matchingItem) return 'No se encontró el platillo.';
+  return {
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      header: { type: 'text', text: '¿Agregar ítem?' },
+      body: { text: `¿Querés agregar *${matchingItem.menu_item?.name}* al pedido?` },
+      footer: { text: '¿Querés agregar *${matchingItem.menu_item?.name}* al pedido?' },
+    action: {
+      buttons: [
+        { type: 'reply', reply: { id: `CONFIRM_ADD:${matchingItem.menu_item?.id}`, title: '✅ Sí, agregar' } },
+        { type: 'reply', reply: { id: 'VIEW_MENU', title: '⬅ Volver' } }
+      ]
+    }
+    }
+  };
 };
 
 
