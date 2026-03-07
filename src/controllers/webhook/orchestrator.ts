@@ -14,8 +14,8 @@ import {
 } from '../../repositories';
 import { prisma } from '../../lib/prisma';
 import { ConversationIntent } from '../../types/conversationIntent';
-import { EnrichedContext, IntentClassification, WebhookContext } from './types';
-import { refreshDraftOrderTimeout } from 'src/services/draftOrderTimeout.service';
+import { EnrichedContext, WebhookContext } from './types';
+import { refreshDraftOrderTimeout } from '../../services/draftOrderTimeout.service';
 
 export const processWebhook = async (payload: any): Promise<void> => {
   
