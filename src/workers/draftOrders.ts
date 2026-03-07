@@ -1,4 +1,4 @@
-import { textResponse } from 'src/controllers/webhook/utils';
+import { textResponse } from '../controllers/webhook/utils';
 import { prisma } from '../lib/prisma';
 
 const REMINDER_MINUTES = 5;
