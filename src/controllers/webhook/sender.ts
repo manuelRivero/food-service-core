@@ -39,3 +39,17 @@ export const sendResponse = async (
     });
   }
 };
+
+export const sendResponseNoContext = async (
+  phoneNumberId: string,
+  to: string,
+  result: string
+): Promise<void> => {
+  console.log('[SendResponse] Sending response:', result);
+  
+  await sender.sendTextMessage({
+    phoneNumberId: phoneNumberId,
+    to: to,
+    message: result
+  });
+};
