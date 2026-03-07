@@ -66,18 +66,6 @@ export const processWebhook = async (payload: any): Promise<void> => {
         conversationId: conversation.id
       };
        
-      const userPhone = customer.phone_number;
-
-      const draftOrder = await prisma.draft_order.findFirst({
-        where: {
-          business_id: business.id,
-          customer_phone: customer.phone_number,
-          status: 'active'
-        }
-      });
-      if (draftOrder) {
-        await refreshDraftOrderTimeout(draftOrder.id);
-      }
       // =========================================================
       // 🟢 CASO 1: INTERACTIVE
       // =========================================================

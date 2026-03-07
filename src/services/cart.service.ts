@@ -10,6 +10,7 @@ import { WhatsAppInteractiveMessage, WhatsAppListMessage } from "../domain/inten
 import { extractOrderData } from "./ai/openai.service";
 import { ConversationIntent } from "../types/conversationIntent";
 import { handleDraftOrder, handleDraftOrderItem } from "./order.service";
+import { refreshDraftOrderTimeout } from "./draftOrderTimeout.service";
 
 interface ConfirmRemoveItemResult {
   message: WhatsAppInteractiveMessage | null;
@@ -210,6 +211,10 @@ export const handleAddItemFromWebhook = async (
     }
   });
 
+  if (draftOrder) {
+    console.log('debug: refreshing draftOrder timeout', draftOrder.id);
+    await refreshDraftOrderTimeout(draftOrder.id);
+  }
   return buildAddItemMessage(business, conversation, menuItemId, customer);
 };
 
