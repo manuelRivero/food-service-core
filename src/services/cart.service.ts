@@ -6,9 +6,8 @@ import { createConversationMessage, findBusinessByPhoneNumberId, findOrCreateCon
 import { findOrCreateCustomer } from "../repositories/customer.repository";
 import { createOrGetOpenConversation } from "../repositories/conversation.repository";
 import { WhatsAppWebhookPayload } from "../controllers/webhook/types";
-import { WhatsAppInteractiveMessage, WhatsAppListMessage } from "src/domain/intent/whatsappTemplates";
+import { WhatsAppInteractiveMessage, WhatsAppListMessage } from "../domain/intent/whatsappTemplates";
 import { extractOrderData } from "./ai/openai.service";
-import { order_item } from "@prisma/client";
 import { ConversationIntent } from "../types/conversationIntent";
 import { handleDraftOrder, handleDraftOrderItem } from "./order.service";
 
