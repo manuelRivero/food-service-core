@@ -112,7 +112,8 @@ export const detectIntentFromPayload = (
       VIEW_MENU: ConversationIntent.VIEW_MENU,
       VIEW_CATEGORIES: ConversationIntent.VIEW_CATEGORIES,
       VIEW_CART_FOR_EDITION: ConversationIntent.VIEW_CART_FOR_EDITION,
-      VIEW_ORDER: ConversationIntent.VIEW_ORDER
+      VIEW_ORDER: ConversationIntent.VIEW_ORDER,
+      VIEW_CART: ConversationIntent.VIEW_CART,
     };
   
     if (staticMap[payloadId]) {
