@@ -1,7 +1,7 @@
 import { textResponse } from '../controllers/webhook/utils';
 import { prisma } from '../lib/prisma';
 
-const REMINDER_MINUTES = 5;
+const REMINDER_MINUTES = 1;
 
 export const processDraftOrderTimeouts = async () => {
 
