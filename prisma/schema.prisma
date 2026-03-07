@@ -114,8 +114,12 @@ model draft_order {
   currency         String             @default("ARS")
   created_at       DateTime?          @default(now()) @db.Timestamp(6)
   updated_at       DateTime?          @default(now()) @db.Timestamp(6)
+  expires_at       DateTime?          @db.Timestamptz(6)
+  reminder_sent_at DateTime?          @db.Timestamptz(6)
   business         business?          @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   draft_order_item draft_order_item[]
+
+  @@index([status, expires_at], map: "idx_draft_order_timeout")
 }
 
 model draft_order_item {

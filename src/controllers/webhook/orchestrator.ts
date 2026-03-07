@@ -15,9 +15,9 @@ import {
 import { prisma } from '../../lib/prisma';
 import { ConversationIntent } from '../../types/conversationIntent';
 import { EnrichedContext, IntentClassification, WebhookContext } from './types';
+import { refreshDraftOrderTimeout } from 'src/services/draftOrderTimeout.service';
 
 export const processWebhook = async (payload: any): Promise<void> => {
-    const startTime = Date.now();
   
     try {
       const ctx = extractContext(payload);
@@ -66,7 +66,18 @@ export const processWebhook = async (payload: any): Promise<void> => {
         conversationId: conversation.id
       };
        
-  
+      const userPhone = customer.phone_number;
+
+      const draftOrder = await prisma.draft_order.findFirst({
+        where: {
+          business_id: business.id,
+          customer_phone: customer.phone_number,
+          status: 'active'
+        }
+      });
+      if (draftOrder) {
+        await refreshDraftOrderTimeout(draftOrder.id);
+      }
       // =========================================================
       // 🟢 CASO 1: INTERACTIVE
       // =========================================================

@@ -2,6 +2,10 @@ import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import whatsappRoutes from './routes/whatsapp.routes';
 
+import { processDraftOrderTimeouts } from './workers/draftOrders';
+
+setInterval(processDraftOrderTimeouts, 60000)
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
