@@ -8,25 +8,26 @@ datasource db {
 }
 
 model business {
-  id                     String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                   String
   description            String?
-  timezone               String           @default("America/Argentina/Buenos_Aires")
-  is_active              Boolean          @default(true)
-  created_at             DateTime         @default(now()) @db.Timestamptz(6)
+  timezone               String                   @default("America/Argentina/Buenos_Aires")
+  is_active              Boolean                  @default(true)
+  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
   openai_api_key         String?
-  openai_model           String?          @default("gpt-3.5-turbo")
-  openai_active          Boolean?         @default(true)
+  openai_model           String?                  @default("gpt-3.5-turbo")
+  openai_active          Boolean?                 @default(true)
   whatsapp_phone_number  String?
   whatsapp_phone_id      String?
   whatsapp_access_token  String?
-  ai_monthly_tokens_used Int              @default(0)
-  ai_monthly_token_limit Int              @default(100000)
-  ai_plan                String           @default("basic")
-  ai_reset_at            DateTime         @default(now()) @db.Timestamptz(6)
-  ai_blocked             Boolean          @default(false)
-  currency_code          String?          @db.Char(3)
-  currency               currency?        @relation(fields: [currency_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  ai_monthly_tokens_used Int                      @default(0)
+  ai_monthly_token_limit Int                      @default(100000)
+  ai_plan                String                   @default("basic")
+  ai_reset_at            DateTime                 @default(now()) @db.Timestamptz(6)
+  ai_blocked             Boolean                  @default(false)
+  currency_code          String?                  @db.Char(3)
+  currency               currency?                @relation(fields: [currency_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  business_coverage_zone business_coverage_zone[]
   business_hours         business_hours[]
   conversation           conversation[]
   customer               customer[]
@@ -91,15 +92,16 @@ model currency {
 }
 
 model customer {
-  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  business_id        String        @db.Uuid
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id        String             @db.Uuid
   phone_number       String
   name               String?
-  preferred_currency String?       @db.Char(3)
-  created_at         DateTime      @default(now()) @db.Timestamptz(6)
+  preferred_currency String?            @db.Char(3)
+  created_at         DateTime           @default(now()) @db.Timestamptz(6)
   conversation       conversation?
-  business           business      @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  currency           currency?     @relation(fields: [preferred_currency], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  business           business           @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  currency           currency?          @relation(fields: [preferred_currency], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  customer_address   customer_address[]
   orders             orders[]
 
   @@unique([business_id, phone_number])
@@ -207,17 +209,108 @@ model order_item {
 }
 
 model orders {
-  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  business_id     String        @db.Uuid
-  customer_id     String        @db.Uuid
-  conversation_id String?       @db.Uuid
-  status          String        @default("draft")
-  currency_code   String        @db.Char(3)
-  total_amount    Decimal?      @db.Decimal(12, 2)
-  created_at      DateTime      @default(now()) @db.Timestamptz(6)
-  order_item      order_item[]
-  business        business      @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  conversation    conversation? @relation(fields: [conversation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  currency        currency      @relation(fields: [currency_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
-  customer        customer      @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id               String            @db.Uuid
+  customer_id               String            @db.Uuid
+  conversation_id           String?           @db.Uuid
+  status                    String            @default("draft")
+  currency_code             String            @db.Char(3)
+  total_amount              Decimal?          @db.Decimal(12, 2)
+  created_at                DateTime          @default(now()) @db.Timestamptz(6)
+  customer_address_id       String?           @db.Uuid
+  delivery_address_snapshot Json?             @default("{}")
+  order_item                order_item[]
+  business                  business          @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  conversation              conversation?     @relation(fields: [conversation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  currency                  currency          @relation(fields: [currency_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  customer_address          customer_address? @relation(fields: [customer_address_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer                  customer          @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([customer_address_id], map: "idx_orders_customer_address")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model business_coverage_zone {
+  id                         String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id                String                   @db.Uuid
+  name                       String                   @db.VarChar(100)
+  description                String?
+  coverage_area              Unsupported("geography")
+  delivery_fee               Decimal?                 @default(0) @db.Decimal(10, 2)
+  min_order_amount           Decimal?                 @default(0) @db.Decimal(10, 2)
+  estimated_delivery_minutes Int?
+  schedule_override          Json?
+  priority                   Int?                     @default(0)
+  is_active                  Boolean?                 @default(true)
+  created_at                 DateTime?                @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime?                @default(now()) @db.Timestamptz(6)
+  business                   business                 @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([business_id], map: "idx_coverage_zone_active", where: raw("(is_active = true)"))
+  @@index([business_id], map: "idx_coverage_zone_business")
+  @@index([coverage_area], map: "idx_coverage_zone_geometry", type: Gist)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model customer_address {
+  id                    String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customer_id           String                    @db.Uuid
+  street_address        String                    @db.VarChar(255)
+  apartment             String?                   @db.VarChar(50)
+  neighborhood          String?                   @db.VarChar(100)
+  city                  String?                   @default("Ciudad Autónoma de Buenos Aires") @db.VarChar(100)
+  postal_code           String?                   @db.VarChar(20)
+  country               String?                   @default("AR") @db.VarChar(2)
+  location              Unsupported("geography")?
+  location_accuracy     Float?
+  is_verified           Boolean?                  @default(false)
+  verification_method   String?                   @db.VarChar(50)
+  verified_at           DateTime?                 @db.Timestamptz(6)
+  label                 String?                   @db.VarChar(50)
+  is_default            Boolean?                  @default(false)
+  delivery_instructions String?
+  times_used            Int?                      @default(0)
+  last_used_at          DateTime?                 @db.Timestamptz(6)
+  is_active             Boolean?                  @default(true)
+  created_at            DateTime?                 @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime?                 @default(now()) @db.Timestamptz(6)
+  customer              customer                  @relation(fields: [customer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  orders                orders[]
+
+  @@index([customer_id], map: "idx_customer_address_active", where: raw("(is_active = true)"))
+  @@index([customer_id], map: "idx_customer_address_customer_id")
+  @@index([customer_id, is_default], map: "idx_customer_address_default", where: raw("(is_default = true)"))
+  @@index([location], map: "idx_customer_address_location", type: Gist)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model geocoding_cache {
+  id                String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  query_hash        String                    @unique @db.VarChar(64)
+  query_text        String                    @db.VarChar(500)
+  formatted_address String?                   @db.VarChar(500)
+  street_address    String?                   @db.VarChar(255)
+  neighborhood      String?                   @db.VarChar(100)
+  city              String?                   @db.VarChar(100)
+  postal_code       String?                   @db.VarChar(20)
+  latitude          Decimal                   @db.Decimal(10, 8)
+  longitude         Decimal                   @db.Decimal(11, 8)
+  location          Unsupported("geography")?
+  accuracy          String?                   @db.VarChar(20)
+  data_source       String?                   @db.VarChar(50)
+  created_at        DateTime?                 @default(now()) @db.Timestamptz(6)
+  expires_at        DateTime?                 @default(dbgenerated("(now() + '90 days'::interval)")) @db.Timestamptz(6)
+  hit_count         Int?                      @default(1)
+
+  @@index([expires_at], map: "idx_geocoding_cache_expires")
+  @@index([query_hash], map: "idx_geocoding_cache_hash")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model spatial_ref_sys {
+  srid      Int     @id
+  auth_name String? @db.VarChar(256)
+  auth_srid Int?
+  srtext    String? @db.VarChar(2048)
+  proj4text String? @db.VarChar(2048)
 }

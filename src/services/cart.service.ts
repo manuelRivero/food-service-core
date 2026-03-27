@@ -198,18 +198,7 @@ export const handleAddItemFromWebhook = async (
   const AIResponse = await extractOrderData(message?.text?.body ?? '');
   console.log('AIResponse', AIResponse);
 
-  const draftOrder = await prisma.draft_order.findFirst({
-    where: {
-      business_id: business.id,
-      customer_phone: customer.phone_number,
-      status: 'active'
-    },
-    include: {
-      draft_order_item: {  // ← Nombre correcto según tu schema
-        include: { menu_item: true }
-      }
-    }
-  });
+  const draftOrder = await handleDraftOrder(business, customer);
 
   if (draftOrder) {
     console.log('debug: refreshing draftOrder timeout', draftOrder.id);

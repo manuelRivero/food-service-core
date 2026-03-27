@@ -100,6 +100,36 @@ export const detectIntentFromPayload = (
             payloadId
           );
         }
+        if (payloadId.startsWith('ONBOARDING_CAPTURE_ADDRESS:')) {
+          return buildInteractiveResult(
+            ConversationIntent.ONBOARDING_CAPTURE_ADDRESS,
+            payloadId
+          );
+        }
+        if (payloadId.startsWith('ONBOARDING_SUBMIT_ADDRESS_TEXT:')) {
+          return buildInteractiveResult(ConversationIntent.ONBOARDING_SUBMIT_ADDRESS_TEXT, payloadId);
+        }
+        if (payloadId.startsWith('ONBOARDING_SUBMIT_ADDRESS:')) {
+          return buildInteractiveResult(ConversationIntent.ONBOARDING_SUBMIT_ADDRESS, payloadId);
+        }
+        if (payloadId.startsWith('ONBOARDING_EDIT_ADDRESS:')) {
+          return buildInteractiveResult(ConversationIntent.ONBOARDING_EDIT_ADDRESS, payloadId);
+        }
+        if (payloadId.startsWith('ONBOARDING_RETRY_ADDRESS:')) {
+          return buildInteractiveResult(ConversationIntent.ONBOARDING_RETRY_ADDRESS, payloadId);
+        }
+        if (payloadId.startsWith('ONBOARDING_COMPLETE:')) {
+          return buildInteractiveResult(ConversationIntent.ONBOARDING_COMPLETE, payloadId);
+        }
+        if (payloadId.startsWith('ONBOARDING_START:')) {
+          return buildInteractiveResult(ConversationIntent.ONBOARDING_START, payloadId);
+        }
+        if (payloadId.startsWith('ONBOARDING_CONFIRM_ADDRESS:')) {
+          return buildInteractiveResult(ConversationIntent.ONBOARDING_CONFIRM_ADDRESS, payloadId);
+        }
+        if (payloadId.startsWith('ONBOARDING_ADDRESS_REQUIRED:')) {
+          return buildInteractiveResult(ConversationIntent.ONBOARDING_ADDRESS_REQUIRED, payloadId);
+        }
 
   
     // IDs estáticos

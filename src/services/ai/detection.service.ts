@@ -25,7 +25,7 @@ export interface IntentDetectionResult {
     intent: ConversationIntent;
     confidence: number;
   }>;
-  raw: string;
+  raw: string | null;
 }
 
 export const detectIntentWithConfidence = async (

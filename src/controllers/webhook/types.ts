@@ -34,6 +34,8 @@ export interface WebhookContext {
 }
 
 // Contexto enriquecido con detección
+// src/webhooks/types.ts
+
 export interface EnrichedContext extends WebhookContext {
   detection: IntentDetectionResult;
   conversation: any;
@@ -41,6 +43,12 @@ export interface EnrichedContext extends WebhookContext {
   customer: any;
   conversationState: any;
   conversationId: string;
+  coverageZone?: {        // ← Agregar opcional
+    zone_id: string;
+    zone_name: string;
+    delivery_fee: number;
+    min_order: number;
+  };
 }
 
 // Resultado de handler

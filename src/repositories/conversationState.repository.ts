@@ -1,3 +1,4 @@
+// repositories/conversationState.repository.ts
 import type { conversation_state, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 
@@ -18,5 +19,16 @@ export const updateConversationState = async (
   return prisma.conversation_state.update({
     where: { conversation_id: conversationId },
     data
+  });
+};
+
+export const upsertConversationState = async (
+  conversationId: string,
+  data: Prisma.conversation_stateCreateInput
+) => {
+  return prisma.conversation_state.upsert({
+    where: { conversation_id: conversationId },
+    update: data,
+    create: data,
   });
 };
