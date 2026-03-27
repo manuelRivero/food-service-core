@@ -11,6 +11,9 @@ export class AddressService {
     const step = ctx.conversationState?.metadata?.onboarding_step;
 
     if (!step) {
+      if (this.isLocation(ctx.message) || this.isText(ctx.message)) {
+        return this.capture(ctx);
+      }
       return this.start(ctx);
     }
 
@@ -201,10 +204,12 @@ export class AddressService {
   private async getCoverage(
     lat: number,
     lng: number,
-    businessId: string
+    businessId?: string | null
   ): Promise<any> {
-    const result = await prisma.$queryRawUnsafe<any[]>(`
-      SELECT 
+    if (!businessId) return null;
+
+    const result = await prisma.$queryRaw<any[]>`
+      SELECT
         id,
         name,
         delivery_fee,
@@ -213,14 +218,14 @@ export class AddressService {
         priority
       FROM business_coverage_zone
       WHERE is_active = true
-        AND business_id = '${businessId}'
+        AND business_id = ${businessId}
         AND ST_Intersects(
           coverage_area,
           ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
         )
       ORDER BY priority DESC
       LIMIT 1;
-    `);
+    `;
 
     return result[0] || null;
   }

@@ -249,6 +249,9 @@ const persistUserMessage = async (
         || message.interactive?.list_reply?.id;
       messageContent = `[interactive: ${interactiveId || 'unknown'}]`;
       messageType = 'interactive';
+    } else if (message?.type === 'location') {
+      messageContent = '[location]';
+      messageType = 'location';
     } else {
       messageContent = `[${message?.type || 'unknown'}]`;
     }
