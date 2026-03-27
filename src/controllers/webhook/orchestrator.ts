@@ -3,7 +3,7 @@
 import { extractContext } from './extractor';
 import { dispatchIntent, dispatchInteractive } from './dispachers';
 import { sendResponse } from './sender';
-import { detectIntentWithConfidence, DetectionContext, IntentDetectionResult } from '../../services/ai/detection.service';
+import { detectAddressOrIntent, detectIntentWithConfidence, DetectionContext } from '../../services/ai/detection.service';
 import {
   findBusinessByPhoneNumberId,
   findOrCreateCustomer,
@@ -15,6 +15,7 @@ import {
 import { prisma } from '../../lib/prisma';
 import { ConversationIntent } from '../../types/conversationIntent';
 import { EnrichedContext, WebhookContext } from './types';
+import { AddressService } from '../../services/address.service';
 
 
 export const processWebhook = async (payload: any): Promise<void> => {
@@ -66,6 +67,24 @@ export const processWebhook = async (payload: any): Promise<void> => {
       conversationId: conversation.id
     };
 
+    const detectionContext: DetectionContext = {
+      conversationMode: conversationState.mode || 'GLOBAL',
+      lastReferencedProductId: conversation.lastReferencedProductId,
+      candidateProductIds:
+        (conversationState.metadata as any)?.candidateProductIds || null,
+      recentMessages: recentMessages.map(m => m.message),
+      lastReferencedProductName:
+        (conversationState.metadata as any)?.lastReferencedProductName || null
+    };
+
+    const onboardingReminder =
+      'Para continuar con un pedido necesito tu dirección.';
+
+    const toHandlerResult = (result: any) => ({
+      content: result,
+      isInteractive: typeof result !== 'string'
+    });
+
     // =========================================================
     // 🛡️ PASO 0: FORCE ONBOARDING POR ESTADO
     // =========================================================
@@ -94,6 +113,71 @@ export const processWebhook = async (payload: any): Promise<void> => {
           raw: null,
         },
       };
+
+      if (ctx.message?.type === 'text') {
+        const userMessage = ctx.message?.text?.body || '';
+        const gate = await detectAddressOrIntent(userMessage, detectionContext);
+
+        if (gate.mode === 'address' && gate.addressText) {
+          const serviceResult = await new AddressService().processWithAddressText(
+            onboardingCtx,
+            gate.addressText
+          );
+          if (serviceResult) {
+            const handlerResult = toHandlerResult(serviceResult);
+            await sendResponse(ctx, handlerResult);
+            await createConversationMessage(
+              conversation.id,
+              'ai',
+              typeof handlerResult.content === 'string'
+                ? handlerResult.content
+                : '[interactive]',
+              true
+            );
+            await updateConversationLastMessageAt(conversation.id);
+          }
+          return;
+        }
+
+        if (gate.mode === 'intent') {
+          const detection = await detectIntentWithConfidence(
+            userMessage,
+            detectionContext
+          );
+          const enrichedCtx: EnrichedContext = {
+            ...enrichedBase,
+            detection
+          };
+          const result = await dispatchIntent(enrichedCtx);
+          if (result) {
+            if (typeof result.content === 'string') {
+              result.content = `${result.content}\n\n${onboardingReminder}`;
+            }
+            await sendResponse(ctx, result);
+            await createConversationMessage(
+              conversation.id,
+              'ai',
+              typeof result.content === 'string' ? result.content : '[interactive]',
+              true
+            );
+            await updateConversationLastMessageAt(conversation.id);
+          }
+          return;
+        }
+
+        const askResult = toHandlerResult(
+          'Necesito tu dirección para continuar.\n\nIndicame calle y número o compartí tu ubicación.'
+        );
+        await sendResponse(ctx, askResult);
+        await createConversationMessage(
+          conversation.id,
+          'ai',
+          askResult.content,
+          true
+        );
+        await updateConversationLastMessageAt(conversation.id);
+        return;
+      }
 
       const result = await dispatchIntent(onboardingCtx);
 
@@ -133,6 +217,71 @@ export const processWebhook = async (payload: any): Promise<void> => {
         },
       };
     
+      if (ctx.message?.type === 'text') {
+        const userMessage = ctx.message?.text?.body || '';
+        const gate = await detectAddressOrIntent(userMessage, detectionContext);
+
+        if (gate.mode === 'address' && gate.addressText) {
+          const serviceResult = await new AddressService().processWithAddressText(
+            onboardingCtx,
+            gate.addressText
+          );
+          if (serviceResult) {
+            const handlerResult = toHandlerResult(serviceResult);
+            await sendResponse(ctx, handlerResult);
+            await createConversationMessage(
+              conversation.id,
+              'ai',
+              typeof handlerResult.content === 'string'
+                ? handlerResult.content
+                : '[interactive]',
+              true
+            );
+            await updateConversationLastMessageAt(conversation.id);
+          }
+          return;
+        }
+
+        if (gate.mode === 'intent') {
+          const detection = await detectIntentWithConfidence(
+            userMessage,
+            detectionContext
+          );
+          const enrichedCtx: EnrichedContext = {
+            ...enrichedBase,
+            detection
+          };
+          const result = await dispatchIntent(enrichedCtx);
+          if (result) {
+            if (typeof result.content === 'string') {
+              result.content = `${result.content}\n\n${onboardingReminder}`;
+            }
+            await sendResponse(ctx, result);
+            await createConversationMessage(
+              conversation.id,
+              'ai',
+              typeof result.content === 'string' ? result.content : '[interactive]',
+              true
+            );
+            await updateConversationLastMessageAt(conversation.id);
+          }
+          return;
+        }
+
+        const askResult = toHandlerResult(
+          'Necesito tu dirección para continuar.\n\nIndicame calle y número o compartí tu ubicación.'
+        );
+        await sendResponse(ctx, askResult);
+        await createConversationMessage(
+          conversation.id,
+          'ai',
+          askResult.content,
+          true
+        );
+        await updateConversationLastMessageAt(conversation.id);
+        return;
+      }
+
       const result = await dispatchIntent(onboardingCtx);
     
       if (result) {
@@ -174,16 +323,6 @@ export const processWebhook = async (payload: any): Promise<void> => {
     console.log('[Orchestrator] Route: NLP (text message)');
 
     const userMessage = ctx.message?.text?.body || '';
-
-    const detectionContext: DetectionContext = {
-      conversationMode: conversationState.mode || 'GLOBAL',
-      lastReferencedProductId: conversation.lastReferencedProductId,
-      candidateProductIds:
-        (conversationState.metadata as any)?.candidateProductIds || null,
-      recentMessages: recentMessages.map(m => m.message),
-      lastReferencedProductName:
-        (conversationState.metadata as any)?.lastReferencedProductName || null
-    };
 
     const detection = await detectIntentWithConfidence(
       userMessage,

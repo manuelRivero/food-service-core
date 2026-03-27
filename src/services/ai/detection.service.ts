@@ -28,6 +28,14 @@ export interface IntentDetectionResult {
   raw: string | null;
 }
 
+export interface AddressIntentDetectionResult {
+  mode: 'address' | 'intent' | 'unknown';
+  addressText: string | null;
+  intent: ConversationIntent | null;
+  confidence: number;
+  raw: string | null;
+}
+
 export const detectIntentWithConfidence = async (
   message: string,
   context: DetectionContext
@@ -141,6 +149,96 @@ Rules:
       quantity: null,
       candidates: [],
       raw: String(error)
+    };
+  }
+};
+
+export const detectAddressOrIntent = async (
+  message: string,
+  context: DetectionContext
+): Promise<AddressIntentDetectionResult> => {
+  const prompt = `
+Message: "${message}"
+
+Recent messages (last 5):
+${context.recentMessages.map((m, i) => `${i + 1}. ${m}`).join('\n')}
+
+Return JSON with:
+- mode: "address" | "intent" | "unknown"
+- addressText: string or null (only if mode = address; include street + number or full address)
+- intent: one of ${Object.values(ConversationIntent).join(', ')} or null
+- confidence: 0.0-1.0
+
+Rules:
+- If the message includes a greeting + address, still choose mode = address.
+- If the message is a general question (hours, location, delivery, etc), choose mode = intent.
+- If no clear address and no clear intent, choose mode = unknown.
+`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: `You are a classifier for a restaurant WhatsApp bot.
+Decide if the user's message contains a delivery address or a general intent.
+Prioritize extracting the address when present, even if there is a greeting.`
+        },
+        { role: 'user', content: prompt }
+      ]
+    });
+
+    const content = response.choices[0]?.message?.content || '{}';
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      parsed = {};
+    }
+
+    const rawMode = String(parsed.mode || 'unknown').toLowerCase();
+    const mode =
+      rawMode === 'address' || rawMode === 'intent' ? rawMode : 'unknown';
+
+    const addressText =
+      typeof parsed.addressText === 'string' ? parsed.addressText.trim() : null;
+
+    const intent =
+      mode === 'intent' && typeof parsed.intent === 'string'
+        ? normalizeIntent(parsed.intent)
+        : null;
+
+    const confidence =
+      typeof parsed.confidence === 'number' ? parsed.confidence : 0;
+
+    if (mode === 'address' && (!addressText || addressText.length === 0)) {
+      return {
+        mode: 'unknown',
+        addressText: null,
+        intent: null,
+        confidence: 0,
+        raw: content
+      };
+    }
+
+    return {
+      mode,
+      addressText: addressText || null,
+      intent,
+      confidence,
+      raw: content
+    };
+  } catch (error) {
+    console.error('[Detection] Address gate error:', error);
+    return {
+      mode: 'unknown',
+      addressText: null,
+      intent: null,
+      confidence: 0,
+      raw: null
     };
   }
 };

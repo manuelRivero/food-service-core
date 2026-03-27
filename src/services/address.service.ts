@@ -17,8 +17,12 @@ export class AddressService {
     });
 
     if (!step) {
-      if (this.isLocation(ctx.message) || this.isText(ctx.message)) {
-        console.log('[AddressService] no step -> capture');
+      if (this.isLocation(ctx.message)) {
+        console.log('[AddressService] no step -> capture (location)');
+        return this.capture(ctx);
+      }
+      if (this.isText(ctx.message) && this.isLikelyAddress(ctx.message.text?.body)) {
+        console.log('[AddressService] no step -> capture (text)');
         return this.capture(ctx);
       }
       console.log('[AddressService] no step -> start');
@@ -58,6 +62,17 @@ export class AddressService {
     }
   }
 
+  async processWithAddressText(
+    ctx: EnrichedContext,
+    addressText: string
+  ): Promise<WhatsAppInteractiveMessage | string | null> {
+    const cleaned = addressText.trim();
+    if (!cleaned) {
+      return this.retry('Necesito una dirección con calle y número.');
+    }
+    return this.handleTextAddress(ctx, cleaned);
+  }
+
   // =========================
   // STEP: START
   // =========================
@@ -81,16 +96,20 @@ export class AddressService {
     }
 
     if (this.isText(message)) {
-      return this.handleTextAddress(ctx);
+      const textBody = message.text?.body || '';
+      if (!this.isLikelyAddress(textBody)) {
+        return this.retry('Necesito una dirección con calle y número.');
+      }
+      return this.handleTextAddress(ctx, textBody);
     }
 
     return this.retry('No entendí el formato 😕');
   }
 
   private async handleTextAddress(
-    ctx: EnrichedContext
+    ctx: EnrichedContext,
+    text: string
   ): Promise<WhatsAppInteractiveMessage | string> {
-    const text = ctx.message.text;
 
     const geo = await this.geocode(text);
 
@@ -229,6 +248,13 @@ export class AddressService {
 
   private isText(message: any): boolean {
     return !!message?.text;
+  }
+
+  private isLikelyAddress(text?: string): boolean {
+    if (!text) return false;
+    const normalized = text.trim();
+    if (normalized.length < 6) return false;
+    return /\d/.test(normalized);
   }
 
   private async getCoverage(
