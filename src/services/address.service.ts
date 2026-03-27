@@ -72,15 +72,20 @@ export class AddressService {
       return this.outOfCoverage();
     }
 
+    const formattedAddress =
+      typeof geo.formatted === 'string' ? geo.formatted : String(geo.formatted);
+
     await this.updateState(ctx, {
       onboarding_step: 'CONFIRM',
-      temp_address: geo.formatted,
+      temp_address: formattedAddress,
       temp_lat: geo.lat,
       temp_lng: geo.lng,
       temp_zone_id: zone.id,
     });
 
-    return this.buildConfirmAddressMessage(`📍 Encontré esta dirección:\n${geo.formatted}\n\n¿Es correcta?`);
+    return this.buildConfirmAddressMessage(
+      `📍 Encontré esta dirección:\n${formattedAddress}\n\n¿Es correcta?`
+    );
   }
 
   private async handleLocation(
@@ -89,6 +94,7 @@ export class AddressService {
     const { lat, lng } = ctx.message.location;
 
     const address = await this.reverseGeocode(lat, lng);
+    const formattedAddress = typeof address === 'string' ? address : String(address);
 
     const zone = await this.getCoverage(lat, lng, ctx.business?.id);
 
@@ -98,13 +104,15 @@ export class AddressService {
 
     await this.updateState(ctx, {
       onboarding_step: 'CONFIRM',
-      temp_address: address,
+      temp_address: formattedAddress,
       temp_lat: lat,
       temp_lng: lng,
       temp_zone_id: zone.id,
     });
 
-    return this.buildConfirmAddressMessage(`📍 Detecté tu ubicación:\n${address}\n\n¿Es correcta?`);
+    return this.buildConfirmAddressMessage(
+      `📍 Detecté tu ubicación:\n${formattedAddress}\n\n¿Es correcta?`
+    );
   }
 
   // =========================
