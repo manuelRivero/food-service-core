@@ -20,6 +20,7 @@ export class AddressService {
 
       case 'CONFIRM':
         if (!ctx.conversationState?.metadata?.temp_address) {
+          await this.clearState(ctx);
           return this.start(ctx);
         }
         return this.confirm(ctx);
