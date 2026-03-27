@@ -21,6 +21,8 @@ export interface IntentDetectionResult {
   confidence: number;
   detectedProductName: string | null;
   quantity: number | null;
+  addressText?: string | null;
+  addressConfidence?: number | null;
   candidates: Array<{
     intent: ConversationIntent;
     confidence: number;
@@ -28,13 +30,6 @@ export interface IntentDetectionResult {
   raw: string | null;
 }
 
-export interface AddressIntentDetectionResult {
-  mode: 'address' | 'intent' | 'unknown';
-  addressText: string | null;
-  intent: ConversationIntent | null;
-  confidence: number;
-  raw: string | null;
-}
 
 export const detectIntentWithConfidence = async (
   message: string,
@@ -70,6 +65,8 @@ Available intents:
 Rules:
 - Extract product name when mentioned
 - Extract quantity when specified (number or words like "dos", "tres")
+- If the user includes a delivery address, extract it in addressText even if there is a greeting
+- If there is a clear address, still return intent but always include addressText
 - Provide confidence 0-1
 - If uncertain, provide top 2-3 candidates`
         },
@@ -124,6 +121,10 @@ Rules:
         confidence: parsed.confidence || 0,
         detectedProductName: parsed.detectedProductName || null,
         quantity,
+        addressText:
+          typeof parsed.addressText === 'string' ? parsed.addressText.trim() : null,
+        addressConfidence:
+          typeof parsed.addressConfidence === 'number' ? parsed.addressConfidence : null,
         candidates: parsed.candidates || [],
         raw: content
       };
@@ -135,6 +136,8 @@ Rules:
         confidence: 0,
         detectedProductName: null,
         quantity: null,
+        addressText: null,
+        addressConfidence: null,
         candidates: [],
         raw: content
       };
@@ -147,101 +150,14 @@ Rules:
       confidence: 0,
       detectedProductName: null,
       quantity: null,
+      addressText: null,
+      addressConfidence: null,
       candidates: [],
       raw: String(error)
     };
   }
 };
 
-export const detectAddressOrIntent = async (
-  message: string,
-  context: DetectionContext
-): Promise<AddressIntentDetectionResult> => {
-  const prompt = `
-Message: "${message}"
-
-Recent messages (last 5):
-${context.recentMessages.map((m, i) => `${i + 1}. ${m}`).join('\n')}
-
-Return JSON with:
-- mode: "address" | "intent" | "unknown"
-- addressText: string or null (only if mode = address; include street + number or full address)
-- intent: one of ${Object.values(ConversationIntent).join(', ')} or null
-- confidence: 0.0-1.0
-
-Rules:
-- If the message includes a greeting + address, still choose mode = address.
-- If the message is a general question (hours, location, delivery, etc), choose mode = intent.
-- If no clear address and no clear intent, choose mode = unknown.
-`;
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      temperature: 0,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: `You are a classifier for a restaurant WhatsApp bot.
-Decide if the user's message contains a delivery address or a general intent.
-Prioritize extracting the address when present, even if there is a greeting.`
-        },
-        { role: 'user', content: prompt }
-      ]
-    });
-
-    const content = response.choices[0]?.message?.content || '{}';
-    let parsed: any = {};
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      parsed = {};
-    }
-
-    const rawMode = String(parsed.mode || 'unknown').toLowerCase();
-    const mode =
-      rawMode === 'address' || rawMode === 'intent' ? rawMode : 'unknown';
-
-    const addressText =
-      typeof parsed.addressText === 'string' ? parsed.addressText.trim() : null;
-
-    const intent =
-      mode === 'intent' && typeof parsed.intent === 'string'
-        ? normalizeIntent(parsed.intent)
-        : null;
-
-    const confidence =
-      typeof parsed.confidence === 'number' ? parsed.confidence : 0;
-
-    if (mode === 'address' && (!addressText || addressText.length === 0)) {
-      return {
-        mode: 'unknown',
-        addressText: null,
-        intent: null,
-        confidence: 0,
-        raw: content
-      };
-    }
-
-    return {
-      mode,
-      addressText: addressText || null,
-      intent,
-      confidence,
-      raw: content
-    };
-  } catch (error) {
-    console.error('[Detection] Address gate error:', error);
-    return {
-      mode: 'unknown',
-      addressText: null,
-      intent: null,
-      confidence: 0,
-      raw: null
-    };
-  }
-};
 
 const buildDetectionPrompt = (
   message: string,
@@ -262,6 +178,8 @@ Respond with JSON:
   "confidence": 0.0-1.0,
   "detectedProductName": "product name mentioned or null",
   "quantity": number or null,
+  "addressText": "full address or null",
+  "addressConfidence": 0.0-1.0,
   "candidates": [
     {"intent": "INTENT_NAME", "confidence": 0.0-1.0}
   ]

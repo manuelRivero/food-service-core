@@ -3,7 +3,7 @@
 import { extractContext } from './extractor';
 import { dispatchIntent, dispatchInteractive } from './dispachers';
 import { sendResponse } from './sender';
-import { detectAddressOrIntent, detectIntentWithConfidence, DetectionContext } from '../../services/ai/detection.service';
+import { detectIntentWithConfidence, DetectionContext } from '../../services/ai/detection.service';
 import {
   findBusinessByPhoneNumberId,
   findOrCreateCustomer,
@@ -116,12 +116,15 @@ export const processWebhook = async (payload: any): Promise<void> => {
 
       if (ctx.message?.type === 'text') {
         const userMessage = ctx.message?.text?.body || '';
-        const gate = await detectAddressOrIntent(userMessage, detectionContext);
+        const detection = await detectIntentWithConfidence(
+          userMessage,
+          detectionContext
+        );
 
-        if (gate.mode === 'address' && gate.addressText) {
+        if (detection.addressText) {
           const serviceResult = await new AddressService().processWithAddressText(
             onboardingCtx,
-            gate.addressText
+            detection.addressText
           );
           if (serviceResult) {
             const handlerResult = toHandlerResult(serviceResult);
@@ -139,11 +142,7 @@ export const processWebhook = async (payload: any): Promise<void> => {
           return;
         }
 
-        if (gate.mode === 'intent') {
-          const detection = await detectIntentWithConfidence(
-            userMessage,
-            detectionContext
-          );
+        if (detection.intent !== ConversationIntent.UNKNOWN) {
           const enrichedCtx: EnrichedContext = {
             ...enrichedBase,
             detection
@@ -219,12 +218,15 @@ export const processWebhook = async (payload: any): Promise<void> => {
     
       if (ctx.message?.type === 'text') {
         const userMessage = ctx.message?.text?.body || '';
-        const gate = await detectAddressOrIntent(userMessage, detectionContext);
+        const detection = await detectIntentWithConfidence(
+          userMessage,
+          detectionContext
+        );
 
-        if (gate.mode === 'address' && gate.addressText) {
+        if (detection.addressText) {
           const serviceResult = await new AddressService().processWithAddressText(
             onboardingCtx,
-            gate.addressText
+            detection.addressText
           );
           if (serviceResult) {
             const handlerResult = toHandlerResult(serviceResult);
@@ -242,11 +244,7 @@ export const processWebhook = async (payload: any): Promise<void> => {
           return;
         }
 
-        if (gate.mode === 'intent') {
-          const detection = await detectIntentWithConfidence(
-            userMessage,
-            detectionContext
-          );
+        if (detection.intent !== ConversationIntent.UNKNOWN) {
           const enrichedCtx: EnrichedContext = {
             ...enrichedBase,
             detection
