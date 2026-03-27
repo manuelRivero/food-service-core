@@ -19,6 +19,9 @@ export class AddressService {
         return this.capture(ctx);
 
       case 'CONFIRM':
+        if (!ctx.conversationState?.metadata?.temp_address) {
+          return this.start(ctx);
+        }
         return this.confirm(ctx);
 
       default:
@@ -119,7 +122,8 @@ export class AddressService {
   // STEP: CONFIRM
   // =========================
   private async confirm(ctx: EnrichedContext): Promise<WhatsAppInteractiveMessage | string> {
-    const text = ctx.message?.text?.toLowerCase() || '';
+    const textBody = ctx.message?.text?.body;
+    const text = typeof textBody === 'string' ? textBody.toLowerCase() : '';
 
     if (text.includes('confirmar')) {
       return this.saveAddress(ctx);
