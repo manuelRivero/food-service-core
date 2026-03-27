@@ -74,7 +74,14 @@ export const processWebhook = async (payload: any): Promise<void> => {
       (enrichedBase.conversationState?.metadata as any)?.onboarding_step;
 
     if (isOnboardingActive) {
-      console.log('[Orchestrator] Onboarding active → bypass NLP');
+      console.log('[Orchestrator] Onboarding active → bypass NLP', {
+        step: (enrichedBase.conversationState?.metadata as any)?.onboarding_step,
+        hasTempAddress: Boolean(
+          (enrichedBase.conversationState?.metadata as any)?.temp_address
+        ),
+        messageType: ctx.message?.type,
+        payloadId: ctx.payloadId
+      });
 
       const onboardingCtx: EnrichedContext = {
         ...enrichedBase,

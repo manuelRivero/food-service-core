@@ -34,7 +34,8 @@ export class AddressService {
         console.log('[AddressService] step CONFIRM', {
           tempAddress: ctx.conversationState?.metadata?.temp_address
         });
-        if (!ctx.conversationState?.metadata?.temp_address) {
+        const tempAddress = ctx.conversationState?.metadata?.temp_address;
+        if (typeof tempAddress !== 'string' || tempAddress.trim().length === 0) {
           await this.clearState(ctx);
           return 'No pude recuperar tu dirección anterior. Empecemos de nuevo.\n\n📍 Decime tu dirección o compartí tu ubicación.';
         }
