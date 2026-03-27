@@ -79,7 +79,7 @@ export const processWebhook = async (payload: any): Promise<void> => {
       const onboardingCtx: EnrichedContext = {
         ...enrichedBase,
         detection: {
-          intent: ConversationIntent.ONBOARDING_SUBMIT_ADDRESS_TEXT, // dummy
+          intent: ConversationIntent.ONBOARDING_START, // dummy
           confidence: 1,
           detectedProductName: null,
           quantity: null,
