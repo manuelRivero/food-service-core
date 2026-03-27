@@ -123,6 +123,14 @@ export class AddressService {
   // STEP: CONFIRM
   // =========================
   private async confirm(ctx: EnrichedContext): Promise<WhatsAppInteractiveMessage | string> {
+    const payloadId = ctx.payloadId;
+    if (payloadId === 'ONBOARDING_CONFIRM_ADDRESS') {
+      return this.saveAddress(ctx);
+    }
+    if (payloadId === 'ONBOARDING_EDIT_ADDRESS') {
+      return this.edit(ctx);
+    }
+
     const textBody = ctx.message?.text?.body;
     const text = typeof textBody === 'string' ? textBody.toLowerCase() : '';
 
@@ -134,7 +142,15 @@ export class AddressService {
       return this.edit(ctx);
     }
 
-    return 'Por favor elegí una opción: Confirmar o Editar.';
+    const tempAddress = ctx.conversationState?.metadata?.temp_address;
+    if (typeof tempAddress === 'string' && tempAddress.trim().length > 0) {
+      return this.buildConfirmAddressMessage(
+        `📍 Encontré esta dirección:\n${tempAddress}\n\n¿Es correcta?`
+      );
+    }
+
+    await this.clearState(ctx);
+    return 'No pude recuperar tu dirección anterior. Empecemos de nuevo.\n\n📍 Decime tu dirección o compartí tu ubicación.';
   }
 
   private async saveAddress(ctx: EnrichedContext): Promise<string> {
