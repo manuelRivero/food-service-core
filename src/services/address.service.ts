@@ -9,19 +9,31 @@ export class AddressService {
 
   async process(ctx: EnrichedContext): Promise<WhatsAppInteractiveMessage | string | null> {
     const step = ctx.conversationState?.metadata?.onboarding_step;
+    console.log('[AddressService] process', {
+      step,
+      hasTempAddress: Boolean(ctx.conversationState?.metadata?.temp_address),
+      messageType: ctx.message?.type,
+      payloadId: ctx.payloadId
+    });
 
     if (!step) {
       if (this.isLocation(ctx.message) || this.isText(ctx.message)) {
+        console.log('[AddressService] no step -> capture');
         return this.capture(ctx);
       }
+      console.log('[AddressService] no step -> start');
       return this.start(ctx);
     }
 
     switch (step) {
       case 'CAPTURE':
+        console.log('[AddressService] step CAPTURE');
         return this.capture(ctx);
 
       case 'CONFIRM':
+        console.log('[AddressService] step CONFIRM', {
+          tempAddress: ctx.conversationState?.metadata?.temp_address
+        });
         if (!ctx.conversationState?.metadata?.temp_address) {
           await this.clearState(ctx);
           return 'No pude recuperar tu dirección anterior. Empecemos de nuevo.\n\n📍 Decime tu dirección o compartí tu ubicación.';
@@ -29,6 +41,7 @@ export class AddressService {
         return this.confirm(ctx);
 
       default:
+        console.log('[AddressService] step default -> start');
         return this.start(ctx);
     }
   }
@@ -127,6 +140,11 @@ export class AddressService {
   // =========================
   private async confirm(ctx: EnrichedContext): Promise<WhatsAppInteractiveMessage | string> {
     const payloadId = ctx.payloadId;
+    console.log('[AddressService] confirm', {
+      payloadId,
+      messageType: ctx.message?.type,
+      textBody: ctx.message?.text?.body
+    });
     if (payloadId === 'ONBOARDING_CONFIRM_ADDRESS') {
       return this.saveAddress(ctx);
     }
