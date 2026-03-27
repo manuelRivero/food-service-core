@@ -34,6 +34,10 @@ export class AddressService {
         console.log('[AddressService] step CONFIRM', {
           tempAddress: ctx.conversationState?.metadata?.temp_address
         });
+        if (ctx.payloadId === 'ONBOARDING_EDIT_ADDRESS') {
+          return this.edit(ctx);
+        }
+
         const tempAddress = ctx.conversationState?.metadata?.temp_address;
         const normalizedTemp =
           typeof tempAddress === 'string' ? tempAddress.trim() : '';
