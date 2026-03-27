@@ -187,7 +187,7 @@ export class AddressService {
         AND business_id = '${businessId}'
         AND ST_Contains(
           coverage_area,
-          ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)
+          ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
         )
       ORDER BY priority DESC
       LIMIT 1;
