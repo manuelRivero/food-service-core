@@ -21,7 +21,7 @@ export class AddressService {
       case 'CONFIRM':
         if (!ctx.conversationState?.metadata?.temp_address) {
           await this.clearState(ctx);
-          return this.start(ctx);
+          return 'No pude recuperar tu dirección anterior. Empecemos de nuevo.\n\n📍 Decime tu dirección o compartí tu ubicación.';
         }
         return this.confirm(ctx);
 
