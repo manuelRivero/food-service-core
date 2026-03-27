@@ -1,13 +1,13 @@
-import { HandlerResult } from '../controllers/webhook/types';
 import { EnrichedContext } from '../controllers/webhook/types';
 import { prisma } from '../lib/prisma';
 import { updateConversationState } from '../repositories/conversationState.repository';
+import { WhatsAppInteractiveMessage } from '../domain/intent/whatsappTemplates';
 
 
 export class AddressService {
   
 
-  async process(ctx: EnrichedContext): Promise<HandlerResult> {
+  async process(ctx: EnrichedContext): Promise<WhatsAppInteractiveMessage | string | null> {
     const step = ctx.conversationState?.metadata?.onboarding_step;
 
     if (!step) {
@@ -29,25 +29,19 @@ export class AddressService {
   // =========================
   // STEP: START
   // =========================
-  private async start(ctx: EnrichedContext): Promise<HandlerResult> {
+  private async start(ctx: EnrichedContext): Promise<string> {
     await this.updateState(ctx, {
       onboarding_step: 'CAPTURE',
       onboarding_started_at: new Date().toISOString(),
     });
 
-    return {
-      content: {
-        type: 'text',
-        body: '📍 Para continuar, decime tu dirección o compartí tu ubicación.',
-      },
-      isInteractive: false,
-    };
+    return '📍 Para continuar, decime tu dirección o compartí tu ubicación.';
   }
 
   // =========================
   // STEP: CAPTURE
   // =========================
-  private async capture(ctx: EnrichedContext): Promise<HandlerResult> {
+  private async capture(ctx: EnrichedContext): Promise<WhatsAppInteractiveMessage | string> {
     const message = ctx.message;
 
     if (this.isLocation(message)) {
@@ -63,7 +57,7 @@ export class AddressService {
 
   private async handleTextAddress(
     ctx: EnrichedContext
-  ): Promise<HandlerResult> {
+  ): Promise<WhatsAppInteractiveMessage | string> {
     const text = ctx.message.text;
 
     const geo = await this.geocode(text);
@@ -86,19 +80,12 @@ export class AddressService {
       temp_zone_id: zone.id,
     });
 
-    return {
-      content: {
-        type: 'interactive',
-        body: `📍 Encontré esta dirección:\n${geo.formatted}\n\n¿Es correcta?`,
-        buttons: ['Confirmar', 'Editar'],
-      },
-      isInteractive: true,
-    };
+    return this.buildConfirmAddressMessage(`📍 Encontré esta dirección:\n${geo.formatted}\n\n¿Es correcta?`);
   }
 
   private async handleLocation(
     ctx: EnrichedContext
-  ): Promise<HandlerResult> {
+  ): Promise<WhatsAppInteractiveMessage | string> {
     const { lat, lng } = ctx.message.location;
 
     const address = await this.reverseGeocode(lat, lng);
@@ -117,20 +104,13 @@ export class AddressService {
       temp_zone_id: zone.id,
     });
 
-    return {
-      content: {
-        type: 'interactive',
-        body: `📍 Detecté tu ubicación:\n${address}\n\n¿Es correcta?`,
-        buttons: ['Confirmar', 'Editar'],
-      },
-      isInteractive: true,
-    };
+    return this.buildConfirmAddressMessage(`📍 Detecté tu ubicación:\n${address}\n\n¿Es correcta?`);
   }
 
   // =========================
   // STEP: CONFIRM
   // =========================
-  private async confirm(ctx: EnrichedContext): Promise<HandlerResult> {
+  private async confirm(ctx: EnrichedContext): Promise<WhatsAppInteractiveMessage | string> {
     const text = ctx.message?.text?.toLowerCase() || '';
 
     if (text.includes('confirmar')) {
@@ -141,16 +121,10 @@ export class AddressService {
       return this.edit(ctx);
     }
 
-    return {
-      content: {
-        type: 'text',
-        body: 'Por favor elegí una opción: Confirmar o Editar.',
-      },
-      isInteractive: false,
-    };
+    return 'Por favor elegí una opción: Confirmar o Editar.';
   }
 
-  private async saveAddress(ctx: EnrichedContext): Promise<HandlerResult> {
+  private async saveAddress(ctx: EnrichedContext): Promise<string> {
     const meta = ctx.conversationState.metadata;
 
     // Opcional: desmarcar otras direcciones como default
@@ -169,16 +143,10 @@ export class AddressService {
 
     await this.clearState(ctx);
 
-    return {
-      content: {
-        type: 'text',
-        body: '✅ Dirección guardada correctamente.\n\n¿En qué te ayudo ahora?',
-      },
-      isInteractive: false,
-    };
+    return '✅ Dirección guardada correctamente.\n\n¿En qué te ayudo ahora?';
   }
 
-  private async edit(ctx: EnrichedContext): Promise<HandlerResult> {
+  private async edit(ctx: EnrichedContext): Promise<string> {
     await this.updateState(ctx, {
       onboarding_step: 'CAPTURE',
       temp_address: null,
@@ -187,13 +155,7 @@ export class AddressService {
       temp_zone_id: null,
     });
 
-    return {
-      content: {
-        type: 'text',
-        body: 'Perfecto, decime la dirección nuevamente 📍',
-      },
-      isInteractive: false,
-    };
+    return 'Perfecto, decime la dirección nuevamente 📍';
   }
 
   // =========================
@@ -249,23 +211,29 @@ export class AddressService {
     });
   }
 
-  private retry(message: string): HandlerResult {
-    return {
-      content: {
-        type: 'text',
-        body: `${message}\n\nProbá con otra dirección 🙏`,
-      },
-      isInteractive: false,
-    };
+  private retry(message: string): string {
+    return `${message}\n\nProbá con otra dirección 🙏`;
   }
 
-  private outOfCoverage(): HandlerResult {
+  private outOfCoverage(): string {
+    return '🚫 Lo siento, no tenemos cobertura en esa zona.\n\nProbá con otra dirección.';
+  }
+
+  private buildConfirmAddressMessage(body: string): WhatsAppInteractiveMessage {
     return {
-      content: {
-        type: 'text',
-        body: '🚫 Lo siento, no tenemos cobertura en esa zona.\n\nProbá con otra dirección.',
-      },
-      isInteractive: false,
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        header: { type: 'text', text: 'Confirmá tu dirección' },
+        body: { text: body },
+        footer: { text: 'Seleccioná una opción para continuar.' },
+        action: {
+          buttons: [
+            { type: 'reply', reply: { id: 'ONBOARDING_CONFIRM_ADDRESS', title: 'Confirmar' } },
+            { type: 'reply', reply: { id: 'ONBOARDING_EDIT_ADDRESS', title: 'Editar' } }
+          ]
+        }
+      }
     };
   }
 
