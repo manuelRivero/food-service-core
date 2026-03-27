@@ -35,7 +35,14 @@ export class AddressService {
           tempAddress: ctx.conversationState?.metadata?.temp_address
         });
         const tempAddress = ctx.conversationState?.metadata?.temp_address;
-        if (typeof tempAddress !== 'string' || tempAddress.trim().length === 0) {
+        const normalizedTemp =
+          typeof tempAddress === 'string' ? tempAddress.trim() : '';
+        const isInvalidTemp =
+          normalizedTemp.length === 0 ||
+          normalizedTemp === '[object Object]' ||
+          normalizedTemp === 'undefined' ||
+          normalizedTemp === 'null';
+        if (isInvalidTemp) {
           await this.clearState(ctx);
           return 'No pude recuperar tu dirección anterior. Empecemos de nuevo.\n\n📍 Decime tu dirección o compartí tu ubicación.';
         }
