@@ -4,166 +4,155 @@ import { IntentDetectionResult } from '../../services/ai/detection.service';
 import { ConversationIntent } from '../../types/conversationIntent';
 
 export const detectIntentFromPayload = (
-    payloadId: string
-  ): IntentDetectionResult | null => {
-  
-    // Prefijos con ID dinámico
-    if (payloadId.startsWith('SELECT_PRODUCT:')) {
-      return buildInteractiveResult(
-        ConversationIntent.SELECT_PRODUCT,
-        payloadId
-      );
-    }
-  
-    if (payloadId.startsWith('SELECT_ORDER_PRODUCT:')) {
-      return buildInteractiveResult(
-        ConversationIntent.SELECT_ORDER_PRODUCT,
-        payloadId
-      );
-    }
-  
-    if (payloadId.startsWith('ADD_ITEM:')) {
-      return buildInteractiveResult(
-        ConversationIntent.ADD_ITEM,
-        payloadId,
-        1
-      );
-    }
-    if (payloadId.startsWith('CONFIRM_REMOVE:')) {
-        return buildInteractiveResult(
-          ConversationIntent.CONFIRM_REMOVE,
-          payloadId
-        );
-      }
-      if (payloadId.startsWith('CONFIRM_ADD:')) {
-        return buildInteractiveResult(
-          ConversationIntent.CONFIRM_ADD,
-          payloadId
-        );
-      }
+  payloadId: string
+): IntentDetectionResult | null => {
 
-      if (payloadId.startsWith('SELECT_CART_ITEM:')) {
-        return buildInteractiveResult(
-          ConversationIntent.SELECT_CART_ITEM,
-          payloadId
-        );
-      }
-      if (payloadId.startsWith('INCREASE_ITEM_QUANTITY:')) {
-        return buildInteractiveResult(
-          ConversationIntent.INCREASE_ITEM_QUANTITY,
-          payloadId
-        );
-      }
-      if (payloadId.startsWith('DECREASE_ITEM_QUANTITY:')) {
-        return buildInteractiveResult(
-          ConversationIntent.DECREASE_ITEM_QUANTITY,
-          payloadId
-        );
-      }
-      
-      if (payloadId.startsWith('CANCEL_REMOVE:')) {
-        return buildInteractiveResult(
-          ConversationIntent.CANCEL_REMOVE,
-          payloadId
-        );
-      }
+  // Prefijos con ID dinámico
+  if (payloadId.startsWith('SELECT_PRODUCT:')) {
+    return buildInteractiveResult(
+      ConversationIntent.SELECT_PRODUCT,
+      payloadId
+    );
+  }
 
-      if (payloadId.startsWith('CATEGORY_LIST_PAGE:')) {
-        return buildInteractiveResult(
-          ConversationIntent.CATEGORY_LIST_PAGE,
-          payloadId
-        );
-      }
+  if (payloadId.startsWith('SELECT_ORDER_PRODUCT:')) {
+    return buildInteractiveResult(
+      ConversationIntent.SELECT_ORDER_PRODUCT,
+      payloadId
+    );
+  }
 
-      if (payloadId.startsWith('CATEGORY:')) {
-        return buildInteractiveResult(
-          ConversationIntent.CATEGORY,
-          payloadId
-        );
-      }
+  if (payloadId.startsWith('ADD_ITEM:')) {
+    return buildInteractiveResult(
+      ConversationIntent.ADD_ITEM,
+      payloadId,
+      1
+    );
+  }
+  if (payloadId.startsWith('CONFIRM_REMOVE:')) {
+    return buildInteractiveResult(
+      ConversationIntent.CONFIRM_REMOVE,
+      payloadId
+    );
+  }
+  if (payloadId.startsWith('CONFIRM_ADD:')) {
+    return buildInteractiveResult(
+      ConversationIntent.CONFIRM_ADD,
+      payloadId
+    );
+  }
 
-        if (payloadId.startsWith('ORDER_SEARCH_PAGE:')) {
-          return buildInteractiveResult(
-            ConversationIntent.ORDER_SEARCH_PAGE,
-            payloadId
-          );
-        }
-        if (payloadId.startsWith('DECREASE_ITEM:')) {
-          return buildInteractiveResult(
-            ConversationIntent.DECREASE_ITEM,
-            payloadId
-          );
-        }
-        if (payloadId.startsWith('INCREASE_ITEM:')) {
-          return buildInteractiveResult(
-            ConversationIntent.INCREASE_ITEM,
-            payloadId
-          );
-        }
-        if (payloadId.startsWith('ONBOARDING_CAPTURE_ADDRESS:')) {
-          return buildInteractiveResult(
-            ConversationIntent.ONBOARDING_CAPTURE_ADDRESS,
-            payloadId
-          );
-        }
-        if (payloadId.startsWith('ONBOARDING_SUBMIT_ADDRESS_TEXT:')) {
-          return buildInteractiveResult(ConversationIntent.ONBOARDING_SUBMIT_ADDRESS_TEXT, payloadId);
-        }
-        if (payloadId.startsWith('ONBOARDING_SUBMIT_ADDRESS:')) {
-          return buildInteractiveResult(ConversationIntent.ONBOARDING_SUBMIT_ADDRESS, payloadId);
-        }
-        if (payloadId.startsWith('ONBOARDING_EDIT_ADDRESS:')) {
-          return buildInteractiveResult(ConversationIntent.ONBOARDING_EDIT_ADDRESS, payloadId);
-        }
-        if (payloadId.startsWith('ONBOARDING_RETRY_ADDRESS:')) {
-          return buildInteractiveResult(ConversationIntent.ONBOARDING_RETRY_ADDRESS, payloadId);
-        }
-        if (payloadId.startsWith('ONBOARDING_COMPLETE:')) {
-          return buildInteractiveResult(ConversationIntent.ONBOARDING_COMPLETE, payloadId);
-        }
-        if (payloadId.startsWith('ONBOARDING_START:')) {
-          return buildInteractiveResult(ConversationIntent.ONBOARDING_START, payloadId);
-        }
-        if (payloadId.startsWith('ONBOARDING_CONFIRM_ADDRESS:')) {
-          return buildInteractiveResult(ConversationIntent.ONBOARDING_CONFIRM_ADDRESS, payloadId);
-        }
-        if (payloadId.startsWith('ONBOARDING_ADDRESS_REQUIRED:')) {
-          return buildInteractiveResult(ConversationIntent.ONBOARDING_ADDRESS_REQUIRED, payloadId);
-        }
+  if (payloadId.startsWith('SELECT_CART_ITEM:')) {
+    return buildInteractiveResult(
+      ConversationIntent.SELECT_CART_ITEM,
+      payloadId
+    );
+  }
+  if (payloadId.startsWith('INCREASE_ITEM_QUANTITY:')) {
+    return buildInteractiveResult(
+      ConversationIntent.INCREASE_ITEM_QUANTITY,
+      payloadId
+    );
+  }
+  if (payloadId.startsWith('DECREASE_ITEM_QUANTITY:')) {
+    return buildInteractiveResult(
+      ConversationIntent.DECREASE_ITEM_QUANTITY,
+      payloadId
+    );
+  }
 
-  
-    // IDs estáticos
-    const staticMap: Record<string, ConversationIntent> = {
-      ORDER_SEARCH_PAGE: ConversationIntent.ORDER_SEARCH_PAGE,
-      CHECKOUT: ConversationIntent.CHECKOUT,
-      CANCEL_ORDER: ConversationIntent.CANCEL_ORDER,
-      END_CONVERSATION: ConversationIntent.END_CONVERSATION,
-      VIEW_MENU_RETURN: ConversationIntent.VIEW_MENU_RETURN,
-      VIEW_MENU: ConversationIntent.VIEW_MENU,
-      VIEW_CATEGORIES: ConversationIntent.VIEW_CATEGORIES,
-      VIEW_CART_FOR_EDITION: ConversationIntent.VIEW_CART_FOR_EDITION,
-      VIEW_ORDER: ConversationIntent.VIEW_ORDER,
-      VIEW_CART: ConversationIntent.VIEW_CART,
-    };
-  
-    if (staticMap[payloadId]) {
-      return buildInteractiveResult(staticMap[payloadId], payloadId);
-    }
-  
-    return null;
+  if (payloadId.startsWith('CANCEL_REMOVE:')) {
+    return buildInteractiveResult(
+      ConversationIntent.CANCEL_REMOVE,
+      payloadId
+    );
+  }
+
+  if (payloadId.startsWith('CATEGORY_LIST_PAGE:')) {
+    return buildInteractiveResult(
+      ConversationIntent.CATEGORY_LIST_PAGE,
+      payloadId
+    );
+  }
+
+  if (payloadId.startsWith('CATEGORY:')) {
+    return buildInteractiveResult(
+      ConversationIntent.CATEGORY,
+      payloadId
+    );
+  }
+
+  if (payloadId.startsWith('ORDER_SEARCH_PAGE:')) {
+    return buildInteractiveResult(
+      ConversationIntent.ORDER_SEARCH_PAGE,
+      payloadId
+    );
+  }
+  if (payloadId.startsWith('DECREASE_ITEM:')) {
+    return buildInteractiveResult(
+      ConversationIntent.DECREASE_ITEM,
+      payloadId
+    );
+  }
+  if (payloadId.startsWith('INCREASE_ITEM:')) {
+    return buildInteractiveResult(
+      ConversationIntent.INCREASE_ITEM,
+      payloadId
+    );
+  }
+
+  if (payloadId.startsWith('ONBOARDING_SUBMIT_ADDRESS_TEXT:')) {
+    return buildInteractiveResult(ConversationIntent.ONBOARDING_SUBMIT_ADDRESS_TEXT, payloadId);
+  }
+  if (payloadId.startsWith('ONBOARDING_EDIT_ADDRESS:')) {
+    return buildInteractiveResult(ConversationIntent.ONBOARDING_EDIT_ADDRESS, payloadId);
+  }
+  if (payloadId.startsWith('ONBOARDING_RETRY_ADDRESS:')) {
+    return buildInteractiveResult(ConversationIntent.ONBOARDING_RETRY_ADDRESS, payloadId);
+  }
+  if (payloadId.startsWith('ONBOARDING_COMPLETE:')) {
+    return buildInteractiveResult(ConversationIntent.ONBOARDING_COMPLETE, payloadId);
+  }
+  if (payloadId.startsWith('ONBOARDING_START:')) {
+    return buildInteractiveResult(ConversationIntent.ONBOARDING_START, payloadId);
+  }
+  if (payloadId.startsWith('ONBOARDING_CONFIRM_ADDRESS:')) {
+    return buildInteractiveResult(ConversationIntent.ONBOARDING_CONFIRM_ADDRESS, payloadId);
+  }
+
+
+  // IDs estáticos
+  const staticMap: Record<string, ConversationIntent> = {
+    ORDER_SEARCH_PAGE: ConversationIntent.ORDER_SEARCH_PAGE,
+    CHECKOUT: ConversationIntent.CHECKOUT,
+    CANCEL_ORDER: ConversationIntent.CANCEL_ORDER,
+    END_CONVERSATION: ConversationIntent.END_CONVERSATION,
+    VIEW_MENU_RETURN: ConversationIntent.VIEW_MENU_RETURN,
+    VIEW_MENU: ConversationIntent.VIEW_MENU,
+    VIEW_CATEGORIES: ConversationIntent.VIEW_CATEGORIES,
+    VIEW_CART_FOR_EDITION: ConversationIntent.VIEW_CART_FOR_EDITION,
+    VIEW_ORDER: ConversationIntent.VIEW_ORDER,
+    VIEW_CART: ConversationIntent.VIEW_CART,
   };
 
-  const buildInteractiveResult = (
-    intent: ConversationIntent,
-    raw: string,
-    quantity: number | null = null,
-    productId: string | null = null
-  ): IntentDetectionResult & { productId: string | null } => ({
-    intent,
-    confidence: 1,
-    detectedProductName: null,
-    quantity,
-    candidates: [],
-    raw,
-    productId
-  });
+  if (staticMap[payloadId]) {
+    return buildInteractiveResult(staticMap[payloadId], payloadId);
+  }
+
+  return null;
+};
+
+const buildInteractiveResult = (
+  intent: ConversationIntent,
+  raw: string,
+  quantity: number | null = null,
+  productId: string | null = null
+): IntentDetectionResult & { productId: string | null } => ({
+  intent,
+  confidence: 1,
+  detectedProductName: null,
+  quantity,
+  candidates: [],
+  raw,
+  productId
+});
