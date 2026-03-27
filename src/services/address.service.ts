@@ -5,7 +5,7 @@ import { WhatsAppInteractiveMessage } from '../domain/intent/whatsappTemplates';
 
 
 export class AddressService {
-  
+
 
   async process(ctx: EnrichedContext): Promise<WhatsAppInteractiveMessage | string | null> {
     const step = ctx.conversationState?.metadata?.onboarding_step;
@@ -136,7 +136,7 @@ export class AddressService {
     await prisma.customer_address.create({
       data: {
         customer_id: ctx.customer.id,
-          street_address: meta.temp_address,
+        street_address: meta.temp_address,
         is_default: true,
       },
     });
@@ -185,14 +185,14 @@ export class AddressService {
       FROM business_coverage_zone
       WHERE is_active = true
         AND business_id = '${businessId}'
-        AND ST_Contains(
+        AND ST_Intersects(
           coverage_area,
           ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
         )
       ORDER BY priority DESC
       LIMIT 1;
     `);
-  
+
     return result[0] || null;
   }
 
