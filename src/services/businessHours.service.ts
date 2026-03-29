@@ -34,10 +34,10 @@ export const buildBusinessHoursMessage = async (
     if (hour.is_closed) {
       return `${dayLabel}: Cerrado`;
     }
-    return `${dayLabel}: ${hour.opens_at} - ${hour.closes_at}`;
+    return `${dayLabel}: ${hour.opens_at} hs a ${hour.closes_at} hs`;
   });
 
-  const bodyText = `🤖\n\n🕒 Horarios de atención\n\n${lines.join('\n')}\n\n¿Qué te gustaría hacer ahora?`;
+  const bodyText = `🤖\n\n*Horarios de atención* 🕐\n\n${lines.join('\n')}\n\n¿Qué te gustaría hacer ahora?`;
   const buttons = await buildSmallTalkButtons(ctx);
 
   return buildListMessageFromButtons(
