@@ -5,29 +5,6 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// En tu servicio de clasificación de intents (donde tengas el prompt)
-
-const INTENTS_DESCRIPTION = `
-INTENCIONES DISPONIBLES:
-
-BOTONES (el usuario tocó un botón):
-- SELECT_PRODUCT, SELECT_ORDER_PRODUCT, ORDER_SEARCH_PAGE, CATEGORY_PAGE, etc.
-
-ACCIONES DE PEDIDO (el usuario escribió texto):
-- ORDER_FOOD: Quiere hacer un pedido general
-- ADD_PRODUCT: "quiero una hamburguesa" (producto específico)
-- REMOVE_ITEM: "sacá la pizza", "quitame la coca" ← NUEVO
-- MODIFY_QUANTITY: "cambiá a 3", "son 4 en total" ← NUEVO
-
-CONSULTAS:
-- PRODUCT_QUERY, PRODUCT_ATTRIBUTE_QUESTION, etc.
-
-INFORMACIÓN:
-- VIEW_MENU, VIEW_CART, BUSINESS_HOURS, etc.
-
-CONVERSACIÓN:
-- GREETING, SMALL_TALK, GENERAL_QUESTION, etc.
-`;
 
 export const INTENT_CLASSIFIER_PROMPT = (context: DetectionContext) => `
 You are an intent classifier for a restaurant WhatsApp assistant.

@@ -114,6 +114,11 @@ export const processDraftOrderTimeouts = async () => {
 
     for (const conversation of conversationsToRemind) {
         if (!conversation.business?.whatsapp_phone_id || !conversation.customer?.phone_number) continue;
+        console.log('[IdleReminder] Sending to', {
+            businessPhoneId: conversation.business.whatsapp_phone_id,
+            to: conversation.customer.phone_number,
+            conversationId: conversation.id
+        });
         await sendResponseNoContext(
             conversation.business.whatsapp_phone_id,
             conversation.customer.phone_number,

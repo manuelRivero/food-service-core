@@ -409,6 +409,14 @@ const persistUserMessage = async (
       message?.id
     );
 
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        idle_reminder_sent_at: null,
+        idle_closed_at: null
+      }
+    });
+
     await updateConversationLastMessageAt(conversation.id);
 
     console.log('[Persist] Message saved:', {
