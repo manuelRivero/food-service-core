@@ -441,12 +441,6 @@ export const handleShowCartForEditionFromWebhook = async (
           sectionTitle: 'Opciones'
         },
         {
-          title: 'Ver categorías',
-          payload: 'VIEW_CATEGORIES',
-          description: 'Explorar por categorías',
-          sectionTitle: 'Opciones'
-        },
-        {
           title: 'Hacer una consulta',
           payload: 'ASK_QUESTION',
           description: 'Resolver una duda',
@@ -528,12 +522,6 @@ export const handleViewCartFromWebhook = async (
           title: 'Ver menú',
           payload: 'VIEW_MENU',
           description: 'Explorar platos disponibles',
-          sectionTitle: 'Opciones'
-        },
-        {
-          title: 'Ver categorías',
-          payload: 'VIEW_CATEGORIES',
-          description: 'Explorar por categorías',
           sectionTitle: 'Opciones'
         },
         {

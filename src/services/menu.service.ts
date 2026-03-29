@@ -89,7 +89,7 @@ export class MenuService {
       `🍽️ Menú de ${businessName}`,
       '',
       `Bienvenido/a a ${businessName}! Gracias por escribirnos.`,
-      'Para realizar tu pedido, toca "Ver categorias", elige la que prefieras y selecciona tus platillos.'
+      'Para realizar tu pedido, toca "Ver menú" y selecciona tus platillos.'
     ];
 
     if (!currency) {
@@ -98,8 +98,8 @@ export class MenuService {
 
     const buttons: MenuButton[] = [
       {
-        title: 'Ver categorias',
-        payload: 'VIEW_CATEGORIES'
+        title: 'Ver menú',
+        payload: 'VIEW_MENU'
       },
       {
         title: 'Tengo una duda',
