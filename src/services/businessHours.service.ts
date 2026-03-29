@@ -14,6 +14,115 @@ const dayNames = [
   'Sábado'
 ];
 
+const weekdayToIndex: Record<string, number> = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6
+};
+
+const timeToMinutes = (value: string): number => {
+  const [hh, mm] = value.split(':').map((part) => Number(part));
+  return (hh || 0) * 60 + (mm || 0);
+};
+
+const isWithinRange = (current: number, start: number, end: number): boolean => {
+  if (start === end) return false;
+  if (end > start) {
+    return current >= start && current < end;
+  }
+  // Overnight shift (e.g., 19:00 - 02:00)
+  return current >= start || current < end;
+};
+
+const getLocalParts = (timezone: string, date = new Date()) => {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  });
+  const parts = formatter.formatToParts(date);
+  const weekday = parts.find((p) => p.type === 'weekday')?.value.toLowerCase() ?? 'sunday';
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
+  const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
+  return { weekdayIndex: weekdayToIndex[weekday] ?? 0, minutes: hour * 60 + minute };
+};
+
+export const getBusinessOpenInfo = async (params: {
+  businessId: string;
+  timezone: string;
+}): Promise<{ isOpen: boolean; nextOpenText: string | null }> => {
+  const hours = await prisma.business_hours.findMany({
+    where: { business_id: params.businessId },
+    orderBy: { day_of_week: 'asc' }
+  });
+
+  if (!hours.length) {
+    return { isOpen: false, nextOpenText: null };
+  }
+
+  const byDay = new Map<number, { closed: boolean; slots: Array<{ open: number; close: number }> }>();
+  for (const hour of hours) {
+    const existing = byDay.get(hour.day_of_week) ?? { closed: false, slots: [] };
+    if (hour.is_closed) {
+      existing.closed = true;
+    } else {
+      existing.slots.push({
+        open: timeToMinutes(hour.opens_at),
+        close: timeToMinutes(hour.closes_at)
+      });
+    }
+    byDay.set(hour.day_of_week, existing);
+  }
+
+  const { weekdayIndex, minutes } = getLocalParts(params.timezone);
+  const today = byDay.get(weekdayIndex);
+  if (today && !today.closed) {
+    for (const slot of today.slots) {
+      if (isWithinRange(minutes, slot.open, slot.close)) {
+        return { isOpen: true, nextOpenText: null };
+      }
+    }
+  }
+
+  for (let offset = 0; offset < 7; offset += 1) {
+    const dayIndex = (weekdayIndex + offset) % 7;
+    const entry = byDay.get(dayIndex);
+    if (!entry || entry.closed || entry.slots.length === 0) {
+      continue;
+    }
+
+    const sortedSlots = [...entry.slots].sort((a, b) => a.open - b.open);
+    if (offset === 0) {
+      const upcoming = sortedSlots.find((slot) => minutes < slot.open);
+      if (upcoming) {
+        return {
+          isOpen: false,
+          nextOpenText: `${dayNames[dayIndex]} a las ${Math.floor(upcoming.open / 60)
+            .toString()
+            .padStart(2, '0')}:${(upcoming.open % 60).toString().padStart(2, '0')} hs`
+        };
+      }
+      continue;
+    }
+
+    const first = sortedSlots[0];
+    return {
+      isOpen: false,
+      nextOpenText: `${dayNames[dayIndex]} a las ${Math.floor(first.open / 60)
+        .toString()
+        .padStart(2, '0')}:${(first.open % 60).toString().padStart(2, '0')} hs`
+    };
+  }
+
+  return { isOpen: false, nextOpenText: null };
+};
+
 export const buildBusinessHoursMessage = async (
   ctx: EnrichedContext
 ): Promise<WhatsAppListMessage | string | null> => {
@@ -64,4 +173,19 @@ export const buildBusinessHoursMessage = async (
     '',
     'Seleccioná una opción para continuar'
   );
+};
+
+export const buildBusinessClosedMessage = async (
+  ctx: EnrichedContext
+): Promise<string | null> => {
+  const businessId = ctx.business?.id;
+  const timezone = ctx.business?.timezone;
+  if (!businessId || !timezone) return null;
+
+  const { nextOpenText } = await getBusinessOpenInfo({ businessId, timezone });
+  const nextOpenLine = nextOpenText
+    ? `\n\nNuestro próximo horario de apertura es ${nextOpenText}.`
+    : '';
+
+  return `🤖\n\nEn este momento estamos cerrados.${nextOpenLine}\n\nPor favor escribinos en el horario de atención.`;
 };

@@ -16,6 +16,7 @@ import { prisma } from '../../lib/prisma';
 import { ConversationIntent } from '../../types/conversationIntent';
 import { EnrichedContext, WebhookContext } from './types';
 import { AddressService } from '../../services/address.service';
+import { buildBusinessClosedMessage, getBusinessOpenInfo } from '../../services/businessHours.service';
 
 
 export const processWebhook = async (payload: any): Promise<void> => {
@@ -66,6 +67,30 @@ export const processWebhook = async (payload: any): Promise<void> => {
       conversationState,
       conversationId: conversation.id
     };
+
+    const businessStatus = await getBusinessOpenInfo({
+      businessId: business.id,
+      timezone: business.timezone
+    });
+
+    if (!businessStatus.isOpen) {
+      const closedMessage = await buildBusinessClosedMessage(enrichedBase as EnrichedContext);
+      if (closedMessage) {
+        const result = {
+          content: closedMessage,
+          isInteractive: false
+        };
+        await sendResponse(ctx, result);
+        await createConversationMessage(
+          conversation.id,
+          'ai',
+          closedMessage,
+          true
+        );
+        await updateConversationLastMessageAt(conversation.id);
+      }
+      return;
+    }
 
     const detectionContext: DetectionContext = {
       conversationMode: conversationState.mode || 'GLOBAL',
