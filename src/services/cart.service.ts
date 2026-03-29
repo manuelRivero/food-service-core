@@ -431,27 +431,32 @@ export const handleShowCartForEditionFromWebhook = async (
   });
 
   if (!cartItems?.draft_order_item.length) {
-    return {
-      type: 'interactive',
-      interactive: {
-        type: 'button',
-        header: {
-          type: 'text',
-          text: ''
+    return buildListMessageFromButtons(
+      'Tu pedido está vacío 🛒\n\nElegí una opción para continuar.',
+      [
+        {
+          title: 'Ver menú',
+          payload: 'VIEW_MENU',
+          description: 'Explorar platos disponibles',
+          sectionTitle: 'Opciones'
         },
-        body: {
-          text: 'Tu pedido está vacío 🛒'
+        {
+          title: 'Ver categorías',
+          payload: 'VIEW_CATEGORIES',
+          description: 'Explorar por categorías',
+          sectionTitle: 'Opciones'
         },
-        footer: {
-          text: 'Mira nuestro menú'
-        },
-        action: {
-          buttons: [
-            { type: 'reply', reply: { id: 'VIEW_MENU', title: 'Seguir comprando' } },
-          ]
+        {
+          title: 'Hacer una consulta',
+          payload: 'ASK_QUESTION',
+          description: 'Resolver una duda',
+          sectionTitle: 'Opciones'
         }
-      }
-    };
+      ],
+      'Ver opciones',
+      '',
+      'Seleccioná una opción para continuar'
+    );
   }
 
   return {
@@ -516,7 +521,32 @@ export const handleViewCartFromWebhook = async (
 
   console.log(' handleViewCartFromWebhook debug:cartItems', cartItems?.draft_order_item.map(item => item.menu_item?.name));
   if (!cartItems?.draft_order_item.length) {
-    return 'Tu carrito está vacío 🛒';
+    return buildListMessageFromButtons(
+      'Tu carrito está vacío 🛒\n\nElegí una opción para continuar.',
+      [
+        {
+          title: 'Ver menú',
+          payload: 'VIEW_MENU',
+          description: 'Explorar platos disponibles',
+          sectionTitle: 'Opciones'
+        },
+        {
+          title: 'Ver categorías',
+          payload: 'VIEW_CATEGORIES',
+          description: 'Explorar por categorías',
+          sectionTitle: 'Opciones'
+        },
+        {
+          title: 'Hacer una consulta',
+          payload: 'ASK_QUESTION',
+          description: 'Resolver una duda',
+          sectionTitle: 'Opciones'
+        }
+      ],
+      'Ver opciones',
+      '',
+      'Seleccioná una opción para continuar'
+    );
   }
 
   // 🔢 Construir resumen
