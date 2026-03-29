@@ -133,6 +133,7 @@ export const detectIntentFromPayload = (
     VIEW_ORDER: ConversationIntent.VIEW_ORDER,
     VIEW_CART: ConversationIntent.VIEW_CART,
       EDIT_ADDRESS: ConversationIntent.EDIT_ADDRESS,
+    BUSINESS_HOURS: ConversationIntent.BUSINESS_HOURS,
   };
 
   if (staticMap[payloadId]) {

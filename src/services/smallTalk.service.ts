@@ -12,7 +12,7 @@ const baseButtons = [
   },
   {
     title: 'Horarios de atención',
-    payload: 'VIEW_BUSINESS_HOURS',
+    payload: 'BUSINESS_HOURS',
     description: 'Ver los horarios de atención',
     sectionTitle: 'Opciones'
   },
@@ -24,27 +24,18 @@ const baseButtons = [
   }
 ];
 
-export const buildSmallTalkMenu = async (
-    ctx: EnrichedContext
-): Promise<WhatsAppListMessage | string | null> => {
-  const businessNameFromCtx = ctx.business?.name;
-  if (!businessNameFromCtx) {
-    return '¡Hola! ¿En qué te puedo ayudar?';
-  }
-
+export const buildSmallTalkButtons = async (ctx: EnrichedContext) => {
   const business = await prisma.business.findFirst({
-    where: { name: businessNameFromCtx }
+    where: { name: ctx.business?.name ?? '' }
   });
-
-  const businessName = business?.name ?? businessNameFromCtx;
 
   const [activeOrder, defaultAddress] = await Promise.all([
     prisma.draft_order.findFirst({
-    where: {
-      business_id: ctx.business?.id ?? business?.id ?? null,
-      customer_phone: ctx.customer?.phone_number,
-      status: 'active'
-    },
+      where: {
+        business_id: ctx.business?.id ?? business?.id ?? null,
+        customer_phone: ctx.customer?.phone_number,
+        status: 'active'
+      },
       select: { id: true }
     }),
     prisma.customer_address.findFirst({
@@ -73,6 +64,24 @@ export const buildSmallTalkMenu = async (
       sectionTitle: 'Opciones'
     });
   }
+
+  return buttons;
+};
+
+export const buildSmallTalkMenu = async (
+    ctx: EnrichedContext
+): Promise<WhatsAppListMessage | string | null> => {
+  const businessNameFromCtx = ctx.business?.name;
+  if (!businessNameFromCtx) {
+    return '¡Hola! ¿En qué te puedo ayudar?';
+  }
+
+  const business = await prisma.business.findFirst({
+    where: { name: businessNameFromCtx }
+  });
+
+  const businessName = business?.name ?? businessNameFromCtx;
+  const buttons = await buildSmallTalkButtons(ctx);
 
   const headerText = ``;
   const bodyText = `🤖\n\n*Bienvenido a ${businessName}*\n\n¡Hola! Soy el asistente de IA de *${businessName}*.\n\n ¿En que te puedo ayudar?`;
