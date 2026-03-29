@@ -172,7 +172,7 @@ export class ProductQueryHandler implements IntentHandler {
 
       const listMessage = buildListMessage({
         headerText: '',
-        bodyText: '*Tenemos algunos resultados para tu consulta* \n Selecciona uno 👇',
+        bodyText: '🤖\n\n*Tenemos algunos resultados para tu consulta*.\n\nSelecciona uno 👇',
         footerText: 'Elige una opción',
         actionButtonLabel: 'Ver opciones',
         sections: [

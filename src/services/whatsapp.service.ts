@@ -600,7 +600,7 @@ export const handleProductSelectionFromWebhook = async (
     interactive: {
     type: 'button',
     header,
-    body: { text: aiResponse },
+    body: { text: `🤖\n\n${aiResponse}` },
     footer: { text: 'Elige una opción' },
     action: { buttons: [{ type: 'reply', reply: { id: `ADD_ITEM:${item.id}`, title: 'Agregar' } }] }
   }

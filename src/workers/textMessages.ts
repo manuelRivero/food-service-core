@@ -6,7 +6,7 @@ export const workerTextMessages = {
   draftOrderExpiredListBody:
     '🤖\n\n*Tu pedido fue cancelado por inactividad.* ⏰\n\nPodés iniciar uno nuevo cuando quieras.\n\n¿Querés volver a empezar?*',
   conversationIdleReminder: (minutes: number) =>
-    `🤖\n\n* ¿Seguís ahí?* ⏳\n\nSi no respondés en ${minutes} minutos, cerraremos la conversación por inactividad.`,
+    `🤖\n\n*¿Seguís ahí?* ⏳\n\nSi no respondés en ${minutes} minutos, cerraremos la conversación por inactividad.`,
   conversationIdleClosed:
-    '🤖\n\n*Conversación finalizada por inactividad.* ✅\n\nPodés escribirnos cuando quieras.*',
+    '🤖\n\n*Conversación finalizada por inactividad.* ✅\n\nPodés escribirnos cuando quieras.',
 } as const;
