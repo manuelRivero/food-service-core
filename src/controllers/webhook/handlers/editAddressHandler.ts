@@ -14,6 +14,6 @@ export class EditAddressHandler implements IntentHandler {
     const result = await new AddressService().startEdit(ctx);
     if (result === null) return noResponse();
     if (typeof result === 'string') return textResponse(result);
-    return textResponse('Perfecto, decime la dirección nuevamente 📍');
+    return textResponse('🤖\n\n*Perfecto, decime la dirección nuevamente*, calle y número o mandame tu ubicación actual 📍');
   }
 }

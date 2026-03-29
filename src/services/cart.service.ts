@@ -156,7 +156,7 @@ export const buildAddItemMessage = async (
     ? `\n\n📍 Dirección de entrega: ${defaultAddress.street_address}\nSi querés cambiarla, elegí "Editar dirección".`
     : '';
 
-  const messageText = `🛒 *${item.name}* agregado\n\n` +
+  const messageText = `🤖\n\n*${item.name}* agregado 🛒\n\n` +
     `Items en carrito: ${itemCount}\n` +
     `Total: $${total._sum.total_price || 0}\n\n` +
     `¿Seguís comprando o querés *finalizar*?${addressLine}`;

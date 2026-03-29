@@ -63,7 +63,7 @@ export const processDraftOrderTimeouts = async () => {
                     }
                 ],
                 'Ver opciones',
-                'Recordatorio',
+                '🤖\n\n*Recordatorio*',
                 'Seleccioná una opción para continuar'
             );
 
@@ -104,12 +104,6 @@ export const processDraftOrderTimeouts = async () => {
                         sectionTitle: 'Opciones'
                     },
                     {
-                        title: 'Ver categorías',
-                        payload: 'VIEW_CATEGORIES',
-                        description: 'Explorar por categorías',
-                        sectionTitle: 'Opciones'
-                    },
-                    {
                         title: 'Hacer una consulta',
                         payload: 'ASK_QUESTION',
                         description: 'Resolver una duda',
@@ -117,7 +111,7 @@ export const processDraftOrderTimeouts = async () => {
                     }
                 ],
                 'Ver opciones',
-                'Pedido cancelado',
+                '🤖\n\n*Pedido cancelado*',
                 'Seleccioná una opción para continuar'
             );
 
@@ -177,7 +171,7 @@ export const processDraftOrderTimeouts = async () => {
         await sendResponseNoContext(
             conversation.business.whatsapp_phone_id,
             conversation.customer.phone_number,
-            workerTextMessages.conversationIdleReminder(IDLE_EXPIRE_MINUTES)
+            `🤖\n\n${workerTextMessages.conversationIdleReminder(IDLE_EXPIRE_MINUTES)}`
         );
         await prisma.conversation.update({
             where: { id: conversation.id },
@@ -202,7 +196,7 @@ export const processDraftOrderTimeouts = async () => {
         await sendResponseNoContext(
             conversation.business.whatsapp_phone_id,
             conversation.customer.phone_number,
-            workerTextMessages.conversationIdleClosed
+            `🤖\n\n${workerTextMessages.conversationIdleClosed}`
         );
         await prisma.conversation.update({
             where: { id: conversation.id },
