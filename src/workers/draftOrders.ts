@@ -1,7 +1,10 @@
 import { sendResponseNoContext } from '../controllers/webhook/sender';
 import { prisma } from '../lib/prisma';
+import { workerTextMessages } from './textMessages';
 
 const REMINDER_MINUTES = 1;
+const IDLE_REMINDER_MINUTES = Number(process.env.CONVERSATION_IDLE_REMINDER_MINUTES ?? 1);
+const IDLE_EXPIRE_MINUTES = Number(process.env.CONVERSATION_IDLE_EXPIRE_MINUTES ?? 2);
 
 export const processDraftOrderTimeouts = async () => {
 
@@ -39,8 +42,8 @@ export const processDraftOrderTimeouts = async () => {
             await sendResponseNoContext(
                 business.whatsapp_phone_id!,
                 order.customer_phone,
-                `🛒 Tienes un pedido en curso.
-                \nSi no finalizas tu compra en ${REMINDER_MINUTES} minutos, tu pedido será cancelado automáticamente.`);
+                workerTextMessages.draftOrderReminder(REMINDER_MINUTES)
+            );
 
             await prisma.draft_order.update({
                 where: { id: order.id },
@@ -66,8 +69,7 @@ export const processDraftOrderTimeouts = async () => {
             await sendResponseNoContext(
                 business.whatsapp_phone_id!,
                 order.customer_phone, 
-                `⏰ Tu pedido fue cancelado por inactividad.
-                Puedes iniciar uno nuevo cuando quieras.`
+                workerTextMessages.draftOrderExpired
             );
 
             /**
@@ -84,26 +86,88 @@ export const processDraftOrderTimeouts = async () => {
             });
 
             if (conversation) {
-
-                await prisma.conversation.update({
-                    where: { id: conversation.id },
-                    data: {
-                        lastReferencedProductId: null
-                    }
-                });
-
-                await prisma.conversation_state.update({
-                    where: { conversation_id: conversation.id },
-                    data: {
-                        mode: 'GLOBAL',
-                        metadata: undefined
-                    }
-                });
-
+                await resetConversationState(conversation.id);
             }
 
         }
 
     }
 
+    /**
+     * Conversaciones inactivas (sin importar si hay pedido)
+     */
+    const reminderThreshold = new Date(now.getTime() - IDLE_REMINDER_MINUTES * 60000);
+    const expireThreshold = new Date(now.getTime() - IDLE_EXPIRE_MINUTES * 60000);
+
+    const conversationsToRemind = await prisma.conversation.findMany({
+        where: {
+            status: 'open',
+            last_message_at: { lte: reminderThreshold },
+            idle_reminder_sent_at: null,
+            idle_closed_at: null
+        },
+        include: {
+            business: true,
+            customer: true
+        }
+    });
+
+    for (const conversation of conversationsToRemind) {
+        if (!conversation.business?.whatsapp_phone_id || !conversation.customer?.phone_number) continue;
+        await sendResponseNoContext(
+            conversation.business.whatsapp_phone_id,
+            conversation.customer.phone_number,
+            workerTextMessages.conversationIdleReminder(IDLE_EXPIRE_MINUTES)
+        );
+        await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: { idle_reminder_sent_at: now }
+        });
+    }
+
+    const conversationsToClose = await prisma.conversation.findMany({
+        where: {
+            status: 'open',
+            last_message_at: { lte: expireThreshold },
+            idle_closed_at: null
+        },
+        include: {
+            business: true,
+            customer: true
+        }
+    });
+
+    for (const conversation of conversationsToClose) {
+        if (!conversation.business?.whatsapp_phone_id || !conversation.customer?.phone_number) continue;
+        await sendResponseNoContext(
+            conversation.business.whatsapp_phone_id,
+            conversation.customer.phone_number,
+            workerTextMessages.conversationIdleClosed
+        );
+        await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: {
+                status: 'closed',
+                idle_closed_at: now,
+                lastReferencedProductId: null
+            }
+        });
+        await resetConversationState(conversation.id);
+    }
+
+};
+
+const resetConversationState = async (conversationId: string) => {
+    await prisma.conversation_state.upsert({
+        where: { conversation_id: conversationId },
+        update: {
+            mode: 'GLOBAL',
+            metadata: {}
+        },
+        create: {
+            conversation_id: conversationId,
+            mode: 'GLOBAL',
+            metadata: {}
+        }
+    });
 };
