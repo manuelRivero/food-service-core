@@ -5,6 +5,31 @@ import { WhatsAppListMessage, WhatsAppInteractiveMessage } from '../../domain/in
 
 const sender = new WhatsAppSenderService();
 
+const normalizeArgentinaRecipient = (to: string): string => {
+  const digits = to.replace(/\D/g, '');
+  if (digits.startsWith('549')) {
+    const withoutNine = `54${digits.slice(3)}`;
+    if (withoutNine.length > 12) {
+      const rest = withoutNine.slice(2);
+      const nineIndex = rest.indexOf('9');
+      if (nineIndex >= 0) {
+        return `54${rest.slice(0, nineIndex)}${rest.slice(nineIndex + 1)}`;
+      }
+    }
+    return withoutNine;
+  }
+
+  if (digits.startsWith('54') && digits.length > 12) {
+    const rest = digits.slice(2);
+    const nineIndex = rest.indexOf('9');
+    if (nineIndex >= 0) {
+      return `54${rest.slice(0, nineIndex)}${rest.slice(nineIndex + 1)}`;
+    }
+  }
+
+  return digits;
+};
+
 export const sendResponse = async (
   ctx: WebhookContext, 
   result: HandlerResult
@@ -49,7 +74,7 @@ export const sendResponseNoContext = async (
   
   await sender.sendTextMessage({
     phoneNumberId: phoneNumberId,
-    to: to,
+    to: normalizeArgentinaRecipient(to),
     message: result
   });
 };

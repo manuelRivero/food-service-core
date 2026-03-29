@@ -21,6 +21,7 @@ import { OrderFoodHandler } from './orderFoodHandler';
 import { RemoveItemHandler } from './removeItemHandler';
 import { ProductQueryHandler } from './productQueryHandler';
 import { ProductAttributeQuestionHandler } from './productAttributeQuestionHandler';
+import { SmallTalkHandler } from './smallTalkHandler';
 
 // Fallback
 import { FallbackHandler } from './fallbackHandler';
@@ -61,6 +62,7 @@ export const handlers = [
   new OnboardingStartHandler(),
   // === INTENCIONES (NLP) ===
   new OrderFoodHandler(),
+  new SmallTalkHandler(),
   new RemoveItemHandler(),
   new ProductQueryHandler(),
   new ProductAttributeQuestionHandler(),
