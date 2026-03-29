@@ -1,13 +1,14 @@
 import { EnrichedContext } from '../controllers/webhook/types';
 import { prisma } from '../lib/prisma';
 import { updateConversationState } from '../repositories/conversationState.repository';
-import { WhatsAppInteractiveMessage } from '../domain/intent/whatsappTemplates';
+import { WhatsAppInteractiveMessage, WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
+import { buildSmallTalkMenu } from './smallTalk.service';
 
 
 export class AddressService {
 
 
-  async process(ctx: EnrichedContext): Promise<WhatsAppInteractiveMessage | string | null> {
+  async process(ctx: EnrichedContext): Promise<WhatsAppInteractiveMessage | WhatsAppListMessage | string | null> {
     const step = ctx.conversationState?.metadata?.onboarding_step;
     console.log('[AddressService] process', {
       step,
@@ -69,7 +70,7 @@ export class AddressService {
   async processWithAddressText(
     ctx: EnrichedContext,
     addressText: string
-  ): Promise<WhatsAppInteractiveMessage | string | null> {
+  ): Promise<WhatsAppInteractiveMessage | WhatsAppListMessage | string | null> {
     const cleaned = addressText.trim();
     if (!cleaned) {
       return this.retry('Necesito una dirección con calle y número.');
@@ -92,7 +93,7 @@ export class AddressService {
   // =========================
   // STEP: CAPTURE
   // =========================
-  private async capture(ctx: EnrichedContext): Promise<WhatsAppInteractiveMessage | string> {
+  private async capture(ctx: EnrichedContext): Promise<WhatsAppInteractiveMessage | WhatsAppListMessage | string> {
     const message = ctx.message;
 
     if (this.isLocation(message)) {
@@ -113,7 +114,7 @@ export class AddressService {
   private async handleTextAddress(
     ctx: EnrichedContext,
     text: string
-  ): Promise<WhatsAppInteractiveMessage | string> {
+  ): Promise<WhatsAppInteractiveMessage | WhatsAppListMessage | string> {
 
     const geo = await this.geocode(text);
 
@@ -145,7 +146,7 @@ export class AddressService {
 
   private async handleLocation(
     ctx: EnrichedContext
-  ): Promise<WhatsAppInteractiveMessage | string> {
+  ): Promise<WhatsAppInteractiveMessage | WhatsAppListMessage | string> {
     const { lat, lng } = ctx.message.location;
 
     const address = await this.reverseGeocode(lat, lng);
@@ -173,7 +174,7 @@ export class AddressService {
   // =========================
   // STEP: CONFIRM
   // =========================
-  private async confirm(ctx: EnrichedContext): Promise<WhatsAppInteractiveMessage | string> {
+  private async confirm(ctx: EnrichedContext): Promise<WhatsAppInteractiveMessage | WhatsAppListMessage | string> {
     const payloadId = ctx.payloadId;
     console.log('[AddressService] confirm', {
       payloadId,
@@ -181,7 +182,7 @@ export class AddressService {
       textBody: ctx.message?.text?.body
     });
     if (payloadId === 'ONBOARDING_CONFIRM_ADDRESS') {
-      return this.saveAddress(ctx);
+      return this.saveAddress(ctx) as Promise<WhatsAppInteractiveMessage | WhatsAppListMessage | string>;
     }
     if (payloadId === 'ONBOARDING_EDIT_ADDRESS') {
       return this.edit(ctx);
@@ -191,7 +192,7 @@ export class AddressService {
     const text = typeof textBody === 'string' ? textBody.toLowerCase() : '';
 
     if (text.includes('confirmar')) {
-      return this.saveAddress(ctx);
+      return this.saveAddress(ctx) as Promise<WhatsAppInteractiveMessage | WhatsAppListMessage | string>;
     }
 
     if (text.includes('editar')) {
@@ -209,7 +210,7 @@ export class AddressService {
     return 'No pude recuperar tu dirección anterior. Empecemos de nuevo.\n\n📍 Decime tu dirección o compartí tu ubicación.';
   }
 
-  private async saveAddress(ctx: EnrichedContext): Promise<string> {
+  private async saveAddress(ctx: EnrichedContext): Promise<string | WhatsAppListMessage> {
     const meta = ctx.conversationState.metadata;
 
     // Opcional: desmarcar otras direcciones como default
@@ -227,6 +228,11 @@ export class AddressService {
     });
 
     await this.clearState(ctx);
+
+    const menu = await buildSmallTalkMenu(ctx);
+    if (menu && typeof menu !== 'string') {
+      return menu;
+    }
 
     return '✅ Dirección guardada correctamente.\n\n¿En qué te ayudo ahora?';
   }

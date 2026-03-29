@@ -1,6 +1,7 @@
-import { sendResponseNoContext } from '../controllers/webhook/sender';
+import { sendListResponseNoContext, sendResponseNoContext } from '../controllers/webhook/sender';
 import { prisma } from '../lib/prisma';
 import { workerTextMessages } from './textMessages';
+import { buildListMessageFromButtons } from '../whatsappBuilders';
 
 const REMINDER_MINUTES = 1;
 const IDLE_REMINDER_MINUTES = Number(process.env.CONVERSATION_IDLE_REMINDER_MINUTES ?? 1);
@@ -39,10 +40,37 @@ export const processDraftOrderTimeouts = async () => {
             !order.reminder_sent_at
         ) {
             console.log('Sending reminder for draft order', order.id);
-            await sendResponseNoContext(
+            const listMessage = buildListMessageFromButtons(
+                workerTextMessages.draftOrderReminderListBody(REMINDER_MINUTES),
+                [
+                    {
+                        title: 'Seguir comprando',
+                        payload: 'VIEW_MENU',
+                        description: 'Explorar más platos',
+                        sectionTitle: 'Opciones'
+                    },
+                    {
+                        title: 'Finalizar pedido',
+                        payload: 'CHECKOUT',
+                        description: 'Ir al checkout',
+                        sectionTitle: 'Opciones'
+                    },
+                    {
+                        title: 'Modificar pedido',
+                        payload: 'VIEW_CART_FOR_EDITION',
+                        description: 'Editar items del pedido',
+                        sectionTitle: 'Opciones'
+                    }
+                ],
+                'Ver opciones',
+                'Recordatorio',
+                'Seleccioná una opción para continuar'
+            );
+
+            await sendListResponseNoContext(
                 business.whatsapp_phone_id!,
                 order.customer_phone,
-                workerTextMessages.draftOrderReminder(REMINDER_MINUTES)
+                listMessage
             );
 
             await prisma.draft_order.update({
@@ -66,10 +94,37 @@ export const processDraftOrderTimeouts = async () => {
                 where: { id: order.id }
             });
 
-            await sendResponseNoContext(
+            const expiredListMessage = buildListMessageFromButtons(
+                workerTextMessages.draftOrderExpiredListBody,
+                [
+                    {
+                        title: 'Ver menú',
+                        payload: 'VIEW_MENU',
+                        description: 'Explorar platos disponibles',
+                        sectionTitle: 'Opciones'
+                    },
+                    {
+                        title: 'Ver categorías',
+                        payload: 'VIEW_CATEGORIES',
+                        description: 'Explorar por categorías',
+                        sectionTitle: 'Opciones'
+                    },
+                    {
+                        title: 'Hacer una consulta',
+                        payload: 'ASK_QUESTION',
+                        description: 'Resolver una duda',
+                        sectionTitle: 'Opciones'
+                    }
+                ],
+                'Ver opciones',
+                'Pedido cancelado',
+                'Seleccioná una opción para continuar'
+            );
+
+            await sendListResponseNoContext(
                 business.whatsapp_phone_id!,
-                order.customer_phone, 
-                workerTextMessages.draftOrderExpired
+                order.customer_phone,
+                expiredListMessage
             );
 
             /**

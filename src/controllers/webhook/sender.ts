@@ -78,3 +78,17 @@ export const sendResponseNoContext = async (
     message: result
   });
 };
+
+export const sendListResponseNoContext = async (
+  phoneNumberId: string,
+  to: string,
+  listMessage: WhatsAppListMessage
+): Promise<void> => {
+  console.log('[SendResponse] Sending list response');
+
+  await sender.sendListMessage({
+    phoneNumberId: phoneNumberId,
+    to: normalizeArgentinaRecipient(to),
+    listMessage
+  });
+};
