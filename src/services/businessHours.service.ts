@@ -184,8 +184,8 @@ export const buildBusinessClosedMessage = async (
 
   const { nextOpenText } = await getBusinessOpenInfo({ businessId, timezone });
   const nextOpenLine = nextOpenText
-    ? `\n\nNuestro próximo horario de apertura es ${nextOpenText}.`
+    ? `Nuestro próximo horario de apertura es ${nextOpenText}.`
     : '';
 
-  return `🤖\n\nEn este momento estamos cerrados.${nextOpenLine}\n\nPor favor escribinos en el horario de atención.`;
+  return `🤖\n\n*En este momento estamos cerrados.* ❌\n\n${nextOpenLine}\n\nPor favor escribinos en el horario de atención.`;
 };

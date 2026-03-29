@@ -87,6 +87,19 @@ export const processWebhook = async (payload: any): Promise<void> => {
           closedMessage,
           true
         );
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: {
+            status: 'closed',
+            idle_closed_at: new Date(),
+            lastReferencedProductId: null
+          }
+        });
+        await prisma.conversation_state.upsert({
+          where: { conversation_id: conversation.id },
+          update: { mode: 'GLOBAL', metadata: {} },
+          create: { conversation_id: conversation.id, mode: 'GLOBAL', metadata: {} }
+        });
         await updateConversationLastMessageAt(conversation.id);
       }
       return;
