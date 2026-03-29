@@ -60,6 +60,12 @@ export const processDraftOrderTimeouts = async () => {
                         payload: 'VIEW_CART_FOR_EDITION',
                         description: 'Editar items del pedido',
                         sectionTitle: 'Opciones'
+                        },
+                        {
+                            title: 'Cancelar pedido',
+                            payload: 'CANCEL_ORDER',
+                            description: 'Eliminar el pedido actual',
+                            sectionTitle: 'Opciones'
                     }
                 ],
                 'Ver opciones',
