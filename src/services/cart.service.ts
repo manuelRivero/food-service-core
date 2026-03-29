@@ -432,7 +432,7 @@ export const handleShowCartForEditionFromWebhook = async (
 
   if (!cartItems?.draft_order_item.length) {
     return buildListMessageFromButtons(
-      'Tu pedido está vacío 🛒\n\nElegí una opción para continuar.',
+      '🤖\n\n*Tu pedido está vacío 🛒*\n\nPodés explorar el menú para empezar tu pedido.',
       [
         {
           title: 'Ver menú',
@@ -516,7 +516,7 @@ export const handleViewCartFromWebhook = async (
   console.log(' handleViewCartFromWebhook debug:cartItems', cartItems?.draft_order_item.map(item => item.menu_item?.name));
   if (!cartItems?.draft_order_item.length) {
     return buildListMessageFromButtons(
-      'Tu carrito está vacío 🛒\n\nElegí una opción para continuar.',
+      'Tu carrito está vacío 🛒\n\nElegí algo del menú para empezar tu pedido.',
       [
         {
           title: 'Ver menú',

@@ -234,8 +234,8 @@ export const buildViewCategoriesMessage = async (
       header: { type: 'text', text: '' },
       body: {
         text: isFromMenuReturn
-          ? '*Este es nuestro menú.*\n\n¿Qué categoría querés explorar?'
-          : '*Este es nuestro menú.*\n\nElegí una categoría para ver los platillos:'
+          ? '🤖\n\n*Este es nuestro menú.*\n\n¿Qué categoría querés explorar?'
+          : '🤖\n\n*Este es nuestro menú.*\n\nElegí una categoría para ver los platillos:'
       },
       footer: { text: `Página ${page}` },
       action: {
