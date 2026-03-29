@@ -168,10 +168,43 @@ export const processDraftOrderTimeouts = async () => {
             to: conversation.customer.phone_number,
             conversationId: conversation.id
         });
-        await sendResponseNoContext(
+        const idleReminderList = buildListMessageFromButtons(
+            workerTextMessages.conversationIdleReminderListBody(IDLE_EXPIRE_MINUTES),
+            [
+                {
+                    title: 'Ver menú',
+                    payload: 'VIEW_MENU',
+                    description: 'Explorar platos disponibles',
+                    sectionTitle: 'Opciones'
+                },
+                {
+                    title: 'Ver horarios',
+                    payload: 'BUSINESS_HOURS',
+                    description: 'Horarios de atención',
+                    sectionTitle: 'Opciones'
+                },
+                {
+                    title: 'Hacer una consulta',
+                    payload: 'ASK_QUESTION',
+                    description: 'Resolver una duda',
+                    sectionTitle: 'Opciones'
+                },
+                {
+                    title: 'Necesito ayuda',
+                    payload: 'SUPPORT',
+                    description: 'Contactar soporte',
+                    sectionTitle: 'Opciones'
+                }
+            ],
+            'Ver opciones',
+            '🤖\n\n*Recordatorio*',
+            'Seleccioná una opción para continuar'
+        );
+
+        await sendListResponseNoContext(
             conversation.business.whatsapp_phone_id,
             conversation.customer.phone_number,
-            `🤖\n\n${workerTextMessages.conversationIdleReminder(IDLE_EXPIRE_MINUTES)}`
+            idleReminderList
         );
         await prisma.conversation.update({
             where: { id: conversation.id },
