@@ -206,7 +206,7 @@ export const buildAddItemMessage = async (
 export const handleAddItemFromWebhook = async (
   payload: WhatsAppWebhookPayload,
   menuItemId: string
-): Promise<WhatsAppInteractiveMessage | null | string> => {
+): Promise<WhatsAppInteractiveMessage | WhatsAppListMessage | null | string> => {
 
   const entry = payload.entry?.[0];
   const change = entry?.changes?.[0];
