@@ -27,7 +27,7 @@ export const buildCheckoutMessage = async (
     });
 
     if (!cart || cart.order_item.length === 0) {
-        const errorText = 'Tu carrito está vacío. Agregá productos primero.';
+        const errorText = '🤖\n\n*Tu pedido está vacío 🛒*\n\nPodés explorar el menú para empezar tu pedido.';
         await createConversationMessage(conversation.id, 'ai', errorText, false);
         await updateConversationLastMessageAt(conversation.id);
         return { message: null, errorMessage: errorText };

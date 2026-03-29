@@ -50,7 +50,7 @@ export const buildRemoveItemMessage = async (
   );
 
   if (!matchingItem) {
-    const errorText = `No encontré "${itemIdentifier}" en tu carrito.`;
+    const errorText = `🤖\n\n*No encontré "${itemIdentifier}" en tu pedido.*\n\nPodés explorar el menú para empezar tu pedido.`;
     await createConversationMessage(conversation.id, 'ai', errorText, false);
     await updateConversationLastMessageAt(conversation.id);
     return { message: null, errorMessage: errorText };
@@ -258,7 +258,7 @@ export const buildConfirmRemoveItemMessage = async (
   });
 
   if (!cartItems || cartItems.draft_order_item.length === 0) {
-    const errorText = 'No tenés items en tu carrito para remover.';
+    const errorText = '🤖\n\n*No tenés items en tu pedido para remover.*\n\nPodés explorar el menú para empezar tu pedido.';
     await createConversationMessage(conversation.id, 'ai', errorText, false);
     await updateConversationLastMessageAt(conversation.id);
     return { message: null, errorMessage: errorText };
@@ -270,7 +270,7 @@ export const buildConfirmRemoveItemMessage = async (
   );
 
   if (!matchingItem) {
-    const errorText = `No encontré "${itemIdentifier}" en tu carrito.`;
+    const errorText = `🤖\n\n*No encontré "${itemIdentifier}" en tu pedido.*\n\nPodés explorar el menú para empezar tu pedido.`;
     await createConversationMessage(conversation.id, 'ai', errorText, false);
     await updateConversationLastMessageAt(conversation.id);
     return { message: null, errorMessage: errorText };
@@ -286,7 +286,7 @@ export const buildConfirmRemoveItemMessage = async (
         text: '¿Remover ítem?'
       },
       body: {
-        text: `¿Querés remover *${matchingItem.menu_item?.name}* (cantidad: ${matchingItem.quantity}) de tu carrito?`
+        text: `🤖\n\n*¿Querés remover *${matchingItem.menu_item?.name}* (cantidad: ${matchingItem.quantity}) de tu pedido?*`
       },
       footer: {
         text: 'Esta acción no se puede deshacer'
@@ -516,7 +516,7 @@ export const handleViewCartFromWebhook = async (
   console.log(' handleViewCartFromWebhook debug:cartItems', cartItems?.draft_order_item.map(item => item.menu_item?.name));
   if (!cartItems?.draft_order_item.length) {
     return buildListMessageFromButtons(
-      'Tu carrito está vacío 🛒\n\nElegí algo del menú para empezar tu pedido.',
+      '🤖\n\n*Tu pedido está vacío 🛒*\n\nPodés explorar el menú para empezar tu pedido.',
       [
         {
           title: 'Ver menú',
