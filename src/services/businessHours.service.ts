@@ -29,13 +29,30 @@ export const buildBusinessHoursMessage = async (
     return 'Por el momento no tengo horarios disponibles.';
   }
 
-  const lines = hours.map((hour) => {
-    const dayLabel = dayNames[hour.day_of_week] ?? `Día ${hour.day_of_week}`;
+  const byDay = new Map<number, { closed: boolean; slots: string[] }>();
+  for (const hour of hours) {
+    const existing = byDay.get(hour.day_of_week) ?? {
+      closed: false,
+      slots: []
+    };
     if (hour.is_closed) {
-      return `${dayLabel}: Cerrado`;
+      existing.closed = true;
+    } else {
+      existing.slots.push(`${hour.opens_at} hs a ${hour.closes_at} hs`);
     }
-    return `${dayLabel}: ${hour.opens_at} hs a ${hour.closes_at} hs`;
-  });
+    byDay.set(hour.day_of_week, existing);
+  }
+
+  const lines: string[] = [];
+  for (const [dayIndex, dayLabel] of dayNames.entries()) {
+    const entry = byDay.get(dayIndex);
+    if (!entry) continue;
+    if (entry.closed || entry.slots.length === 0) {
+      lines.push(`${dayLabel}: Cerrado`);
+    } else {
+      lines.push(`${dayLabel}: ${entry.slots.join(' / ')}`);
+    }
+  }
 
   const bodyText = `🤖\n\n*Horarios de atención* 🕐\n\n${lines.join('\n')}\n\n¿Qué te gustaría hacer ahora?`;
   const buttons = await buildSmallTalkButtons(ctx);
