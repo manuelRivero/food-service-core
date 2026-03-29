@@ -75,7 +75,7 @@ export const buildSmallTalkMenu = async (
   }
 
   const headerText = ``;
-  const bodyText = `🤖\n\n*Bienvenido a ${businessName}* 🍲\n\n¡Hola! Soy el *asistente de IA de ${businessName}*.\n\n ¿En que te puedo ayudar?`;
+  const bodyText = `🤖\n\n*Bienvenido a ${businessName}*\n\n¡Hola! Soy el asistente de IA de *${businessName}*.\n\n ¿En que te puedo ayudar?`;
 
   return buildListMessageFromButtons(
     bodyText,

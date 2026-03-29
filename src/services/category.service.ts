@@ -144,7 +144,7 @@ export const buildCategoryProductListMessage = async (
         type: 'list',
         header: {
             type: 'text',
-            text: `🤖\n\n*${category.name}*`
+            text: `🤖\n\n*${category.name}* 🔎`
         },
         body: { text },
         footer: {
