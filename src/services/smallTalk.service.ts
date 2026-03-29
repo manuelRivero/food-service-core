@@ -38,14 +38,23 @@ export const buildSmallTalkMenu = async (
 
   const businessName = business?.name ?? businessNameFromCtx;
 
-  const activeOrder = await prisma.draft_order.findFirst({
+  const [activeOrder, defaultAddress] = await Promise.all([
+    prisma.draft_order.findFirst({
     where: {
       business_id: ctx.business?.id ?? business?.id ?? null,
       customer_phone: ctx.customer?.phone_number,
       status: 'active'
     },
-    select: { id: true }
-  });
+      select: { id: true }
+    }),
+    prisma.customer_address.findFirst({
+      where: {
+        customer_id: ctx.customer?.id,
+        is_default: true
+      },
+      select: { id: true }
+    })
+  ]);
 
   const buttons = [...baseButtons];
   if (activeOrder) {
@@ -53,6 +62,14 @@ export const buildSmallTalkMenu = async (
       title: 'Ver pedido',
       payload: 'VIEW_ORDER',
       description: 'Revisar tu pedido actual',
+      sectionTitle: 'Opciones'
+    });
+  }
+  if (defaultAddress) {
+    buttons.push({
+      title: 'Editar dirección',
+      payload: 'EDIT_ADDRESS',
+      description: 'Actualizar dirección de entrega',
       sectionTitle: 'Opciones'
     });
   }

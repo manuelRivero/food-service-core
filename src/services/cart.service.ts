@@ -7,6 +7,7 @@ import { findOrCreateCustomer } from "../repositories/customer.repository";
 import { createOrGetOpenConversation } from "../repositories/conversation.repository";
 import { WhatsAppWebhookPayload } from "../controllers/webhook/types";
 import { WhatsAppInteractiveMessage, WhatsAppListMessage } from "../domain/intent/whatsappTemplates";
+import { buildListMessageFromButtons } from '../whatsappBuilders';
 import { extractOrderData } from "./ai/openai.service";
 import { ConversationIntent } from "../types/conversationIntent";
 import { handleDraftOrder, handleDraftOrderItem } from "./order.service";
@@ -86,7 +87,7 @@ export const buildAddItemMessage = async (
   conversation: conversation,
   menuItemId: string,
   customer: customer
-): Promise<WhatsAppInteractiveMessage | string | null> => {
+): Promise<WhatsAppInteractiveMessage | WhatsAppListMessage | string | null> => {
 
   
 
@@ -143,35 +144,63 @@ export const buildAddItemMessage = async (
     _sum: { total_price: true }
   });
 
+  const defaultAddress = await prisma.customer_address.findFirst({
+    where: {
+      customer_id: customer.id,
+      is_default: true
+    },
+    select: { street_address: true }
+  });
+
+  const addressLine = defaultAddress?.street_address
+    ? `\n\n📍 Dirección de entrega: ${defaultAddress.street_address}\nSi querés cambiarla, elegí "Editar dirección".`
+    : '';
+
   const messageText = `🛒 *${item.name}* agregado\n\n` +
     `Items en carrito: ${itemCount}\n` +
     `Total: $${total._sum.total_price || 0}\n\n` +
-    `¿Seguís comprando o querés *finalizar*?`;
+    `¿Seguís comprando o querés *finalizar*?${addressLine}`;
 
   await createConversationMessage(conversation.id, 'ai', messageText, false);
   await updateConversationLastMessageAt(conversation.id);
 
-  return {
-    type: 'interactive',
-    interactive: {
-      header: { type: 'text', text: '' },
-      type: 'button',
-      footer: { text: '*Pedido actualizado*' },
-      body: {
-        text: `*${item.name}* agregado\n\n` +
-          `Articulos en tu pedido: ${itemCount}\n` +
-          `Total: $${total._sum.total_price?.toNumber() || 0}\n\n` +
-          `¿Seguís comprando o querés *finalizar*?`
-      },
-      action: {
-        buttons: [
-          { type: 'reply', reply: { id: 'VIEW_MENU', title: 'Seguir comprando' } },
-          { type: 'reply', reply: { id: 'CHECKOUT', title: 'Finalizar pedido' } },
-          { type: 'reply', reply: { id: 'VIEW_CART_FOR_EDITION', title: 'Modificar pedido' } }
-        ]
-      }
+  const buttons = [
+    {
+      title: 'Seguir comprando',
+      payload: 'VIEW_MENU',
+      description: 'Explorar más platos',
+      sectionTitle: 'Opciones'
+    },
+    {
+      title: 'Finalizar pedido',
+      payload: 'CHECKOUT',
+      description: 'Ir al checkout',
+      sectionTitle: 'Opciones'
+    },
+    {
+      title: 'Modificar pedido',
+      payload: 'VIEW_CART_FOR_EDITION',
+      description: 'Editar items del pedido',
+      sectionTitle: 'Opciones'
     }
-  };
+  ];
+
+  if (defaultAddress?.street_address) {
+    buttons.push({
+      title: 'Editar dirección',
+      payload: 'EDIT_ADDRESS',
+      description: 'Actualizar dirección de entrega',
+      sectionTitle: 'Opciones'
+    });
+  }
+
+  return buildListMessageFromButtons(
+    messageText,
+    buttons,
+    'Ver opciones',
+    '',
+    '*Pedido actualizado*'
+  );
 };
 
 export const handleAddItemFromWebhook = async (

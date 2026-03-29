@@ -60,6 +60,7 @@ Available intents:
 - VIEW_CART_FOR_EDITION: wants to see current cart for edition (e.g., "modificar mi pedido")
 - SMALL_TALK: greeting or casual (e.g., "hola", "buenas")
 - ASK_QUESTION: general question (e.g., "dónde están?", "cuál es el horario?")
+- EDIT_ADDRESS: wants to change or update the delivery address (e.g., "quiero cambiar mi dirección")
 - UNKNOWN: cannot classify
 
 Rules:

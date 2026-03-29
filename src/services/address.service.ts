@@ -62,6 +62,10 @@ export class AddressService {
     }
   }
 
+  async startEdit(ctx: EnrichedContext): Promise<string> {
+    return this.edit(ctx);
+  }
+
   async processWithAddressText(
     ctx: EnrichedContext,
     addressText: string
