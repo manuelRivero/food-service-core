@@ -10,7 +10,8 @@ import {
   createOrGetOpenConversation,
   findOrCreateConversationState,
   createConversationMessage,
-  updateConversationLastMessageAt
+  updateConversationLastMessageAt,
+  findLatestClosedConversationByCustomer
 } from '../../repositories';
 import { prisma } from '../../lib/prisma';
 import { ConversationIntent } from '../../types/conversationIntent';
@@ -33,6 +34,81 @@ export const processWebhook = async (payload: any): Promise<void> => {
 
     console.log('[Orchestrator] Processing message from:', ctx.to);
 
+    const business = await findBusinessByPhoneNumberId(ctx.phoneNumberId);
+    if (!business) {
+      console.error('[Orchestrator] Business not found:', ctx.phoneNumberId);
+      return;
+    }
+
+    const customer = await findOrCreateCustomer(business.id, ctx.to);
+
+    const businessStatus = await getBusinessOpenInfo({
+      businessId: business.id,
+      timezone: business.timezone
+    });
+
+    if (!businessStatus.isOpen) {
+      const closedConversation = await findLatestClosedConversationByCustomer(
+        customer.id,
+        business.id
+      );
+      const conversationId = closedConversation?.id;
+      const message = ctx.message;
+
+      if (conversationId) {
+        const messageContent =
+          message?.type === 'text'
+            ? message.text?.body || ''
+            : message?.type === 'interactive'
+              ? `[interactive: ${message.interactive?.button_reply?.id || message.interactive?.list_reply?.id || 'unknown'}]`
+              : `[${message?.type || 'unknown'}]`;
+
+        await createConversationMessage(
+          conversationId,
+          'user',
+          messageContent,
+          false,
+          message?.id
+        );
+      } else {
+        const created = await prisma.conversation.create({
+          data: {
+            business_id: business.id,
+            customer_id: customer.id,
+            status: 'closed',
+            last_message_at: new Date()
+          }
+        });
+        const messageContent =
+          message?.type === 'text'
+            ? message.text?.body || ''
+            : message?.type === 'interactive'
+              ? `[interactive: ${message.interactive?.button_reply?.id || message.interactive?.list_reply?.id || 'unknown'}]`
+              : `[${message?.type || 'unknown'}]`;
+        await createConversationMessage(
+          created.id,
+          'user',
+          messageContent,
+          false,
+          message?.id
+        );
+      }
+
+      const closedMessage = await buildBusinessClosedMessage({
+        ...ctx,
+        business,
+        customer
+      } as EnrichedContext);
+      if (closedMessage) {
+        const result = {
+          content: closedMessage,
+          isInteractive: false
+        };
+        await sendResponse(ctx, result);
+      }
+      return;
+    }
+
     // Persistir mensaje usuario
     const persistResult = await persistUserMessage(ctx);
     if (!persistResult) {
@@ -53,8 +129,8 @@ export const processWebhook = async (payload: any): Promise<void> => {
 
     const {
       conversation,
-      business,
-      customer,
+      business: contextBusiness,
+      customer: contextCustomer,
       conversationState,
       recentMessages
     } = contextData;
@@ -62,48 +138,11 @@ export const processWebhook = async (payload: any): Promise<void> => {
     const enrichedBase = {
       ...ctx,
       conversation,
-      business,
-      customer,
+      business: contextBusiness,
+      customer: contextCustomer,
       conversationState,
       conversationId: conversation.id
     };
-
-    const businessStatus = await getBusinessOpenInfo({
-      businessId: business.id,
-      timezone: business.timezone
-    });
-
-    if (!businessStatus.isOpen) {
-      const closedMessage = await buildBusinessClosedMessage(enrichedBase as EnrichedContext);
-      if (closedMessage) {
-        const result = {
-          content: closedMessage,
-          isInteractive: false
-        };
-        await sendResponse(ctx, result);
-        await createConversationMessage(
-          conversation.id,
-          'ai',
-          closedMessage,
-          true
-        );
-        await prisma.conversation.update({
-          where: { id: conversation.id },
-          data: {
-            status: 'closed',
-            idle_closed_at: new Date(),
-            lastReferencedProductId: null
-          }
-        });
-        await prisma.conversation_state.upsert({
-          where: { conversation_id: conversation.id },
-          update: { mode: 'GLOBAL', metadata: {} },
-          create: { conversation_id: conversation.id, mode: 'GLOBAL', metadata: {} }
-        });
-        await updateConversationLastMessageAt(conversation.id);
-      }
-      return;
-    }
 
     const detectionContext: DetectionContext = {
       conversationMode: conversationState.mode || 'GLOBAL',

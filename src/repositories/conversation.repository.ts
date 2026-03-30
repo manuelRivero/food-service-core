@@ -28,6 +28,22 @@ export const findLatestConversationByCustomer = async (
   });
 };
 
+export const findLatestClosedConversationByCustomer = async (
+  customerId: string,
+  businessId: string
+): Promise<conversation | null> => {
+  return prisma.conversation.findFirst({
+    where: {
+      customer_id: customerId,
+      business_id: businessId,
+      status: 'closed'
+    },
+    orderBy: {
+      last_message_at: 'desc'
+    }
+  });
+};
+
 export const createConversation = async (
   businessId: string,
   customerId: string

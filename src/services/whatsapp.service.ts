@@ -1688,7 +1688,7 @@ const buildOrderSearchListMessage = (params: {
 
   return buildListMessage({
     headerText: '',
-    bodyText: '*Este es nuestro menú disponible*\n Navega por las categorías y selecciona uno 👇',
+    bodyText: '🤖\n\n*Nuestro menú disponible* 🍲\n\nNavega por las categorías y selecciona uno 👇',
     footerText: '',
     actionButtonLabel: 'Ver menú',
     sections: [
