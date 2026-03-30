@@ -62,6 +62,7 @@ Available intents:
 - ASK_QUESTION: general question (e.g., "dónde están?", "cuál es el horario?")
 - BUSINESS_HOURS: asks for business hours (e.g., "horarios", "a qué hora abren?")
 - EDIT_ADDRESS: wants to change or update the delivery address (e.g., "quiero cambiar mi dirección")
+- RESERVATION: wants to reserve a table (e.g., "reservar", "reserva", "mesa", "book", "reservation", "table for 4")
 - UNKNOWN: cannot classify
 
 Rules:

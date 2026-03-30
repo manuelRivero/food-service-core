@@ -48,6 +48,7 @@ export const INTENT_ENUM_VALUES = [
   ConversationIntent.GENERAL_QUESTION,
   ConversationIntent.SMALL_TALK,
   ConversationIntent.ASK_QUESTION,
+  ConversationIntent.RESERVATION,
   
   ConversationIntent.UNKNOWN,
 ] as const;
@@ -103,6 +104,7 @@ export const INTENT_PRIORITY: ConversationIntent[] = [
   ConversationIntent.GENERAL_QUESTION,
   ConversationIntent.SMALL_TALK,
   ConversationIntent.ASK_QUESTION,
+  ConversationIntent.RESERVATION,
   
   // 7. Fallback
   ConversationIntent.UNKNOWN
@@ -151,6 +153,7 @@ export const normalizeIntent = (value: string): ConversationIntent => {
     case ConversationIntent.PRODUCT_QUERY:
     case ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION:
     case ConversationIntent.GENERAL_QUESTION:
+    case ConversationIntent.RESERVATION:
     case ConversationIntent.UNKNOWN:
       return trimmed as ConversationIntent;
     default:

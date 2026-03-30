@@ -32,9 +32,13 @@ model business {
   conversation           conversation[]
   customer               customer[]
   draft_order            draft_order[]
+  environment            environment[]
   menu_category          menu_category[]
   menu_item              menu_item[]
   orders                 orders[]
+  reservation            reservation[]
+  reservation_block      reservation_block[]
+  table                  table[]
 }
 
 model conversation {
@@ -53,6 +57,7 @@ model conversation {
   conversation_message    conversation_message[]
   conversation_state      conversation_state?
   orders                  orders[]
+  reservation             reservation[]
 
   @@index([last_message_at], map: "idx_conversation_last_message_at", where: raw("(status = 'open'::text)"))
 }
@@ -107,6 +112,7 @@ model customer {
   currency           currency?          @relation(fields: [preferred_currency], references: [code], onDelete: NoAction, onUpdate: NoAction)
   customer_address   customer_address[]
   orders             orders[]
+  reservation        reservation[]
 
   @@unique([business_id, phone_number])
 }
@@ -317,4 +323,77 @@ model spatial_ref_sys {
   auth_srid Int?
   srtext    String? @db.VarChar(2048)
   proj4text String? @db.VarChar(2048)
+}
+
+model environment {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id       String              @db.Uuid
+  name              String
+  description       String?
+  is_outdoor        Boolean?            @default(false)
+  is_active         Boolean?            @default(true)
+  created_at        DateTime?           @default(now()) @db.Timestamptz(6)
+  business          business            @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_environment_business")
+  reservation_block reservation_block[]
+  table             table[]
+
+  @@index([business_id], map: "idx_environment_business")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model reservation {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id      String        @db.Uuid
+  table_id         String        @db.Uuid
+  customer_id      String        @db.Uuid
+  conversation_id  String?       @db.Uuid
+  party_size       Int
+  reservation_date DateTime      @db.Date
+  start_time       DateTime      @db.Time(6)
+  end_time         DateTime      @db.Time(6)
+  status           String?       @default("confirmed")
+  notes            String?
+  created_at       DateTime?     @default(now()) @db.Timestamptz(6)
+  business         business      @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_reservation_business")
+  conversation     conversation? @relation(fields: [conversation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_conversation")
+  customer         customer      @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_customer")
+  table            table         @relation(fields: [table_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_table")
+
+  @@index([business_id, reservation_date], map: "idx_reservation_business_date")
+  @@index([status], map: "idx_reservation_status")
+  @@index([table_id, reservation_date], map: "idx_reservation_table_date")
+}
+
+model reservation_block {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id    String       @db.Uuid
+  table_id       String?      @db.Uuid
+  environment_id String?      @db.Uuid
+  date           DateTime     @db.Date
+  start_time     DateTime     @db.Time(6)
+  end_time       DateTime     @db.Time(6)
+  reason         String?
+  created_at     DateTime?    @default(now()) @db.Timestamptz(6)
+  business       business     @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_block_business")
+  environment    environment? @relation(fields: [environment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_block_environment")
+  table          table?       @relation(fields: [table_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_block_table")
+
+  @@index([business_id, date], map: "idx_block_business_date")
+}
+
+model table {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id       String              @db.Uuid
+  environment_id    String              @db.Uuid
+  name              String
+  capacity          Int
+  is_active         Boolean?            @default(true)
+  created_at        DateTime?           @default(now()) @db.Timestamptz(6)
+  reservation       reservation[]
+  reservation_block reservation_block[]
+  business          business            @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_table_business")
+  environment       environment         @relation(fields: [environment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_table_environment")
+
+  @@index([business_id], map: "idx_table_business")
+  @@index([environment_id], map: "idx_table_environment")
 }

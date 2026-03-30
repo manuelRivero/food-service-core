@@ -24,6 +24,7 @@ import { ProductAttributeQuestionHandler } from './productAttributeQuestionHandl
 import { SmallTalkHandler } from './smallTalkHandler';
 import { EditAddressHandler } from './editAddressHandler';
 import { BusinessHoursHandler } from './businessHoursHandler';
+import { ReservationHandler } from './reservationHandler';
 
 // Fallback
 import { FallbackHandler } from './fallbackHandler';
@@ -67,6 +68,7 @@ export const handlers = [
   new SmallTalkHandler(),
   new EditAddressHandler(),
   new BusinessHoursHandler(),
+  new ReservationHandler(),
   new RemoveItemHandler(),
   new ProductQueryHandler(),
   new ProductAttributeQuestionHandler(),
