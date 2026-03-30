@@ -246,7 +246,7 @@ export class AddressService {
       temp_zone_id: null,
     });
 
-    return 'Perfecto, decime la dirección nuevamente 📍';
+    return '🤖\n\n*Perfecto, decime la dirección nuevamente*, calle y número o mandame tu ubicación actual 📍';
   }
 
   // =========================
