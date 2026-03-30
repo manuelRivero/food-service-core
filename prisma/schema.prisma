@@ -342,26 +342,35 @@ model environment {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model reservation {
-  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  business_id      String        @db.Uuid
-  table_id         String        @db.Uuid
-  customer_id      String        @db.Uuid
-  conversation_id  String?       @db.Uuid
-  party_size       Int
-  reservation_date DateTime      @db.Date
-  start_time       DateTime      @db.Time(6)
-  end_time         DateTime      @db.Time(6)
-  status           String?       @default("confirmed")
-  notes            String?
-  created_at       DateTime?     @default(now()) @db.Timestamptz(6)
-  business         business      @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_reservation_business")
-  conversation     conversation? @relation(fields: [conversation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_conversation")
-  customer         customer      @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_customer")
-  table            table         @relation(fields: [table_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_table")
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id       String              @db.Uuid
+  customer_id       String              @db.Uuid
+  conversation_id   String?             @db.Uuid
+  party_size        Int
+  reservation_date  DateTime            @db.Date
+  start_time        DateTime            @db.Time(6)
+  end_time          DateTime            @db.Time(6)
+  status            String?             @default("confirmed")
+  notes             String?
+  created_at        DateTime?           @default(now()) @db.Timestamptz(6)
+  business          business            @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_reservation_business")
+  conversation      conversation?       @relation(fields: [conversation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_conversation")
+  customer          customer            @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_customer")
+  reservation_table reservation_table[]
 
   @@index([business_id, reservation_date], map: "idx_reservation_business_date")
   @@index([status], map: "idx_reservation_status")
-  @@index([table_id, reservation_date], map: "idx_reservation_table_date")
+}
+
+model reservation_table {
+  reservation_id String      @db.Uuid
+  table_id       String      @db.Uuid
+  reservation    reservation @relation(fields: [reservation_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_reservation_table_reservation")
+  table          table       @relation(fields: [table_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_reservation_table_table")
+
+  @@id([reservation_id, table_id])
+  @@index([reservation_id], map: "idx_rt_reservation")
+  @@index([table_id], map: "idx_rt_table")
 }
 
 model reservation_block {
@@ -389,8 +398,8 @@ model table {
   capacity          Int
   is_active         Boolean?            @default(true)
   created_at        DateTime?           @default(now()) @db.Timestamptz(6)
-  reservation       reservation[]
   reservation_block reservation_block[]
+  reservation_table reservation_table[]
   business          business            @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_table_business")
   environment       environment         @relation(fields: [environment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_table_environment")
 

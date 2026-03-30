@@ -28,7 +28,7 @@ type FindTableInput = {
 };
 
 type FindTableResult = {
-  tableId: string | null;
+  tableIds: string[] | null;
   reason?: string;
 };
 
@@ -39,6 +39,85 @@ function addMinutes(time: string, minutes: number): string {
   const date = new Date();
   date.setHours(h, m + minutes, 0);
   return date.toTimeString().slice(0, 5);
+}
+
+function addMinutesWithWrap(time: string, minutes: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const baseMinutes = h * 60 + m + minutes;
+  const total = ((baseMinutes % 1440) + 1440) % 1440;
+  const hh = String(Math.floor(total / 60)).padStart(2, "0");
+  const mm = String(total % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+async function createReservation(
+  prismaClient: typeof prisma,
+  input: {
+    businessId: string;
+    customerId: string;
+    conversationId?: string;
+    partySize: number;
+    date: string;
+    time: string;
+    tableIds: string[];
+  }
+) {
+  const endTime = addMinutes(input.time, SLOT_DURATION_MINUTES);
+  const reservationDate = new Date(input.date);
+
+  return prismaClient.$transaction(async (tx) => {
+    const conflict = await tx.reservation_table.findFirst({
+      where: {
+        table_id: { in: input.tableIds },
+        reservation: {
+          reservation_date: reservationDate,
+          status: {
+            in: ["confirmed", "pending"],
+          },
+          AND: [
+            {
+              start_time: {
+                lt: endTime,
+              },
+            },
+            {
+              end_time: {
+                gt: input.time,
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    if (conflict) {
+      throw new Error("TABLES_ALREADY_BOOKED");
+    }
+
+    const reservation = await tx.reservation.create({
+      data: {
+        business: { connect: { id: input.businessId } },
+        customer: { connect: { id: input.customerId } },
+        ...(input.conversationId
+          ? { conversation: { connect: { id: input.conversationId } } }
+          : {}),
+        party_size: input.partySize,
+        reservation_date: reservationDate,
+        start_time: input.time,
+        end_time: endTime,
+        status: "confirmed",
+      }
+    });
+
+    await tx.reservation_table.createMany({
+      data: input.tableIds.map((tableId) => ({
+        reservation_id: reservation.id,
+        table_id: tableId
+      }))
+    });
+
+    return reservation;
+  });
 }
 
 function mapEnvironmentToId(
@@ -96,10 +175,11 @@ export async function findAvailableTable(
 
   if (!tables.length) {
     console.log("[Reservation] No tables match basic filters");
-    return { tableId: null, reason: "NO_TABLES" };
+    return { tableIds: null, reason: "NO_TABLES" };
   }
 
   // 2️⃣ Evaluar disponibilidad
+  const availableTables: typeof tables = [];
   for (const table of tables) {
     console.log("[Reservation] Checking table:", {
       tableId: table.id,
@@ -107,34 +187,37 @@ export async function findAvailableTable(
       environmentId: table.environment_id
     });
     // reservas que se pisan
-    const overlappingReservation = await prisma.reservation.findFirst({
+    const overlappingReservation = await prisma.reservation_table.findFirst({
       where: {
         table_id: table.id,
-        reservation_date: new Date(date),
-        status: {
-          in: ["confirmed", "pending"],
-        },
-        AND: [
-          {
-            start_time: {
-              lt: endTime,
-            },
+        reservation: {
+          reservation_date: new Date(date),
+          status: {
+            in: ["confirmed", "pending"],
           },
-          {
-            end_time: {
-              gt: time,
+          AND: [
+            {
+              start_time: {
+                lt: endTime,
+              },
             },
-          },
-        ],
+            {
+              end_time: {
+                gt: time,
+              },
+            },
+          ],
+        }
       },
+      include: { reservation: true }
     });
 
     if (overlappingReservation) {
       console.log("[Reservation] Table blocked by reservation:", {
         tableId: table.id,
-        reservationId: overlappingReservation.id,
-        start: overlappingReservation.start_time,
-        end: overlappingReservation.end_time
+        reservationId: overlappingReservation.reservation_id,
+        start: overlappingReservation.reservation.start_time,
+        end: overlappingReservation.reservation.end_time
       });
       continue;
     }
@@ -174,11 +257,57 @@ export async function findAvailableTable(
     console.log("[Reservation] Table available:", {
       tableId: table.id
     });
-    return { tableId: table.id };
+    availableTables.push(table);
+  }
+
+  const selectedTables = selectTables(availableTables, partySize);
+  if (selectedTables) {
+    console.log("[Reservation] Table available:", {
+      tableIds: selectedTables.map((table) => table.id)
+    });
+    return { tableIds: selectedTables.map((table) => table.id) };
   }
 
   console.log("[Reservation] No available tables found");
-  return { tableId: null, reason: "NO_AVAILABILITY" };
+  return { tableIds: null, reason: "NO_AVAILABILITY" };
+}
+
+async function suggestAlternativeTimes(
+  prismaClient: typeof prisma,
+  input: FindTableInput
+): Promise<{ time: string; tableIds: string[] }[]> {
+  const offsets = [-60, -30, 30, 60];
+  const suggestions: { time: string; tableIds: string[] }[] = [];
+  for (const offset of offsets) {
+    const candidateTime = addMinutesWithWrap(input.time, offset);
+    const result = await findAvailableTable({
+      ...input,
+      time: candidateTime
+    });
+    if (result.tableIds) {
+      suggestions.push({ time: candidateTime, tableIds: result.tableIds });
+    }
+    if (suggestions.length >= 3) break;
+  }
+  return suggestions;
+}
+
+function selectTables(
+  tables: { id: string; capacity: number }[],
+  partySize: number
+): { id: string; capacity: number }[] | null {
+  const sorted = [...tables].sort((a, b) => a.capacity - b.capacity);
+  const exact = sorted.find((table) => table.capacity === partySize);
+  if (exact) return [exact];
+
+  const selected: { id: string; capacity: number }[] = [];
+  let total = 0;
+  for (const table of sorted) {
+    selected.push(table);
+    total += table.capacity;
+    if (total >= partySize) return selected;
+  }
+  return null;
 }
 
 const parsePartySize = (value: string): number | null => {
@@ -407,17 +536,46 @@ export const handleReservationIntent = async (
         partySize: reservation.partySize ?? 0,
         environmentId: reservation.environmentId
       });
-      const response = result.tableId
-        ? '🤖\n\n✅ Reserva confirmada'
-        : '🤖\n\n❌ No hay disponibilidad';
+      if (result.tableIds && ctx.customer?.id) {
+        await createReservation(prisma, {
+          businessId: ctx.business.id,
+          customerId: ctx.customer.id,
+          conversationId: ctx.conversationId,
+          partySize: reservation.partySize ?? 0,
+          date: reservation.date ?? '',
+          time: reservation.time ?? '',
+          tableIds: result.tableIds
+        });
+        await updateConversationState(ctx.conversationId, {
+          metadata: { ...metadata, reservation: undefined }
+        });
+        return '🤖\n\n✅ Reserva confirmada';
+      }
+
+      const suggestions = await suggestAlternativeTimes(prisma, {
+        businessId: ctx.business.id,
+        date: reservation.date ?? '',
+        time: reservation.time ?? '',
+        partySize: reservation.partySize ?? 0,
+        environmentId: reservation.environmentId
+      });
+
+      if (suggestions.length) {
+        const options = suggestions.map((s) => `- ${s.time}`).join('\n');
+        await updateConversationState(ctx.conversationId, {
+          metadata: { ...metadata, reservation: undefined }
+        });
+        return `🤖\n\nNo hay disponibilidad a las ${reservation.time ?? '-'}.\nTe puedo ofrecer:\n${options}`;
+      }
 
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: undefined }
       });
+      return '🤖\n\nNo hay disponibilidad para ese horario';
 
-      return response;
     }
     default:
       return null;
   }
 };
+
