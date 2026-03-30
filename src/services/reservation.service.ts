@@ -62,8 +62,19 @@ export async function findAvailableTable(
   input: FindTableInput
 ): Promise<FindTableResult> {
   const { businessId, date, time, partySize, environmentId } = input;
+  console.log("[Reservation] Input:", {
+    businessId,
+    date,
+    time,
+    partySize,
+    environmentId
+  });
 
   const endTime = addMinutes(time, SLOT_DURATION_MINUTES);
+  console.log("[Reservation] Time range:", {
+    startTime: time,
+    endTime
+  });
 
   // 1️⃣ Traer mesas candidatas
   const tables = await prisma.table.findMany({
@@ -81,13 +92,20 @@ export async function findAvailableTable(
       capacity: "asc",
     },
   });
+  console.log("[Reservation] Tables found:", tables.length);
 
   if (!tables.length) {
+    console.log("[Reservation] No tables match basic filters");
     return { tableId: null, reason: "NO_TABLES" };
   }
 
   // 2️⃣ Evaluar disponibilidad
   for (const table of tables) {
+    console.log("[Reservation] Checking table:", {
+      tableId: table.id,
+      capacity: table.capacity,
+      environmentId: table.environment_id
+    });
     // reservas que se pisan
     const overlappingReservation = await prisma.reservation.findFirst({
       where: {
@@ -111,7 +129,15 @@ export async function findAvailableTable(
       },
     });
 
-    if (overlappingReservation) continue;
+    if (overlappingReservation) {
+      console.log("[Reservation] Table blocked by reservation:", {
+        tableId: table.id,
+        reservationId: overlappingReservation.id,
+        start: overlappingReservation.start_time,
+        end: overlappingReservation.end_time
+      });
+      continue;
+    }
 
     // bloqueos
     const overlappingBlock = await prisma.reservation_block.findFirst({
@@ -136,12 +162,22 @@ export async function findAvailableTable(
       },
     });
 
-    if (overlappingBlock) continue;
+    if (overlappingBlock) {
+      console.log("[Reservation] Table blocked by block:", {
+        tableId: table.id,
+        blockId: overlappingBlock.id
+      });
+      continue;
+    }
 
     // ✅ encontrada
+    console.log("[Reservation] Table available:", {
+      tableId: table.id
+    });
     return { tableId: table.id };
   }
 
+  console.log("[Reservation] No available tables found");
   return { tableId: null, reason: "NO_AVAILABILITY" };
 }
 
