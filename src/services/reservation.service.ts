@@ -1,7 +1,8 @@
 import { prisma } from '../lib/prisma';
 import type { EnrichedContext } from '../controllers/webhook/types';
-import type { WhatsAppInteractiveMessage } from '../domain/intent/whatsappTemplates';
+import type { WhatsAppInteractiveMessage, WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
 import { updateConversationState } from '../repositories/conversationState.repository';
+import { buildListMessageFromButtons } from '../whatsappBuilders';
 
 export type ReservationStep =
   | 'ASK_DATE'
@@ -38,6 +39,23 @@ function addMinutes(time: string, minutes: number): string {
   const date = new Date();
   date.setHours(h, m + minutes, 0);
   return date.toTimeString().slice(0, 5);
+}
+
+function mapEnvironmentToId(
+  input: string,
+  environments: { id: string; name: string; is_outdoor: boolean }[]
+): string | null {
+  const text = input.toLowerCase();
+
+  if (text.includes("interior") || text.includes("adentro")) {
+    return environments.find((e) => !e.is_outdoor)?.id || null;
+  }
+
+  if (text.includes("exterior") || text.includes("afuera")) {
+    return environments.find((e) => e.is_outdoor)?.id || null;
+  }
+
+  return null;
 }
 
 export async function findAvailableTable(
@@ -136,7 +154,7 @@ const parsePartySize = (value: string): number | null => {
 
 export const handleReservationIntent = async (
   ctx: EnrichedContext
-): Promise<string | WhatsAppInteractiveMessage | null> => {
+): Promise<string | WhatsAppInteractiveMessage | WhatsAppListMessage | null> => {
   const metadata = ctx.conversationState?.metadata ?? {};
   const reservation: ReservationState | undefined = metadata.reservation;
   const messageText = ctx.message?.text?.body?.trim() ?? '';
@@ -146,13 +164,13 @@ export const handleReservationIntent = async (
     await updateConversationState(ctx.conversationId, {
       metadata: { ...metadata, reservation: nextState }
     });
-    return '¿Para qué fecha querés reservar? (Ej: 05/04)';
+    return '🤖\n\n¿Para qué fecha querés reservar? (Ej: 05/04)';
   }
 
   switch (reservation.step) {
     case 'ASK_DATE': {
       if (!messageText) {
-        return '¿Para qué fecha querés reservar? (Ej: 05/04)';
+        return '🤖\n\n¿Para qué fecha querés reservar? (Ej: 05/04)';
       }
       const nextState: ReservationState = {
         ...reservation,
@@ -162,11 +180,11 @@ export const handleReservationIntent = async (
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: nextState }
       });
-      return '¿A qué hora? (Ej: 20:30)';
+      return '🤖\n\n¿A qué hora? (Ej: 20:30)';
     }
     case 'ASK_TIME': {
       if (!messageText) {
-        return '¿A qué hora? (Ej: 20:30)';
+        return '🤖\n\n¿A qué hora? (Ej: 20:30)';
       }
       const nextState: ReservationState = {
         ...reservation,
@@ -176,12 +194,12 @@ export const handleReservationIntent = async (
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: nextState }
       });
-      return '¿Para cuántas personas?';
+      return '🤖\n\n¿Para cuántas personas?';
     }
     case 'ASK_PARTY_SIZE': {
       const partySize = parsePartySize(messageText);
       if (!partySize) {
-        return '¿Para cuántas personas? (Ej: 4)';
+        return '🤖\n\n¿Para cuántas personas? (Ej: 4)';
       }
       const nextState: ReservationState = {
         ...reservation,
@@ -191,20 +209,46 @@ export const handleReservationIntent = async (
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: nextState }
       });
-      return '¿Preferís interior o exterior? (Opcional, podés responder "sin preferencia")';
+      return buildListMessageFromButtons(
+        '🤖\n\n¿Preferís interior o exterior?',
+        [
+          {
+            title: 'Interior',
+            payload: 'RESERVATION_ENV_INTERIOR',
+            description: 'Mesa en interior',
+            sectionTitle: 'Ambiente'
+          },
+          {
+            title: 'Exterior',
+            payload: 'RESERVATION_ENV_EXTERIOR',
+            description: 'Mesa en exterior',
+            sectionTitle: 'Ambiente'
+          },
+          {
+            title: 'Sin preferencia',
+            payload: 'RESERVATION_ENV_NONE',
+            description: 'Cualquier ambiente',
+            sectionTitle: 'Ambiente'
+          }
+        ],
+        'Ver opciones',
+        '',
+        'Seleccioná una opción para continuar'
+      );
     }
     case 'ASK_ENVIRONMENT': {
-      const environmentValue = messageText.toLowerCase();
-      const environmentId =
-        environmentValue.includes('interior')
+      const envId =
+        ctx.payloadId === 'RESERVATION_ENV_INTERIOR'
           ? 'interior'
-          : environmentValue.includes('exterior')
+          : ctx.payloadId === 'RESERVATION_ENV_EXTERIOR'
             ? 'exterior'
-            : undefined;
+            : ctx.payloadId === 'RESERVATION_ENV_NONE'
+              ? undefined
+              : mapEnvironmentToId(messageText, ctx.business?.environments ?? []);
 
       const nextState: ReservationState = {
         ...reservation,
-        environmentId,
+        environmentId: envId ?? undefined,
         step: 'CONFIRM'
       };
       await updateConversationState(ctx.conversationId, {
@@ -215,7 +259,7 @@ export const handleReservationIntent = async (
         `Fecha: ${nextState.date ?? '-'}`,
         `Hora: ${nextState.time ?? '-'}`,
         `Personas: ${nextState.partySize ?? '-'}`,
-        `Ambiente: ${environmentId ?? 'sin preferencia'}`
+        `Ambiente: ${nextState.environmentId ?? 'sin preferencia'}`
       ].join('\n');
 
       return {
@@ -223,7 +267,7 @@ export const handleReservationIntent = async (
         interactive: {
           type: 'button',
           header: { type: 'text', text: 'Confirmar reserva' },
-          body: { text: `Confirmá tu reserva:\n${summary}` },
+          body: { text: `🤖\n\nConfirmá tu reserva:\n${summary}` },
           footer: { text: 'Seleccioná una opción' },
           action: {
             buttons: [
@@ -245,7 +289,7 @@ export const handleReservationIntent = async (
         await updateConversationState(ctx.conversationId, {
           metadata: { ...metadata, reservation: undefined }
         });
-        return 'Reserva cancelada. ¿Querés que te ayude en algo más?';
+        return '🤖\n\nReserva cancelada. ¿Querés que te ayude en algo más?';
       }
 
       if (ctx.payloadId !== 'RESERVATION_CONFIRM') {
@@ -260,7 +304,7 @@ export const handleReservationIntent = async (
           interactive: {
             type: 'button',
             header: { type: 'text', text: 'Confirmar reserva' },
-            body: { text: `Confirmá tu reserva:\n${summary}` },
+            body: { text: `🤖\n\nConfirmá tu reserva:\n${summary}` },
             footer: { text: 'Seleccioná una opción' },
             action: {
               buttons: [
@@ -288,8 +332,8 @@ export const handleReservationIntent = async (
         environmentId: reservation.environmentId
       });
       const response = result.tableId
-        ? '✅ Reserva confirmada'
-        : '❌ No hay disponibilidad';
+        ? '🤖\n\n✅ Reserva confirmada'
+        : '🤖\n\n❌ No hay disponibilidad';
 
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: undefined }
