@@ -65,6 +65,14 @@ function addMinutes(time: string, minutes: number): string {
   date.setHours(h, m + minutes, 0);
   return date.toTimeString().slice(0, 5);
 }
+export function buildDateTime(date: Date, time: string): Date {
+  const [hours, minutes] = time.split(":").map(Number);
+
+  const result = new Date(date);
+  result.setHours(hours, minutes, 0, 0);
+
+  return result;
+}
 
 function addMinutesWithWrap(time: string, minutes: number): string {
   const [h, m] = time.split(":").map(Number);
@@ -89,6 +97,8 @@ async function createReservation(
 ) {
   const endTime = addMinutes(input.time, SLOT_DURATION_MINUTES);
   const reservationDate = normalizeDate(input.date);
+  const startDateTime = buildDateTime(reservationDate, input.time);
+const endDateTime = buildDateTime(reservationDate, endTime);
 
   return prismaClient.$transaction(async (tx) => {
     const conflict = await tx.reservation_table.findFirst({
@@ -102,12 +112,12 @@ async function createReservation(
           AND: [
             {
               start_time: {
-                lt: endTime,
+                lt: endDateTime,
               },
             },
             {
               end_time: {
-                gt: input.time,
+                gt: startDateTime,
               },
             },
           ],
@@ -128,7 +138,7 @@ async function createReservation(
           : {}),
         party_size: input.partySize,
         reservation_date: reservationDate,
-        start_time: input.time,
+        start_time: startDateTime,
         end_time: endTime,
         status: "confirmed",
       }
