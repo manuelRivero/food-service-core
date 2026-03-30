@@ -160,9 +160,6 @@ export async function findAvailableTable(
     where: {
       business_id: businessId,
       is_active: true,
-      capacity: {
-        gte: partySize,
-      },
       ...(environmentId && {
         environment_id: environmentId,
       }),
