@@ -34,6 +34,31 @@ type FindTableResult = {
 
 const SLOT_DURATION_MINUTES = 120;
 
+export function normalizeDate(dateStr: string): Date {
+  // soporta "DD/MM" o "DD/MM/YYYY"
+  const parts = dateStr.split("/");
+
+  if (parts.length < 2) {
+    throw new Error("INVALID_DATE_FORMAT");
+  }
+
+  const day = Number(parts[0]);
+  const month = Number(parts[1]) - 1;
+
+  const year =
+    parts[2] !== undefined
+      ? Number(parts[2])
+      : new Date().getFullYear();
+
+  const date = new Date(year, month, day);
+
+  if (isNaN(date.getTime())) {
+    throw new Error("INVALID_DATE");
+  }
+
+  return date;
+}
+
 function addMinutes(time: string, minutes: number): string {
   const [h, m] = time.split(":").map(Number);
   const date = new Date();
@@ -70,7 +95,7 @@ async function createReservation(
       where: {
         table_id: { in: input.tableIds },
         reservation: {
-          reservation_date: reservationDate,
+          reservation_date: normalizeDate(input.date),
           status: {
             in: ["confirmed", "pending"],
           },
