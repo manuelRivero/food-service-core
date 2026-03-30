@@ -1,4 +1,4 @@
-import { prisma } from 'src/lib/prisma';
+import { prisma } from '../lib/prisma';
 import type { EnrichedContext } from '../controllers/webhook/types';
 import type { WhatsAppInteractiveMessage } from '../domain/intent/whatsappTemplates';
 import { updateConversationState } from '../repositories/conversationState.repository';
