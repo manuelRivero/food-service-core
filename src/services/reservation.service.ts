@@ -88,7 +88,7 @@ async function createReservation(
   }
 ) {
   const endTime = addMinutes(input.time, SLOT_DURATION_MINUTES);
-  const reservationDate = new Date(input.date);
+  const reservationDate = normalizeDate(input.date);
 
   return prismaClient.$transaction(async (tx) => {
     const conflict = await tx.reservation_table.findFirst({
@@ -213,7 +213,7 @@ export async function findAvailableTable(
       where: {
         table_id: table.id,
         reservation: {
-          reservation_date: new Date(date),
+          reservation_date: normalizeDate(date),
           status: {
             in: ["confirmed", "pending"],
           },
@@ -247,7 +247,7 @@ export async function findAvailableTable(
     // bloqueos
     const overlappingBlock = await prisma.reservation_block.findFirst({
       where: {
-        date: new Date(date),
+        date: normalizeDate(date),
         OR: [
           { table_id: table.id },
           { environment_id: table.environment_id },
