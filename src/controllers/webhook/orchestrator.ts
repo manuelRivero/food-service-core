@@ -17,6 +17,7 @@ import { prisma } from '../../lib/prisma';
 import { ConversationIntent } from '../../types/conversationIntent';
 import { EnrichedContext, WebhookContext } from './types';
 import { AddressService } from '../../services/address.service';
+import { handleReservationIntent } from '../../services/reservation.service';
 import { buildBusinessClosedMessage, getBusinessOpenInfo } from '../../services/businessHours.service';
 
 
@@ -161,6 +162,29 @@ export const processWebhook = async (payload: any): Promise<void> => {
       content: result,
       isInteractive: typeof result !== 'string'
     });
+
+    const reservationStep =
+      (enrichedBase.conversationState?.metadata as any)?.reservation?.step;
+
+    if (reservationStep) {
+      const reservationResult = await handleReservationIntent(
+        enrichedBase as EnrichedContext
+      );
+      if (reservationResult) {
+        const handlerResult = toHandlerResult(reservationResult);
+        await sendResponse(ctx, handlerResult);
+        await createConversationMessage(
+          conversation.id,
+          'ai',
+          typeof handlerResult.content === 'string'
+            ? handlerResult.content
+            : '[interactive]',
+          true
+        );
+        await updateConversationLastMessageAt(conversation.id);
+      }
+      return;
+    }
 
     // =========================================================
     // 🛡️ PASO 0: FORCE ONBOARDING POR ESTADO
