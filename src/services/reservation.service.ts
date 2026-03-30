@@ -139,7 +139,7 @@ const endDateTime = buildDateTime(reservationDate, endTime);
         party_size: input.partySize,
         reservation_date: reservationDate,
         start_time: startDateTime,
-        end_time: endTime,
+        end_time: endDateTime,
         status: "confirmed",
       }
     });
@@ -184,10 +184,12 @@ export async function findAvailableTable(
     environmentId
   });
 
-  const endTime = addMinutes(time, SLOT_DURATION_MINUTES);
+  const reservationDate = normalizeDate(date);
+  const startDateTime = buildDateTime(reservationDate, time);
+  const endDateTime = buildDateTime(reservationDate, addMinutes(time, SLOT_DURATION_MINUTES));
   console.log("[Reservation] Time range:", {
-    startTime: time,
-    endTime
+    startTime: startDateTime,
+    endTime: endDateTime
   });
 
   // 1️⃣ Traer mesas candidatas
@@ -223,19 +225,19 @@ export async function findAvailableTable(
       where: {
         table_id: table.id,
         reservation: {
-          reservation_date: normalizeDate(date),
+          reservation_date: reservationDate,
           status: {
             in: ["confirmed", "pending"],
           },
           AND: [
             {
               start_time: {
-                lt: endTime,
+                lt: endDateTime,
               },
             },
             {
               end_time: {
-                gt: time,
+                gt: startDateTime,
               },
             },
           ],
@@ -257,7 +259,7 @@ export async function findAvailableTable(
     // bloqueos
     const overlappingBlock = await prisma.reservation_block.findFirst({
       where: {
-        date: normalizeDate(date),
+        date: reservationDate,
         OR: [
           { table_id: table.id },
           { environment_id: table.environment_id },
@@ -265,12 +267,12 @@ export async function findAvailableTable(
         AND: [
           {
             start_time: {
-              lt: endTime,
+              lt: endDateTime,
             },
           },
           {
             end_time: {
-              gt: time,
+              gt: startDateTime,
             },
           },
         ],
