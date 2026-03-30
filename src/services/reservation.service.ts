@@ -209,28 +209,66 @@ export const handleReservationIntent = async (
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: nextState }
       });
-      return buildListMessageFromButtons(
-        '🤖\n\n¿Preferís interior o exterior?',
-        [
-          {
-            title: 'Interior',
-            payload: 'RESERVATION_ENV_INTERIOR',
-            description: 'Mesa en interior',
-            sectionTitle: 'Ambiente'
-          },
-          {
-            title: 'Exterior',
-            payload: 'RESERVATION_ENV_EXTERIOR',
-            description: 'Mesa en exterior',
-            sectionTitle: 'Ambiente'
-          },
-          {
-            title: 'Sin preferencia',
-            payload: 'RESERVATION_ENV_NONE',
-            description: 'Cualquier ambiente',
-            sectionTitle: 'Ambiente'
+      const environments = await prisma.environment.findMany({
+        where: {
+          business_id: ctx.business?.id,
+          is_active: true
+        },
+        orderBy: { name: 'asc' }
+      });
+
+      if (!environments.length) {
+        await updateConversationState(ctx.conversationId, {
+          metadata: {
+            ...metadata,
+            reservation: { ...nextState, environmentId: undefined, step: 'CONFIRM' }
           }
-        ],
+        });
+        const summary = [
+          `Fecha: ${nextState.date ?? '-'}`,
+          `Hora: ${nextState.time ?? '-'}`,
+          `Personas: ${nextState.partySize ?? '-'}`,
+          `Ambiente: sin preferencia`
+        ].join('\n');
+        return {
+          type: 'interactive',
+          interactive: {
+            type: 'button',
+            header: { type: 'text', text: 'Confirmar reserva' },
+            body: { text: `🤖\n\nConfirmá tu reserva:\n${summary}` },
+            footer: { text: 'Seleccioná una opción' },
+            action: {
+              buttons: [
+                {
+                  type: 'reply',
+                  reply: { id: 'RESERVATION_CONFIRM', title: '✅ Confirmar' }
+                },
+                {
+                  type: 'reply',
+                  reply: { id: 'RESERVATION_CANCEL', title: '❌ Cancelar' }
+                }
+              ]
+            }
+          }
+        };
+      }
+
+      const buttons = environments.map((env) => ({
+        title: env.name,
+        payload: `RESERVATION_ENV:${env.id}`,
+        description: env.description ?? 'Seleccioná este ambiente',
+        sectionTitle: 'Ambientes'
+      }));
+      buttons.push({
+        title: 'Sin preferencia',
+        payload: 'RESERVATION_ENV_NONE',
+        description: 'Cualquier ambiente',
+        sectionTitle: 'Ambientes'
+      });
+
+      return buildListMessageFromButtons(
+        '🤖\n\n¿En qué ambiente preferís reservar?',
+        buttons,
         'Ver opciones',
         '',
         'Seleccioná una opción para continuar'
@@ -238,13 +276,11 @@ export const handleReservationIntent = async (
     }
     case 'ASK_ENVIRONMENT': {
       const envId =
-        ctx.payloadId === 'RESERVATION_ENV_INTERIOR'
-          ? 'interior'
-          : ctx.payloadId === 'RESERVATION_ENV_EXTERIOR'
-            ? 'exterior'
-            : ctx.payloadId === 'RESERVATION_ENV_NONE'
-              ? undefined
-              : mapEnvironmentToId(messageText, ctx.business?.environments ?? []);
+        ctx.payloadId?.startsWith('RESERVATION_ENV:')
+          ? ctx.payloadId.split(':')[1]
+          : ctx.payloadId === 'RESERVATION_ENV_NONE'
+            ? undefined
+            : mapEnvironmentToId(messageText, ctx.business?.environments ?? []);
 
       const nextState: ReservationState = {
         ...reservation,
@@ -255,11 +291,15 @@ export const handleReservationIntent = async (
         metadata: { ...metadata, reservation: nextState }
       });
 
+      const environmentName = envId
+        ? (await prisma.environment.findUnique({ where: { id: envId } }))?.name
+        : undefined;
+
       const summary = [
         `Fecha: ${nextState.date ?? '-'}`,
         `Hora: ${nextState.time ?? '-'}`,
         `Personas: ${nextState.partySize ?? '-'}`,
-        `Ambiente: ${nextState.environmentId ?? 'sin preferencia'}`
+        `Ambiente: ${environmentName ?? 'sin preferencia'}`
       ].join('\n');
 
       return {

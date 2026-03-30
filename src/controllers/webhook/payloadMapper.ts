@@ -119,6 +119,9 @@ export const detectIntentFromPayload = (
   if (payloadId.startsWith('ONBOARDING_CONFIRM_ADDRESS:')) {
     return buildInteractiveResult(ConversationIntent.ONBOARDING_CONFIRM_ADDRESS, payloadId);
   }
+    if (payloadId.startsWith('RESERVATION_ENV:')) {
+      return buildInteractiveResult(ConversationIntent.RESERVATION, payloadId);
+    }
 
 
   // IDs estáticos
@@ -136,6 +139,7 @@ export const detectIntentFromPayload = (
     BUSINESS_HOURS: ConversationIntent.BUSINESS_HOURS,
     RESERVATION_CONFIRM: ConversationIntent.RESERVATION,
     RESERVATION_CANCEL: ConversationIntent.RESERVATION,
+    RESERVATION_ENV_NONE: ConversationIntent.RESERVATION,
   };
 
   if (staticMap[payloadId]) {
