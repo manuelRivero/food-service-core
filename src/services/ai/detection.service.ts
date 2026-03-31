@@ -1,7 +1,6 @@
 // src/services/intent/detectionService.ts
 
 import OpenAI from 'openai';
-import { prisma } from '../../lib/prisma';
 import { ConversationIntent } from '../../types/conversationIntent';
 
 const openai = new OpenAI({
@@ -27,6 +26,12 @@ export interface IntentDetectionResult {
     intent: ConversationIntent;
     confidence: number;
   }>;
+  resolutionSource?: 'direct' | 'rescued' | 'unknown';
+  topCandidate?: {
+    intent: ConversationIntent;
+    confidence: number;
+  } | null;
+  rescueMargin?: number | null;
   raw: string | null;
 }
 
@@ -63,6 +68,8 @@ Available intents:
 - BUSINESS_HOURS: asks for business hours (e.g., "horarios", "a qué hora abren?")
 - EDIT_ADDRESS: wants to change or update the delivery address (e.g., "quiero cambiar mi dirección")
 - RESERVATION: wants to reserve a table (e.g., "reservar", "reserva", "mesa", "book", "reservation", "table for 4")
+- VIEW_RESERVATION: wants to view an existing reservation (e.g., "ver mi reserva", "mostrar reserva", "mi reserva")
+- VIEW_QR: wants to view reservation QR code (e.g., "ver qr", "mostrar codigo qr", "pasame el qr")
 - UNKNOWN: cannot classify
 
 Rules:
@@ -85,8 +92,17 @@ Rules:
     try {
       const parsed = JSON.parse(content);
 
-      // Normalizar intent
-      let finalIntent = normalizeIntent(parsed.intent);
+      // Normalizar intent principal y candidatos para resolver un intent final estable
+      const parsedConfidence =
+        typeof parsed.confidence === 'number' ? parsed.confidence : 0;
+      const initialIntent = normalizeIntent(parsed.intent || '');
+      const normalizedCandidates = normalizeCandidates(parsed.candidates);
+      const resolved = resolveFinalIntent(
+        initialIntent,
+        parsedConfidence,
+        normalizedCandidates
+      );
+      let finalIntent = resolved.intent;
 
       // Context override: PRODUCT_FOCUS domina PRODUCT_QUERY
       if (context.conversationMode === 'PRODUCT_FOCUS') {
@@ -121,14 +137,17 @@ Rules:
 
       return {
         intent: finalIntent,
-        confidence: parsed.confidence || 0,
+        confidence: parsedConfidence,
         detectedProductName: parsed.detectedProductName || null,
         quantity,
         addressText:
           typeof parsed.addressText === 'string' ? parsed.addressText.trim() : null,
         addressConfidence:
           typeof parsed.addressConfidence === 'number' ? parsed.addressConfidence : null,
-        candidates: parsed.candidates || [],
+        candidates: normalizedCandidates,
+        resolutionSource: resolved.source,
+        topCandidate: resolved.topCandidate,
+        rescueMargin: resolved.margin,
         raw: content
       };
 
@@ -190,7 +209,7 @@ Respond with JSON:
 };
 
 const normalizeIntent = (raw: string): ConversationIntent => {
-  const normalized = raw.trim().toUpperCase();
+  const normalized = (raw || '').trim().toUpperCase();
 
   const validIntents = Object.values(ConversationIntent);
   if (validIntents.includes(normalized as ConversationIntent)) {
@@ -198,6 +217,81 @@ const normalizeIntent = (raw: string): ConversationIntent => {
   }
 
   return ConversationIntent.UNKNOWN;
+};
+
+const normalizeCandidates = (
+  candidates: unknown
+): Array<{ intent: ConversationIntent; confidence: number }> => {
+  if (!Array.isArray(candidates)) return [];
+
+  return candidates
+    .map((candidate) => {
+      const candidateObj = candidate as { intent?: string; confidence?: number };
+      return {
+        intent: normalizeIntent(candidateObj.intent || ''),
+        confidence:
+          typeof candidateObj.confidence === 'number' ? candidateObj.confidence : 0
+      };
+    })
+    .filter((candidate) => candidate.intent !== ConversationIntent.UNKNOWN)
+    .sort((a, b) => b.confidence - a.confidence);
+};
+
+const DIRECT_THRESHOLD = 0.55;
+const RESCUE_THRESHOLD = 0.45;
+const MIN_MARGIN = 0.15;
+
+const resolveFinalIntent = (
+  intent: ConversationIntent,
+  confidence: number,
+  candidates: Array<{ intent: ConversationIntent; confidence: number }>
+): {
+  intent: ConversationIntent;
+  source: 'direct' | 'rescued' | 'unknown';
+  topCandidate: { intent: ConversationIntent; confidence: number } | null;
+  margin: number | null;
+} => {
+  if (intent !== ConversationIntent.UNKNOWN && confidence >= DIRECT_THRESHOLD) {
+    return {
+      intent,
+      source: 'direct',
+      topCandidate: candidates[0] || null,
+      margin:
+        candidates.length >= 2
+          ? candidates[0].confidence - candidates[1].confidence
+          : null
+    };
+  }
+
+  const topCandidate = candidates[0];
+  const secondCandidate = candidates[1];
+  const margin =
+    topCandidate && secondCandidate
+      ? topCandidate.confidence - secondCandidate.confidence
+      : topCandidate
+        ? topCandidate.confidence
+        : null;
+
+  if (
+    intent === ConversationIntent.UNKNOWN &&
+    topCandidate &&
+    topCandidate.confidence >= RESCUE_THRESHOLD &&
+    (margin ?? 0) >= MIN_MARGIN
+  ) {
+    return {
+      intent: topCandidate.intent,
+      source: 'rescued',
+      topCandidate,
+      margin
+    };
+  }
+
+  return {
+    intent: intent === ConversationIntent.UNKNOWN ? ConversationIntent.UNKNOWN : intent,
+    source: intent === ConversationIntent.UNKNOWN ? 'unknown' : 'direct',
+    topCandidate: topCandidate || null,
+    margin
+  };
 };
 
 const extractQuantityFromText = (text: string): number | null => {

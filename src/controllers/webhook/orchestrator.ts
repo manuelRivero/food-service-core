@@ -439,6 +439,13 @@ export const processWebhook = async (payload: any): Promise<void> => {
     );
 
     console.log('[NLP] Detection result:', detection);
+    console.log('[NLP] Resolution metadata:', {
+      finalIntent: detection.intent,
+      confidence: detection.confidence,
+      source: detection.resolutionSource || 'unknown',
+      topCandidate: detection.topCandidate || null,
+      rescueMargin: detection.rescueMargin ?? null
+    });
 
     const enrichedCtx: EnrichedContext = {
       ...enrichedBase,

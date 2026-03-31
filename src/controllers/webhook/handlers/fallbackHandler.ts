@@ -2,11 +2,7 @@
 
 import { IntentHandler, IntentClassification, HandlerResult, EnrichedContext, WebhookContext } from '../types';
 import { generateAIResponse } from '../../../services/ai/openai.service';
-import { 
-  createConversationMessage,
-  getRecentMessagesByConversationId,
-  updateConversationLastMessageAt
-} from '../../../repositories';
+import { getRecentMessagesByConversationId } from '../../../repositories';
 import { ConversationIntent } from '../../../types/conversationIntent';
 import { textResponse } from '../utils';
 import { ChatCompletionMessageParam } from 'openai/resources/index';
@@ -16,7 +12,6 @@ export class FallbackHandler implements IntentHandler {
   
   canHandle(intent: string): boolean {
     return intent === ConversationIntent.UNKNOWN;
-    return true; // Catch-all
   }
 
   async execute(
@@ -45,6 +40,18 @@ export class FallbackHandler implements IntentHandler {
       return textResponse('Disculpá, no pude procesar tu mensaje. Intentá de nuevo.');
     }
 
+    const hasReservationCandidate = ctx.detection.candidates.some((candidate) =>
+      candidate.intent === ConversationIntent.RESERVATION ||
+      candidate.intent === ConversationIntent.VIEW_RESERVATION ||
+      candidate.intent === ConversationIntent.VIEW_QR
+    );
+    const reservationHintRegex = /\b(reserva|reservar|mesa|qr)\b/i;
+    if (hasReservationCandidate || reservationHintRegex.test(messageContent)) {
+      return textResponse(
+        'Te ayudo con tu reserva. Decime si querés verla, cancelarla o crear una nueva.'
+      );
+    }
+
     // Generar respuesta genérica con LLM
     const history = await getRecentMessagesByConversationId(
       conversation.id,
@@ -60,10 +67,6 @@ export class FallbackHandler implements IntentHandler {
       ...messages,
       { role: 'user' as const, content: messageContent }
     ]);
-
-    // Guardar respuesta
-    await createConversationMessage(conversation.id, 'ai', response.content, true);
-    await updateConversationLastMessageAt(conversation.id);
 
     return textResponse(response.content);
   }
