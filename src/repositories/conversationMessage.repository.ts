@@ -64,3 +64,19 @@ export const getRecentMessagesByConversationId = async (
     take: limit
   });
 };
+
+/** Últimos mensajes desde el inicio de sesión, más recientes primero (contexto NLP). */
+export const findRecentMessagesForDetectionContext = async (
+  conversationId: string,
+  sinceStartedAt: Date,
+  take: number
+): Promise<conversation_message[]> => {
+  return prisma.conversation_message.findMany({
+    where: {
+      conversation_id: conversationId,
+      created_at: { gte: sinceStartedAt }
+    },
+    orderBy: { created_at: 'desc' },
+    take
+  });
+};

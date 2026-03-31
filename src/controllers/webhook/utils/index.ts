@@ -67,3 +67,22 @@ export const interactiveResponse = (
 });
 
 export const noResponse = (): null => null;
+
+/**
+ * Unifica respuestas heterogéneas de handlers/servicios (`string`, plantilla interactiva,
+ * o ya un {@link HandlerResult}) al formato que usan `sendResponse` y el persist de mensajes.
+ */
+export const normalizeToHandlerResult = (result: unknown): HandlerResult => {
+  if (
+    result &&
+    typeof result === 'object' &&
+    'content' in result &&
+    typeof (result as HandlerResult).isInteractive === 'boolean'
+  ) {
+    return result as HandlerResult;
+  }
+  if (typeof result === 'string') {
+    return { content: result, isInteractive: false };
+  }
+  return { content: result as HandlerResult['content'], isInteractive: true };
+};

@@ -7,18 +7,27 @@ import { detectIntentWithConfidence, DetectionContext } from '../../services/ai/
 import {
   findBusinessByPhoneNumberId,
   findOrCreateCustomer,
+  findDefaultCustomerAddress,
   createOrGetOpenConversation,
+  createClosedConversationForOffHoursInbound,
   findOrCreateConversationState,
   createConversationMessage,
   updateConversationLastMessageAt,
-  findLatestClosedConversationByCustomer
+  findLatestClosedConversationByCustomer,
+  clearConversationIdleTimestamps,
+  clearLastReferencedProductId,
+  findRecentMessagesForDetectionContext,
+  updateConversationState
 } from '../../repositories';
-import { prisma } from '../../lib/prisma';
 import { ConversationIntent } from '../../types/conversationIntent';
 import { EnrichedContext, WebhookContext } from './types';
+import { normalizeToHandlerResult } from './utils';
 import { AddressService } from '../../services/address.service';
 import { handleReservationIntent } from '../../services/reservations';
-import { buildBusinessClosedMessage, getBusinessOpenInfo } from '../../services/businessHours.service';
+import {
+  formatClosedBusinessCustomerNotice,
+  getBusinessOpenInfo
+} from '../../services/businessHours.service';
 
 
 export const processWebhook = async (payload: any): Promise<void> => {
@@ -49,64 +58,12 @@ export const processWebhook = async (payload: any): Promise<void> => {
     });
 
     if (!businessStatus.isOpen) {
-      const closedConversation = await findLatestClosedConversationByCustomer(
-        customer.id,
-        business.id
-      );
-      const conversationId = closedConversation?.id;
-      const message = ctx.message;
-
-      if (conversationId) {
-        const messageContent =
-          message?.type === 'text'
-            ? message.text?.body || ''
-            : message?.type === 'interactive'
-              ? `[interactive: ${message.interactive?.button_reply?.id || message.interactive?.list_reply?.id || 'unknown'}]`
-              : `[${message?.type || 'unknown'}]`;
-
-        await createConversationMessage(
-          conversationId,
-          'user',
-          messageContent,
-          false,
-          message?.id
-        );
-      } else {
-        const created = await prisma.conversation.create({
-          data: {
-            business_id: business.id,
-            customer_id: customer.id,
-            status: 'closed',
-            last_message_at: new Date()
-          }
-        });
-        const messageContent =
-          message?.type === 'text'
-            ? message.text?.body || ''
-            : message?.type === 'interactive'
-              ? `[interactive: ${message.interactive?.button_reply?.id || message.interactive?.list_reply?.id || 'unknown'}]`
-              : `[${message?.type || 'unknown'}]`;
-        await createConversationMessage(
-          created.id,
-          'user',
-          messageContent,
-          false,
-          message?.id
-        );
-      }
-
-      const closedMessage = await buildBusinessClosedMessage({
-        ...ctx,
-        business,
-        customer
-      } as EnrichedContext);
-      if (closedMessage) {
-        const result = {
-          content: closedMessage,
-          isInteractive: false
-        };
-        await sendResponse(ctx, result);
-      }
+      await processInboundWhileBusinessClosed({
+        ctx,
+        business: { id: business.id, timezone: business.timezone },
+        customer: { id: customer.id },
+        nextOpenText: businessStatus.nextOpenText
+      });
       return;
     }
 
@@ -158,252 +115,33 @@ export const processWebhook = async (payload: any): Promise<void> => {
     const onboardingReminder =
       'Para continuar con un pedido necesito tu dirección.';
 
-    const toHandlerResult = (result: any) => {
-      if (
-        result &&
-        typeof result === "object" &&
-        "content" in result &&
-        typeof result.isInteractive === "boolean"
-      ) {
-        return result;
-      }
-      if (typeof result === "string") {
-        return { content: result, isInteractive: false };
-      }
-      return { content: result, isInteractive: true };
-    };
-
-    const reservationStep =
-      (enrichedBase.conversationState?.metadata as any)?.reservation?.step;
-
-    if (reservationStep) {
-      const reservationResult = await handleReservationIntent(
-        enrichedBase as EnrichedContext
-      );
-      if (reservationResult) {
-        const handlerResult = toHandlerResult(reservationResult);
-        await sendResponseWithQrSequence(ctx, handlerResult);
-        await createConversationMessage(
-          conversation.id,
-          'ai',
-          typeof handlerResult.content === 'string'
-            ? handlerResult.content
-            : '[interactive]',
-          true
-        );
-        await updateConversationLastMessageAt(conversation.id);
-      }
-      return;
-    }
-
-    // =========================================================
-    // 🛡️ PASO 0: FORCE ONBOARDING POR ESTADO
-    // =========================================================
-
-    const isOnboardingActive =
-      (enrichedBase.conversationState?.metadata as any)?.onboarding_step;
-
-    if (isOnboardingActive) {
-      console.log('[Orchestrator] Onboarding active → bypass NLP', {
-        step: (enrichedBase.conversationState?.metadata as any)?.onboarding_step,
-        hasTempAddress: Boolean(
-          (enrichedBase.conversationState?.metadata as any)?.temp_address
-        ),
-        messageType: ctx.message?.type,
-        payloadId: ctx.payloadId
-      });
-
-      const onboardingCtx: EnrichedContext = {
-        ...enrichedBase,
-        detection: {
-          intent: ConversationIntent.ONBOARDING_START, // dummy
-          confidence: 1,
-          detectedProductName: null,
-          quantity: null,
-          candidates: [],
-          raw: null,
-        },
-      };
-
-      if (ctx.message?.type === 'text') {
-        const userMessage = ctx.message?.text?.body || '';
-        const detection = await detectIntentWithConfidence(
-          userMessage,
-          detectionContext
-        );
-
-        if (detection.addressText) {
-          const serviceResult = await new AddressService().processWithAddressText(
-            onboardingCtx,
-            detection.addressText
-          );
-          if (serviceResult) {
-            const handlerResult = toHandlerResult(serviceResult);
-            await sendResponse(ctx, handlerResult);
-            await createConversationMessage(
-              conversation.id,
-              'ai',
-              typeof handlerResult.content === 'string'
-                ? handlerResult.content
-                : '[interactive]',
-              true
-            );
-            await updateConversationLastMessageAt(conversation.id);
-          }
-          return;
-        }
-
-        if (detection.intent !== ConversationIntent.UNKNOWN) {
-          const enrichedCtx: EnrichedContext = {
-            ...enrichedBase,
-            detection
-          };
-          const result = await dispatchIntent(enrichedCtx);
-          if (result) {
-            if (typeof result.content === 'string') {
-              result.content = `${result.content}\n\n${onboardingReminder}`;
-            }
-            await sendResponse(ctx, result);
-            await createConversationMessage(
-              conversation.id,
-              'ai',
-              typeof result.content === 'string' ? result.content : '[interactive]',
-              true
-            );
-            await updateConversationLastMessageAt(conversation.id);
-          }
-          return;
-        }
-
-        const askResult = toHandlerResult(
-          'Necesito tu dirección para continuar.\n\nIndicame calle y número o compartí tu ubicación.'
-        );
-        await sendResponse(ctx, askResult);
-        await createConversationMessage(
-          conversation.id,
-          'ai',
-          askResult.content,
-          true
-        );
-        await updateConversationLastMessageAt(conversation.id);
-        return;
-      }
-
-      const result = await dispatchIntent(onboardingCtx);
-
-      if (result) {
-        await sendResponse(ctx, result);
-        await createConversationMessage(
-          conversation.id,
-          'ai',
-          typeof result.content === 'string' ? result.content : '[interactive]',
-          true
-        );
-        await updateConversationLastMessageAt(conversation.id);
-      }
-
-      return;
-    }
-
-    const hasAddress = await prisma.customer_address.findFirst({
-      where: {
-        customer_id: customer.id,
-        is_default: true,
-      },
+    const handledReservationWizard = await processReservationWizardIfActive({
+      ctx,
+      enrichedBase
     });
+    if (handledReservationWizard) return;
+
+    const handledOnboardingByState =
+      await processOnboardingByConversationStateIfActive({
+        ctx,
+        enrichedBase,
+        detectionContext,
+        conversation,
+        onboardingReminder
+      });
+    if (handledOnboardingByState) return;
+
+    const hasAddress = await findDefaultCustomerAddress(customer.id);
     
     if (!hasAddress) {
       console.log('[Orchestrator] No address → start onboarding');
-    
-      const onboardingCtx: EnrichedContext = {
-        ...enrichedBase,
-        detection: {
-          intent: ConversationIntent.ONBOARDING_START,
-          confidence: 1,
-          detectedProductName: null,
-          quantity: null,
-          candidates: [],
-          raw: null,
-        },
-      };
-    
-      if (ctx.message?.type === 'text') {
-        const userMessage = ctx.message?.text?.body || '';
-        const detection = await detectIntentWithConfidence(
-          userMessage,
-          detectionContext
-        );
-
-        if (detection.addressText) {
-          const serviceResult = await new AddressService().processWithAddressText(
-            onboardingCtx,
-            detection.addressText
-          );
-          if (serviceResult) {
-            const handlerResult = toHandlerResult(serviceResult);
-            await sendResponse(ctx, handlerResult);
-            await createConversationMessage(
-              conversation.id,
-              'ai',
-              typeof handlerResult.content === 'string'
-                ? handlerResult.content
-                : '[interactive]',
-              true
-            );
-            await updateConversationLastMessageAt(conversation.id);
-          }
-          return;
-        }
-
-        if (detection.intent !== ConversationIntent.UNKNOWN) {
-          const enrichedCtx: EnrichedContext = {
-            ...enrichedBase,
-            detection
-          };
-          const result = await dispatchIntent(enrichedCtx);
-          if (result) {
-            if (typeof result.content === 'string') {
-              result.content = `${result.content}\n\n${onboardingReminder}`;
-            }
-            await sendResponse(ctx, result);
-            await createConversationMessage(
-              conversation.id,
-              'ai',
-              typeof result.content === 'string' ? result.content : '[interactive]',
-              true
-            );
-            await updateConversationLastMessageAt(conversation.id);
-          }
-          return;
-        }
-
-        const askResult = toHandlerResult(
-          'Necesito tu dirección para continuar.\n\nIndicame calle y número o compartí tu ubicación.'
-        );
-        await sendResponse(ctx, askResult);
-        await createConversationMessage(
-          conversation.id,
-          'ai',
-          askResult.content,
-          true
-        );
-        await updateConversationLastMessageAt(conversation.id);
-        return;
-      }
-
-      const result = await dispatchIntent(onboardingCtx);
-    
-      if (result) {
-        await sendResponse(ctx, result);
-        await createConversationMessage(
-          conversation.id,
-          'ai',
-          typeof result.content === 'string' ? result.content : '[interactive]',
-          true
-        );
-        await updateConversationLastMessageAt(conversation.id);
-      }
-    
+      await runOnboardingAddressCaptureFlow({
+        ctx,
+        enrichedBase,
+        detectionContext,
+        conversation,
+        onboardingReminder
+      });
       return;
     }
     // =========================================================
@@ -470,7 +208,275 @@ export const processWebhook = async (payload: any): Promise<void> => {
   }
 };
 
-// ... resto de funciones sin cambios (persistUserMessage, buildDetectionContext, etc.) ...
+// -----------------------------------------------------------------------------
+// Helpers (misma unidad de orquestación): normalización para persistir mensajes
+// -----------------------------------------------------------------------------
+
+/**
+ * Convierte el mensaje crudo del webhook al string que guardamos en el historial
+ * (`conversation_message`): cuerpo de texto, marcador `[interactive: id]` para
+ * respuestas de botón/lista, `[location]` u otros tipos como `[nombreTipo]`.
+ */
+function formatInboundMessageForLog(
+  message: WebhookContext['message'] | undefined
+): string {
+  if (!message) {
+    return '[unknown]';
+  }
+  if (message.type === 'text') {
+    return message.text?.body || '';
+  }
+  if (message.type === 'interactive') {
+    const id =
+      message.interactive?.button_reply?.id ||
+      message.interactive?.list_reply?.id ||
+      'unknown';
+    return `[interactive: ${id}]`;
+  }
+  if (message.type === 'location') {
+    return '[location]';
+  }
+  return `[${message.type || 'unknown'}]`;
+}
+
+/**
+ * Comportamiento del bot cuando el negocio está fuera de horario:
+ * guarda el mensaje entrante (reusando conversación cerrada o creando un stub),
+ * y envía el aviso automático de cierre si el negocio tiene timezone configurado.
+ */
+async function processInboundWhileBusinessClosed(params: {
+  ctx: WebhookContext;
+  business: { id: string; timezone: string | null };
+  customer: { id: string };
+  nextOpenText: string | null;
+}): Promise<void> {
+  const { ctx, business, customer, nextOpenText } = params;
+  const closedConversation = await findLatestClosedConversationByCustomer(
+    customer.id,
+    business.id
+  );
+  const conversationId = closedConversation?.id;
+  const message = ctx.message;
+  const messageContent = formatInboundMessageForLog(message);
+
+  if (conversationId) {
+    await createConversationMessage(
+      conversationId,
+      'user',
+      messageContent,
+      false,
+      message?.id
+    );
+  } else {
+    const created = await createClosedConversationForOffHoursInbound(
+      business.id,
+      customer.id
+    );
+    await createConversationMessage(
+      created.id,
+      'user',
+      messageContent,
+      false,
+      message?.id
+    );
+  }
+
+  const timezone = business.timezone?.trim();
+  if (timezone) {
+    const closedNotice = formatClosedBusinessCustomerNotice(nextOpenText);
+    await sendResponse(ctx, {
+      content: closedNotice,
+      isInteractive: false
+    });
+  } else {
+    console.warn(
+      '[Orchestrator] Negocio sin timezone; no se envía aviso de cierre al cliente'
+    );
+  }
+}
+
+/**
+ * Flujo de reserva por WhatsApp en curso (`conversation_state.metadata.reservation`):
+ * ejecuta el wizard, envía respuesta (con secuencia QR si aplica) y persiste mensaje AI.
+ * @returns `true` si había paso de reserva activo (el caller debe hacer `return` y no seguir al NLP).
+ */
+async function processReservationWizardIfActive(params: {
+  ctx: WebhookContext;
+  enrichedBase: WebhookContext & {
+    conversation: { id: string };
+    business: unknown;
+    customer: unknown;
+    conversationState: unknown;
+    conversationId: string;
+  };
+}): Promise<boolean> {
+  const { ctx, enrichedBase } = params;
+  const reservationStep = (enrichedBase.conversationState as any)?.metadata?.reservation
+    ?.step;
+  if (!reservationStep) {
+    return false;
+  }
+
+  const reservationResult = await handleReservationIntent(
+    enrichedBase as EnrichedContext
+  );
+  if (reservationResult) {
+    const handlerResult = normalizeToHandlerResult(reservationResult);
+    await sendResponseWithQrSequence(ctx, handlerResult);
+    await createConversationMessage(
+      enrichedBase.conversation.id,
+      'ai',
+      typeof handlerResult.content === 'string'
+        ? handlerResult.content
+        : '[interactive]',
+      true
+    );
+    await updateConversationLastMessageAt(enrichedBase.conversation.id);
+  }
+  return true;
+}
+
+type OnboardingOrchestratorBase = WebhookContext & {
+  conversation: { id: string };
+  business: unknown;
+  customer: unknown;
+  conversationState: unknown;
+  conversationId: string;
+};
+
+/**
+ * Captura de dirección / onboarding sin pasar por NLP completo: dirección en texto,
+ * dispatch con recordatorio, o mensaje pidiendo dirección; si no es texto, dispatch con intención dummy.
+ */
+async function runOnboardingAddressCaptureFlow(params: {
+  ctx: WebhookContext;
+  enrichedBase: OnboardingOrchestratorBase;
+  detectionContext: DetectionContext;
+  conversation: { id: string };
+  onboardingReminder: string;
+}): Promise<void> {
+  const { ctx, enrichedBase, detectionContext, conversation, onboardingReminder } =
+    params;
+
+  const onboardingCtx: EnrichedContext = {
+    ...enrichedBase,
+    detection: {
+      intent: ConversationIntent.ONBOARDING_START,
+      confidence: 1,
+      detectedProductName: null,
+      quantity: null,
+      candidates: [],
+      raw: null,
+    },
+  };
+
+  if (ctx.message?.type === 'text') {
+    const userMessage = ctx.message?.text?.body || '';
+    const detection = await detectIntentWithConfidence(
+      userMessage,
+      detectionContext
+    );
+
+    if (detection.addressText) {
+      const serviceResult = await new AddressService().processWithAddressText(
+        onboardingCtx,
+        detection.addressText
+      );
+      if (serviceResult) {
+        const handlerResult = normalizeToHandlerResult(serviceResult);
+        await sendResponse(ctx, handlerResult);
+        await createConversationMessage(
+          conversation.id,
+          'ai',
+          typeof handlerResult.content === 'string'
+            ? handlerResult.content
+            : '[interactive]',
+          true
+        );
+        await updateConversationLastMessageAt(conversation.id);
+      }
+      return;
+    }
+
+    if (detection.intent !== ConversationIntent.UNKNOWN) {
+      const enrichedCtx: EnrichedContext = {
+        ...enrichedBase,
+        detection,
+      };
+      const result = await dispatchIntent(enrichedCtx);
+      if (result) {
+        if (typeof result.content === 'string') {
+          result.content = `${result.content}\n\n${onboardingReminder}`;
+        }
+        await sendResponse(ctx, result);
+        await createConversationMessage(
+          conversation.id,
+          'ai',
+          typeof result.content === 'string' ? result.content : '[interactive]',
+          true
+        );
+        await updateConversationLastMessageAt(conversation.id);
+      }
+      return;
+    }
+
+    const askResult = normalizeToHandlerResult(
+      'Necesito tu dirección para continuar.\n\nIndicame calle y número o compartí tu ubicación.'
+    );
+    await sendResponse(ctx, askResult);
+    await createConversationMessage(
+      conversation.id,
+      'ai',
+      typeof askResult.content === 'string'
+        ? askResult.content
+        : '[interactive]',
+      true
+    );
+    await updateConversationLastMessageAt(conversation.id);
+    return;
+  }
+
+  const result = await dispatchIntent(onboardingCtx);
+
+  if (result) {
+    await sendResponse(ctx, result);
+    await createConversationMessage(
+      conversation.id,
+      'ai',
+      typeof result.content === 'string' ? result.content : '[interactive]',
+      true
+    );
+    await updateConversationLastMessageAt(conversation.id);
+  }
+}
+
+/**
+ * Onboarding forzado por `metadata.onboarding_step` (bypass NLP general).
+ * @returns `true` si aplicó (el caller debe hacer `return`).
+ */
+async function processOnboardingByConversationStateIfActive(params: {
+  ctx: WebhookContext;
+  enrichedBase: OnboardingOrchestratorBase;
+  detectionContext: DetectionContext;
+  conversation: { id: string };
+  onboardingReminder: string;
+}): Promise<boolean> {
+  const metadata = (params.enrichedBase.conversationState as any)?.metadata;
+  const onboardingStep = metadata?.onboarding_step;
+  if (!onboardingStep) {
+    return false;
+  }
+
+  console.log('[Orchestrator] Onboarding active → bypass NLP', {
+    step: onboardingStep,
+    hasTempAddress: Boolean(metadata?.temp_address),
+    messageType: params.ctx.message?.type,
+    payloadId: params.ctx.payloadId,
+  });
+
+  await runOnboardingAddressCaptureFlow(params);
+  return true;
+}
 
 interface PersistResult {
   success: boolean;
@@ -499,24 +505,9 @@ const persistUserMessage = async (
     const customer = await findOrCreateCustomer(business.id, to);
     const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
-    // Extraer contenido del mensaje
-    let messageContent = '';
-    let messageType = 'unknown';
-
-    if (message?.type === 'text') {
-      messageContent = message.text?.body || '';
-      messageType = 'text';
-    } else if (message?.type === 'interactive') {
-      const interactiveId = message.interactive?.button_reply?.id
-        || message.interactive?.list_reply?.id;
-      messageContent = `[interactive: ${interactiveId || 'unknown'}]`;
-      messageType = 'interactive';
-    } else if (message?.type === 'location') {
-      messageContent = '[location]';
-      messageType = 'location';
-    } else {
-      messageContent = `[${message?.type || 'unknown'}]`;
-    }
+    const messageContent = formatInboundMessageForLog(message);
+    const messageType =
+      message && typeof message.type === 'string' ? message.type : 'unknown';
 
     // Guardar en DB
     await createConversationMessage(
@@ -527,13 +518,7 @@ const persistUserMessage = async (
       message?.id
     );
 
-    await prisma.conversation.update({
-      where: { id: conversation.id },
-      data: {
-        idle_reminder_sent_at: null,
-        idle_closed_at: null
-      }
-    });
+    await clearConversationIdleTimestamps(conversation.id);
 
     await updateConversationLastMessageAt(conversation.id);
 
@@ -570,15 +555,11 @@ const buildDetectionContext = async (
     const conversation = await createOrGetOpenConversation(business.id, customer.id);
     const conversationState = await findOrCreateConversationState(conversation.id);
 
-    // Obtener mensajes recientes para contexto
-    const recentMessages = await prisma.conversation_message.findMany({
-      where: {
-        conversation_id: conversationId,
-        created_at: { gte: conversation.started_at }
-      },
-      orderBy: { created_at: 'desc' },
-      take: 5
-    });
+    const recentMessages = await findRecentMessagesForDetectionContext(
+      conversationId,
+      conversation.started_at,
+      5
+    );
 
     return {
       conversation,
@@ -632,16 +613,11 @@ const maybeClearContext = async (
   try {
     console.log('[Context] Clearing product context');
 
-    // Limpiar lastReferencedProductId
     if (conversation.lastReferencedProductId) {
-      await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { lastReferencedProductId: null }
-      });
+      await clearLastReferencedProductId(conversation.id);
     }
 
-    // Limpiar metadata
-    const currentMetadata = (conversationState.metadata as any) || {};
+    const currentMetadata = (conversationState.metadata as Record<string, unknown>) || {};
     const cleanedMetadata = {
       ...currentMetadata,
       candidateProductIds: null,
@@ -649,12 +625,9 @@ const maybeClearContext = async (
       pendingQuestion: null
     };
 
-    await prisma.conversation_state.update({
-      where: { conversation_id: conversationState.id },
-      data: {
-        mode: 'GLOBAL',
-        metadata: cleanedMetadata
-      }
+    await updateConversationState(conversation.id, {
+      mode: 'GLOBAL',
+      metadata: cleanedMetadata
     });
 
   } catch (error) {

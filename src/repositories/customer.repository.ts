@@ -1,4 +1,4 @@
-import type { customer } from '@prisma/client';
+import type { customer, customer_address } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 
 export const findOrCreateCustomer = async (
@@ -33,5 +33,16 @@ export const findOrCreateCustomer = async (
 export const findCustomerById = async (customerId: string): Promise<customer | null> => {
   return prisma.customer.findUnique({
     where: { id: customerId }
+  });
+};
+
+export const findDefaultCustomerAddress = async (
+  customerId: string
+): Promise<customer_address | null> => {
+  return prisma.customer_address.findFirst({
+    where: {
+      customer_id: customerId,
+      is_default: true,
+    },
   });
 };

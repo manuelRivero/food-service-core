@@ -58,6 +58,25 @@ export const createConversation = async (
   });
 };
 
+/**
+ * Conversación mínima en `closed` cuando el negocio está cerrado y el cliente
+ * no tenía conversación cerrada previa: solo para persistir el mensaje entrante
+ * (no abre pedido ni crea `conversation_state`).
+ */
+export const createClosedConversationForOffHoursInbound = async (
+  businessId: string,
+  customerId: string
+): Promise<conversation> => {
+  return prisma.conversation.create({
+    data: {
+      business_id: businessId,
+      customer_id: customerId,
+      status: 'closed',
+      last_message_at: new Date()
+    }
+  });
+};
+
 export const createOrGetOpenConversation = async (
   businessId: string,
   customerId: string
@@ -161,6 +180,28 @@ export const updateConversationLastMessageAt = async (
   return prisma.conversation.update({
     where: { id: conversationId },
     data: { last_message_at: new Date() }
+  });
+};
+
+/** Tras mensaje entrante: limpia flags de idle para reactivar recordatorios. */
+export const clearConversationIdleTimestamps = async (
+  conversationId: string
+): Promise<conversation> => {
+  return prisma.conversation.update({
+    where: { id: conversationId },
+    data: {
+      idle_reminder_sent_at: null,
+      idle_closed_at: null
+    }
+  });
+};
+
+export const clearLastReferencedProductId = async (
+  conversationId: string
+): Promise<conversation> => {
+  return prisma.conversation.update({
+    where: { id: conversationId },
+    data: { lastReferencedProductId: null }
   });
 };
 

@@ -175,14 +175,14 @@ export const buildBusinessHoursMessage = async (
   );
 };
 
-export const buildBusinessClosedMessage = async (
-  ctx: EnrichedContext
-): Promise<string | null> => {
-  const businessId = ctx.business?.id;
-  const timezone = ctx.business?.timezone;
-  if (!businessId || !timezone) return null;
-
-  const { nextOpenText } = await getBusinessOpenInfo({ businessId, timezone });
+/**
+ * Texto del aviso “estamos cerrados” para el cliente.
+ * `nextOpenText` debe venir del mismo resultado de {@link getBusinessOpenInfo} que ya usaste
+ * para decidir `isOpen` (así no se vuelve a consultar horarios).
+ */
+export const formatClosedBusinessCustomerNotice = (
+  nextOpenText: string | null
+): string => {
   const nextOpenLine = nextOpenText
     ? `Nuestro próximo horario de apertura es ${nextOpenText}.`
     : '';
