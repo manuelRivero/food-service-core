@@ -164,6 +164,21 @@ export const updateConversationLastMessageAt = async (
   });
 };
 
+/** Cierre tras confirmar reserva (idle / sin resetear conversation_state). */
+export const closeConversationAfterReservation = async (
+  conversationId: string
+): Promise<conversation> => {
+  return prisma.conversation.update({
+    where: { id: conversationId },
+    data: {
+      status: 'closed',
+      idle_closed_at: new Date(),
+      idle_reminder_sent_at: null,
+      lastReferencedProductId: null
+    }
+  });
+};
+
 export const closeConversation = async (
   conversationId: string
 ): Promise<conversation> => {

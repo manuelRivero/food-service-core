@@ -17,7 +17,7 @@ import { prisma } from '../../lib/prisma';
 import { ConversationIntent } from '../../types/conversationIntent';
 import { EnrichedContext, WebhookContext } from './types';
 import { AddressService } from '../../services/address.service';
-import { handleReservationIntent } from '../../services/reservation.service';
+import { handleReservationIntent } from '../../services/reservations';
 import { buildBusinessClosedMessage, getBusinessOpenInfo } from '../../services/businessHours.service';
 
 

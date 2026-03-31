@@ -1,6 +1,6 @@
 import { EnrichedContext, HandlerResult, IntentHandler } from '../types';
 import { ConversationIntent } from '../../../types/conversationIntent';
-import { handleViewReservationIntent } from '../../../services/reservation.service';
+import { handleViewReservationIntent } from '../../../services/reservations';
 
 export class ViewReservationHandler implements IntentHandler {
   readonly command = ConversationIntent.VIEW_RESERVATION;
