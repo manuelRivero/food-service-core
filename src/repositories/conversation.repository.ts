@@ -205,6 +205,16 @@ export const clearLastReferencedProductId = async (
   });
 };
 
+export const setLastReferencedProductId = async (
+  conversationId: string,
+  productId: string
+): Promise<conversation> => {
+  return prisma.conversation.update({
+    where: { id: conversationId },
+    data: { lastReferencedProductId: productId }
+  });
+};
+
 /** Cierre tras confirmar reserva (idle / sin resetear conversation_state). */
 export const closeConversationAfterReservation = async (
   conversationId: string
