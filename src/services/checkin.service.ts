@@ -24,7 +24,7 @@ export function isValidReservationToken(token: string): boolean {
 
 export async function getCheckinPayload(token: string) {
   const reservation = await prisma.reservation.findUnique({
-    where: { id: token },
+    where: { checkin_token: token },
     include: {
       reservation_table: {
         include: { table: true }
@@ -34,7 +34,7 @@ export async function getCheckinPayload(token: string) {
 
   if (!reservation) return null;
 
-  const arrived = reservation.arrived_count;
+  const arrived = reservation.arrived_count ?? 0;
   const partySize = reservation.party_size;
   const remaining = Math.max(0, partySize - arrived);
 
@@ -69,7 +69,7 @@ export async function addArrivals(token: string, rawCount: unknown) {
     const nextStatus = deriveStatusFromArrivals(nextArrived, r.party_size);
 
     return tx.reservation.update({
-      where: { id: token },
+      where: { id: r.id },
       data: {
         arrived_count: nextArrived,
         status: nextStatus
