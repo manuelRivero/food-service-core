@@ -54,6 +54,15 @@ export function normalizeDate(dateStr: string): Date {
 
   const date = new Date(year, month, day);
 
+  // Evita autocorrecciones silenciosas de JS (ej: 31/02 -> 03/03)
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month ||
+    date.getDate() !== day
+  ) {
+    throw new Error("INVALID_DATE");
+  }
+
   if (isNaN(date.getTime())) {
     throw new Error("INVALID_DATE");
   }
@@ -200,6 +209,30 @@ function reservationStatusLabel(status: string): string {
     default:
       return status;
   }
+}
+
+function buildReservationErrorMessage(text: string): WhatsAppInteractiveMessage {
+  return {
+    type: "interactive",
+    interactive: {
+      type: "button",
+      header: { type: "text", text: "Reserva" },
+      body: { text },
+      footer: { text: "Elegí una opción" },
+      action: {
+        buttons: [
+          {
+            type: "reply",
+            reply: { id: "RESERVATION_CANCEL", title: "Cancelar reserva" }
+          },
+          {
+            type: "reply",
+            reply: { id: "RESERVATION_RESET", title: "Reiniciar reserva" }
+          }
+        ]
+      }
+    }
+  };
 }
 
 async function createReservation(
@@ -579,6 +612,21 @@ export const handleReservationIntent = async (
   const dateRegex = /^\d{1,2}\/\d{1,2}(\/\d{4})?$/;
   const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
+  if (ctx.payloadId === "RESERVATION_CANCEL") {
+    await updateConversationState(ctx.conversationId, {
+      metadata: { ...metadata, reservation: undefined }
+    });
+    return '🤖\n\n*Reserva cancelada* 🛑\n\nReserva cancelada. ¿Querés que te ayude en algo más?';
+  }
+
+  if (ctx.payloadId === "RESERVATION_RESET") {
+    const nextState: ReservationState = { step: "ASK_DATE" };
+    await updateConversationState(ctx.conversationId, {
+      metadata: { ...metadata, reservation: nextState }
+    });
+    return '🤖\n\n*Reserva reiniciada* 🔄\n\n¿Para qué fecha querés reservar? (Ej: 05/04)\n\nRecordá que las reservas deben hacerse con al menos 8 horas de anticipación.';
+  }
+
   if (!reservation) {
     if (ctx.customer?.id) {
       const today = new Date();
@@ -607,7 +655,28 @@ export const handleReservationIntent = async (
         return '🤖\n\n*Fecha de reserva* 📅\n\n¿Para qué fecha querés reservar? (Ej: 05/04)\n\nRecordá que las reservas deben hacerse con al menos 8 horas de anticipación.';
       }
       if (!dateRegex.test(messageText)) {
-        return '🤖\n\n*Formato inválido* ❌\n\nEscribila en formato DD/MM (ej: 05/04) y te ayudo a reservar en segundos.';
+        return buildReservationErrorMessage(
+          "🤖\n\n*Formato inválido* ❌\n\nEscribí nuevamente la fecha en formato DD/MM (ej: 05/04) y te ayudo a reservar en segundos."
+        );
+      }
+      try {
+        const parsedDate = normalizeDate(messageText);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const selected = new Date(parsedDate);
+        selected.setHours(0, 0, 0, 0);
+        if (selected.getTime() < today.getTime()) {
+          return buildReservationErrorMessage(
+            "🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Escribí nuevamente una fecha a futuro en formato DD/MM (ej: 05/04), con al menos 8 horas de anticipación, y te reservo enseguida."
+          );
+        }
+      } catch (error) {
+        if ((error as Error).message === "INVALID_DATE") {
+          return buildReservationErrorMessage(
+            "🤖\n\n*Fecha inválida* ❌\n\nEsa fecha no existe. Escribí nuevamente la fecha en formato DD/MM (ej: 05/04)."
+          );
+        }
+        throw error;
       }
       const nextState: ReservationState = {
         ...reservation,
@@ -624,10 +693,14 @@ export const handleReservationIntent = async (
         return '🤖\n\n*Hora de reserva* ⏰\n\n¿A qué hora? (Ej: 20:30)';
       }
       if (!timeRegex.test(messageText)) {
-        return '🤖\n\n*Hora inválida* ❌\n\nEscribila en formato HH:mm (ej: 20:30) así avanzamos rápido con tu reserva.';
+        return buildReservationErrorMessage(
+          "🤖\n\n*Hora inválida* ❌\n\nEscribí nuevamente la hora en formato HH:mm (ej: 20:30) así avanzamos rápido con tu reserva."
+        );
       }
       if (!ctx.business?.id) {
-        return '🤖\n\n*Sin disponibilidad* ❌\n\nNo hay disponibilidad.';
+        return buildReservationErrorMessage(
+          "🤖\n\n*Sin disponibilidad* ❌\n\nNo hay disponibilidad."
+        );
       }
       try {
         await validateReservationShift({
@@ -638,13 +711,19 @@ export const handleReservationIntent = async (
       } catch (error) {
         const reason = (error as Error).message;
         if (reason === "PAST_DATE") {
-          return "🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Probá con una nueva fecha a futuro, con al menos 8 horas de anticipación, y te reservo enseguida.";
+          return buildReservationErrorMessage(
+            "🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Escribí nuevamente una fecha a futuro en formato DD/MM (ej: 05/04), con al menos 8 horas de anticipación, y te reservo enseguida."
+          );
         }
         if (reason === "OUTSIDE_BUSINESS_HOURS") {
-          return "🤖\n\n*Fuera de horario* 🕒\n\nEse horario está fuera del horario de atención. Probá otra hora dentro de nuestro horario y lo coordinamos ahora.";
+          return buildReservationErrorMessage(
+            "🤖\n\n*Fuera de horario* 🕒\n\nEse horario está fuera del horario de atención. Probá otra hora dentro de nuestro horario y lo coordinamos ahora."
+          );
         }
         if (reason === "INVALID_SHIFT") {
-          return "🤖\n\n*Turno no disponible* 🚫\n\nPara darte el mejor servicio, ese turno no está disponible para reservas. Elegí otro turno y te lo confirmo al instante.";
+          return buildReservationErrorMessage(
+            "🤖\n\n*Turno no disponible* 🚫\n\nPara darte el mejor servicio, ese turno no está disponible para reservas. Elegí otro turno y te lo confirmo al instante."
+          );
         }
         throw error;
       }
@@ -661,7 +740,9 @@ export const handleReservationIntent = async (
     case 'ASK_PARTY_SIZE': {
       const partySize = Number(messageText);
       if (Number.isNaN(partySize) || partySize <= 0) {
-        return '🤖\n\n*Número inválido* ❌\n\nIndicá un número válido de personas (ej: 4) y seguimos con tu reserva.';
+        return buildReservationErrorMessage(
+          "🤖\n\n*Número inválido* ❌\n\nIndicá un número válido de personas (ej: 4) y seguimos con tu reserva."
+        );
       }
       const nextState: ReservationState = {
         ...reservation,
@@ -787,13 +868,6 @@ export const handleReservationIntent = async (
       };
     }
     case 'CONFIRM': {
-      if (ctx.payloadId === 'RESERVATION_CANCEL') {
-        await updateConversationState(ctx.conversationId, {
-          metadata: { ...metadata, reservation: undefined }
-        });
-        return '🤖\n\n*Reserva cancelada* 🛑\n\nReserva cancelada. ¿Querés que te ayude en algo más?';
-      }
-
       if (ctx.payloadId !== 'RESERVATION_CONFIRM') {
         const summary = [
           `Fecha: ${reservation.date ?? '-'}`,

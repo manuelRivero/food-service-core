@@ -141,6 +141,7 @@ export const detectIntentFromPayload = (
     VIEW_QR: ConversationIntent.VIEW_QR,
     RESERVATION_CONFIRM: ConversationIntent.RESERVATION,
     RESERVATION_CANCEL: ConversationIntent.RESERVATION,
+    RESERVATION_RESET: ConversationIntent.RESERVATION,
     RESERVATION_ENV_NONE: ConversationIntent.RESERVATION,
   };
 
