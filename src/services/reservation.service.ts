@@ -113,7 +113,8 @@ async function getBusinessSlots(
   businessId: string,
   date: Date
 ): Promise<ReservationSlot[]> {
-  const dayOfWeek = date.getDay();
+  const jsDay = date.getDay(); // 0..6 (domingo..sabado)
+  const altDay = jsDay === 0 ? 7 : jsDay; // 1..7 (domingo=7)
   const rows = await prisma.$queryRaw<
     Array<{
       id: string;
@@ -125,8 +126,8 @@ async function getBusinessSlots(
     SELECT id, start_time, end_time, is_active
     FROM reservation_slot
     WHERE business_id = ${businessId}::uuid
-      AND day_of_week = ${dayOfWeek}
-      AND is_active = true
+      AND day_of_week IN (${jsDay}, ${altDay})
+      AND (is_active = true OR is_active IS NULL)
     ORDER BY start_time ASC
   `;
   return rows.map((row) => ({
