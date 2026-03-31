@@ -1,10 +1,7 @@
 import { Router } from 'express';
 import {
   sendMessage,
-  verifyWebhook
-} from '../controllers/whatsapp.controller';
-
-import {
+  verifyWebhook,
   handleWebhook,
 } from '../controllers/whatsapp.controller.v2';
 
