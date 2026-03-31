@@ -46,7 +46,11 @@ export class FallbackHandler implements IntentHandler {
     }
 
     // Generar respuesta genérica con LLM
-    const history = await getRecentMessagesByConversationId(conversation.id, 5);
+    const history = await getRecentMessagesByConversationId(
+      conversation.id,
+      5,
+      conversation.started_at
+    );
     const messages: ChatCompletionMessageParam[] = history.map(m => ({
       role: m.sender === 'ai' ? 'assistant' : 'user',
       content: m.message

@@ -2736,7 +2736,11 @@ export const processIncomingMessage = async (
     if (existingMessage) return '';
   }
 
-  const existingMessages = await getRecentMessagesByConversationId(conversation.id, 20);
+  const existingMessages = await getRecentMessagesByConversationId(
+    conversation.id,
+    20,
+    conversation.started_at
+  );
   const isFirstMessage = existingMessages.length === 0;
 
   // Persist message

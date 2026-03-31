@@ -2,17 +2,12 @@
 
 import { business, conversation } from "@prisma/client";
 import { WhatsAppWebhookPayload } from "../controllers/webhook/types";
-import { prisma } from "../lib/prisma";
-import { createConversationMessage, createOrGetOpenConversation, findBusinessByPhoneNumberId, findOrCreateConversationState, findOrCreateCustomer, updateConversationLastMessageAt, updateConversationState } from "../repositories";
+import { createConversationMessage, createOrGetOpenConversation, findBusinessByPhoneNumberId, findOrCreateConversationState, findOrCreateCustomer, updateConversationLastMessageAt, updateConversationState, closeConversation } from "../repositories";
 
 export const buildEndConversationMessage = async (
     conversation: conversation
 ): Promise<string | null> => {
-
-    await prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { status: 'CLOSED', last_message_at: new Date().toString() }
-    });
+    await closeConversation(conversation.id);
 
     const messageText = '¡Gracias por tu consulta! Si necesitás algo más, escribime. 👋';
     await createConversationMessage(conversation.id, 'ai', messageText, false);

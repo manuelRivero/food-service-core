@@ -565,7 +565,10 @@ const buildDetectionContext = async (
 
     // Obtener mensajes recientes para contexto
     const recentMessages = await prisma.conversation_message.findMany({
-      where: { conversation_id: conversationId },
+      where: {
+        conversation_id: conversationId,
+        created_at: { gte: conversation.started_at }
+      },
       orderBy: { created_at: 'desc' },
       take: 5
     });

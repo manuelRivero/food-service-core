@@ -52,10 +52,14 @@ export const findByWhatsappMessageId = async (
 
 export const getRecentMessagesByConversationId = async (
   conversationId: string,
-  limit: number
+  limit: number,
+  startedAt?: Date
 ): Promise<conversation_message[]> => {
   return prisma.conversation_message.findMany({
-    where: { conversation_id: conversationId },
+    where: {
+      conversation_id: conversationId,
+      ...(startedAt ? { created_at: { gte: startedAt } } : {})
+    },
     orderBy: { created_at: 'asc' },
     take: limit
   });

@@ -44,6 +44,81 @@ type ReservationSlot = {
   is_active: boolean | null;
 };
 
+const toMinutes = (value: string): number => {
+  const [hh, mm] = value.split(":").map(Number);
+  return (hh || 0) * 60 + (mm || 0);
+};
+
+function buildTurnIndexMap(slots: ReservationSlot[]): Map<string, number> {
+  const ordered = [...slots].sort(
+    (a, b) => toMinutes(a.start_time) - toMinutes(b.start_time)
+  );
+  const map = new Map<string, number>();
+  let currentTurn = 0;
+  let previousEnd: number | null = null;
+  for (const slot of ordered) {
+    const start = toMinutes(slot.start_time);
+    const end = toMinutes(slot.end_time);
+    if (previousEnd !== null && start > previousEnd) {
+      currentTurn += 1; // nuevo turno cuando hay hueco
+    }
+    map.set(slot.id, currentTurn);
+    previousEnd = end;
+  }
+  return map;
+}
+
+function getCurrentTurnIndex(
+  slots: ReservationSlot[],
+  now: Date
+): number | null {
+  const current = toMinutes(
+    `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(
+      2,
+      "0"
+    )}`
+  );
+  const turnMap = buildTurnIndexMap(slots);
+  for (const slot of slots) {
+    const start = toMinutes(slot.start_time);
+    const end = toMinutes(slot.end_time);
+    if (current >= start && current < end) {
+      return turnMap.get(slot.id) ?? null;
+    }
+  }
+  return null;
+}
+
+function filterSlotsByTurnLead(
+  slots: ReservationSlot[],
+  date: Date,
+  now: Date
+): ReservationSlot[] {
+  const isSameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+
+  if (!isSameDay) return slots;
+
+  const turnMap = buildTurnIndexMap(slots);
+  const currentTurn = getCurrentTurnIndex(slots, now);
+
+  if (currentTurn === null) {
+    // Si no estamos en un turno (antes del primero o entre turnos), ofrecer slots futuros de hoy.
+    const currentMinutes = toMinutes(
+      `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(
+        2,
+        "0"
+      )}`
+    );
+    return slots.filter((slot) => toMinutes(slot.start_time) > currentMinutes);
+  }
+
+  // Regla solicitada: mínimo de un turno al siguiente
+  return slots.filter((slot) => (turnMap.get(slot.id) ?? -1) > currentTurn);
+}
+
 export function normalizeDate(dateStr: string): Date {
   // soporta "DD/MM" o "DD/MM/YYYY"
   const parts = dateStr.split("/");
@@ -151,12 +226,9 @@ async function getFirstAvailableTimeForDate(
 ): Promise<string | null> {
   const slots = await getBusinessSlots(businessId, date);
   if (!slots.length) return null;
-  const minReservationDateTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-  for (const slot of slots) {
-    const candidate = buildDateTime(date, slot.start_time);
-    if (candidate.getTime() >= minReservationDateTime.getTime()) {
-      return slot.start_time;
-    }
+  const eligible = filterSlotsByTurnLead(slots, date, now);
+  for (const slot of eligible) {
+    return slot.start_time;
   }
 
   return null;
@@ -595,7 +667,7 @@ export const handleReservationIntent = async (
     await updateConversationState(ctx.conversationId, {
       metadata: { ...metadata, reservation: nextState }
     });
-    return `🤖\n\n*Reserva reiniciada* 🔄\n\n¿Para qué fecha querés reservar? (Ej: ${nextDateExample})\n\nRecordá que las reservas deben hacerse con al menos 8 horas de anticipación.`;
+    return `🤖\n\n*Reserva reiniciada* 🔄\n\n¿Para qué fecha querés reservar? (Ej: ${nextDateExample})\n\nRecordá que tomamos reservas con anticipación mínima de un turno.`;
   }
 
   if (!reservation) {
@@ -643,13 +715,13 @@ export const handleReservationIntent = async (
     await updateConversationState(ctx.conversationId, {
       metadata: { ...metadata, reservation: nextState }
     });
-    return `🤖\n\n*Coordinemos tu reserva* 📅\n\n¿Para qué fecha querés reservar? (Ej: ${nextDateExample})\n\nTe pedimos reservar con al menos 8 horas de anticipación para poder prepararte una mejor experiencia.`;
+    return `🤖\n\n*Coordinemos tu reserva* 📅\n\n¿Para qué fecha querés reservar? (Ej: ${nextDateExample})\n\nTe pedimos reservar con anticipación mínima de un turno para poder prepararte una mejor experiencia.`;
   }
 
   switch (reservation.step) {
     case 'ASK_DATE': {
       if (!messageText) {
-        return `🤖\n\n*Fecha de reserva* 📅\n\n¿Para qué fecha querés reservar? (Ej: ${nextDateExample})\n\nRecordá que las reservas deben hacerse con al menos 8 horas de anticipación.`;
+        return `🤖\n\n*Fecha de reserva* 📅\n\n¿Para qué fecha querés reservar? (Ej: ${nextDateExample})\n\nRecordá que las reservas deben hacerse con anticipación mínima de un turno.`;
       }
       if (!dateRegex.test(messageText)) {
         return buildReservationErrorMessage(
@@ -664,7 +736,7 @@ export const handleReservationIntent = async (
         selected.setHours(0, 0, 0, 0);
         if (selected.getTime() < today.getTime()) {
           return buildReservationErrorMessage(
-            `🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Escribí nuevamente una fecha a futuro en formato DD/MM (ej: ${nextDateExample}), con al menos 8 horas de anticipación, y te reservo enseguida.`
+            `🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Escribí nuevamente una fecha a futuro en formato DD/MM (ej: ${nextDateExample}), con anticipación mínima de un turno, y te reservo enseguida.`
           );
         }
       } catch (error) {
@@ -691,11 +763,7 @@ export const handleReservationIntent = async (
       const date = normalizeDate(messageText);
       const now = new Date();
       const slots = await getBusinessSlots(ctx.business.id, date);
-      const minReservationDateTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-      const availableSlots = slots.filter((slot) => {
-        const start = buildDateTime(date, slot.start_time);
-        return start.getTime() >= minReservationDateTime.getTime();
-      });
+      const availableSlots = filterSlotsByTurnLead(slots, date, now);
       if (!availableSlots.length) {
         return buildReservationErrorMessage(
           "🤖\n\n*Sin slots disponibles* ❌\n\nNo encontramos horarios disponibles para esa fecha. Probá con otra fecha y te ayudo."
@@ -724,11 +792,7 @@ export const handleReservationIntent = async (
         const date = normalizeDate(reservation.date);
         const now = new Date();
         const slots = await getBusinessSlots(ctx.business.id, date);
-        const minReservationDateTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-        const availableSlots = slots.filter((slot) => {
-          const start = buildDateTime(date, slot.start_time);
-          return start.getTime() >= minReservationDateTime.getTime();
-        });
+        const availableSlots = filterSlotsByTurnLead(slots, date, now);
         if (!availableSlots.length) {
           return buildReservationErrorMessage(
             "🤖\n\n*Sin slots disponibles* ❌\n\nNo encontramos horarios disponibles para esa fecha. Probá con otra fecha y te ayudo."

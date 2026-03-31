@@ -101,17 +101,27 @@ export const createOrGetOpenConversation = async (
     });
 
     return prisma.$transaction(async (tx) => {
+      const sessionStart = new Date();
       const reopened = await tx.conversation.update({
         where: { id: latest.id },
         data: {
           status: 'open',
-          last_message_at: new Date()
+          started_at: sessionStart,
+          last_message_at: sessionStart,
+          lastReferencedProductId: null,
+          idle_reminder_sent_at: null,
+          idle_closed_at: null
         }
       });
 
       await tx.conversation_state.upsert({
         where: { conversation_id: latest.id },
-        update: { current_intent: null },
+        update: {
+          current_intent: null,
+          pending_action: null,
+          mode: 'GLOBAL',
+          metadata: {}
+        },
         create: { conversation_id: latest.id }
       });
 
@@ -160,11 +170,20 @@ export const closeConversation = async (
   return prisma.$transaction(async (tx) => {
     const closed = await tx.conversation.update({
       where: { id: conversationId },
-      data: { status: 'closed', last_message_at: new Date() }
+      data: {
+        status: 'closed',
+        last_message_at: new Date(),
+        lastReferencedProductId: null
+      }
     });
     await tx.conversation_state.upsert({
       where: { conversation_id: conversationId },
-      update: { current_intent: null },
+      update: {
+        current_intent: null,
+        pending_action: null,
+        mode: 'GLOBAL',
+        metadata: {}
+      },
       create: { conversation_id: conversationId }
     });
     return closed;
