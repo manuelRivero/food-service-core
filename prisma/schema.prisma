@@ -29,6 +29,7 @@ model business {
   currency               currency?                @relation(fields: [currency_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
   business_coverage_zone business_coverage_zone[]
   business_hours         business_hours[]
+  reservation_slot       reservation_slot[]
   conversation           conversation[]
   customer               customer[]
   draft_order            draft_order[]
@@ -189,6 +190,19 @@ model business_hours {
   opens_at    String
   closes_at   String
   is_closed   Boolean  @default(false)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  business    business @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([business_id, day_of_week])
+}
+
+model reservation_slot {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id String   @db.Uuid
+  day_of_week Int
+  start_time  String
+  end_time    String
+  is_active   Boolean  @default(true)
   created_at  DateTime @default(now()) @db.Timestamptz(6)
   business    business @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 

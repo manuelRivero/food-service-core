@@ -122,6 +122,9 @@ export const detectIntentFromPayload = (
     if (payloadId.startsWith('RESERVATION_ENV:')) {
       return buildInteractiveResult(ConversationIntent.RESERVATION, payloadId);
     }
+    if (payloadId.startsWith('RESERVATION_SLOT:')) {
+      return buildInteractiveResult(ConversationIntent.RESERVATION, payloadId);
+    }
 
 
   // IDs estáticos

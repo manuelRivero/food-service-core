@@ -8,7 +8,7 @@ import { generateReservationQR } from '../utils/reservationQr';
 
 export type ReservationStep =
   | 'ASK_DATE'
-  | 'ASK_TIME'
+  | 'ASK_SLOT'
   | 'ASK_PARTY_SIZE'
   | 'ASK_ENVIRONMENT'
   | 'CONFIRM';
@@ -16,7 +16,9 @@ export type ReservationStep =
 export type ReservationState = {
   step: ReservationStep;
   date?: string;
-  time?: string;
+  slotId?: string;
+  time?: string; // start_time
+  endTime?: string;
   partySize?: number;
   environmentId?: string;
 };
@@ -24,7 +26,8 @@ export type ReservationState = {
 type FindTableInput = {
   businessId: string;
   date: string; // "YYYY-MM-DD"
-  time: string; // "HH:mm"
+  startTime: string; // "HH:mm"
+  endTime: string; // "HH:mm"
   partySize: number;
   environmentId?: string;
 };
@@ -34,7 +37,12 @@ type FindTableResult = {
   reason?: string;
 };
 
-const SLOT_DURATION_MINUTES = 120;
+type ReservationSlot = {
+  id: string;
+  start_time: string;
+  end_time: string;
+  is_active: boolean | null;
+};
 
 export function normalizeDate(dateStr: string): Date {
   // soporta "DD/MM" o "DD/MM/YYYY"
@@ -85,102 +93,27 @@ export function buildDateTime(date: Date, time: string): Date {
   return result;
 }
 
-function addMinutesWithWrap(time: string, minutes: number): string {
-  const [h, m] = time.split(":").map(Number);
-  const baseMinutes = h * 60 + m + minutes;
-  const total = ((baseMinutes % 1440) + 1440) % 1440;
-  const hh = String(Math.floor(total / 60)).padStart(2, "0");
-  const mm = String(total % 60).padStart(2, "0");
-  return `${hh}:${mm}`;
-}
-
-type BusinessShift = {
-  opens_at: string;
-  closes_at: string;
-  is_closed: boolean;
-};
-
-const toMinutes = (value: string): number => {
-  const [hh, mm] = value.split(":").map((v) => Number(v));
-  return (hh || 0) * 60 + (mm || 0);
-};
-
-const isTimeInShift = (time: string, shift: BusinessShift): boolean => {
-  const current = toMinutes(time);
-  const start = toMinutes(shift.opens_at);
-  const end = toMinutes(shift.closes_at);
-  if (start === end) return false;
-  if (end > start) return current >= start && current < end;
-  return current >= start || current < end;
-};
-
-async function getBusinessShifts(
-  prismaClient: typeof prisma,
+async function getBusinessSlots(
   businessId: string,
   date: Date
-): Promise<BusinessShift[]> {
-  return prismaClient.business_hours.findMany({
-    where: {
-      business_id: businessId,
-      day_of_week: date.getDay()
-    },
-    orderBy: { opens_at: "asc" }
-  });
-}
-
-function findShiftForTime(
-  time: string,
-  shifts: BusinessShift[]
-): BusinessShift | null {
-  const openShifts = shifts.filter((s) => !s.is_closed);
-  for (const shift of openShifts) {
-    if (isTimeInShift(time, shift)) return shift;
-  }
-  return null;
-}
-
-async function validateReservationShift(params: {
-  businessId: string;
-  dateText: string;
-  timeText: string;
-}) {
-  const reservationDate = normalizeDate(params.dateText);
-  const now = new Date();
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-  const selected = new Date(reservationDate);
-  selected.setHours(0, 0, 0, 0);
-
-  if (selected.getTime() < today.getTime()) {
-    throw new Error("PAST_DATE");
-  }
-
-  const reservationShifts = await getBusinessShifts(
-    prisma,
-    params.businessId,
-    reservationDate
-  );
-  const selectedShift = findShiftForTime(params.timeText, reservationShifts);
-  if (!selectedShift) {
-    throw new Error("OUTSIDE_BUSINESS_HOURS");
-  }
-
-  const isSameDay = selected.getTime() === today.getTime();
-  if (!isSameDay) return;
-
-  const nowTime = `${String(now.getHours()).padStart(2, "0")}:${String(
-    now.getMinutes()
-  ).padStart(2, "0")}`;
-  const todayShifts = await getBusinessShifts(prisma, params.businessId, now);
-  const currentShift = findShiftForTime(nowTime, todayShifts);
-
-  if (
-    currentShift &&
-    currentShift.opens_at === selectedShift.opens_at &&
-    currentShift.closes_at === selectedShift.closes_at
-  ) {
-    throw new Error("INVALID_SHIFT");
-  }
+): Promise<ReservationSlot[]> {
+  const dayOfWeek = date.getDay();
+  const rows = await prisma.$queryRaw<
+    Array<{
+      id: string;
+      start_time: string;
+      end_time: string;
+      is_active: boolean | null;
+    }>
+  >`
+    SELECT id, start_time, end_time, is_active
+    FROM reservation_slot
+    WHERE business_id = ${businessId}::uuid
+      AND day_of_week = ${dayOfWeek}
+      AND is_active = true
+    ORDER BY start_time ASC
+  `;
+  return rows;
 }
 
 function formatDateExample(date: Date): string {
@@ -194,33 +127,13 @@ async function getFirstAvailableTimeForDate(
   date: Date,
   now: Date
 ): Promise<string | null> {
-  const shifts = (await getBusinessShifts(prisma, businessId, date)).filter(
-    (s) => !s.is_closed
-  );
-  if (!shifts.length) return null;
-
+  const slots = await getBusinessSlots(businessId, date);
+  if (!slots.length) return null;
   const minReservationDateTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-  const isSameDay =
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate();
-
-  const nowTime = `${String(now.getHours()).padStart(2, "0")}:${String(
-    now.getMinutes()
-  ).padStart(2, "0")}`;
-  const currentShift = isSameDay ? findShiftForTime(nowTime, shifts) : null;
-
-  for (const shift of shifts) {
-    if (
-      currentShift &&
-      currentShift.opens_at === shift.opens_at &&
-      currentShift.closes_at === shift.closes_at
-    ) {
-      continue;
-    }
-    const candidate = buildDateTime(date, shift.opens_at);
+  for (const slot of slots) {
+    const candidate = buildDateTime(date, slot.start_time);
     if (candidate.getTime() >= minReservationDateTime.getTime()) {
-      return shift.opens_at;
+      return slot.start_time;
     }
   }
 
@@ -239,19 +152,6 @@ async function getNextDateExample(businessId: string): Promise<string> {
   const fallback = new Date(now);
   fallback.setDate(fallback.getDate() + 1);
   return formatDateExample(fallback);
-}
-
-async function getTimeExampleForDate(
-  businessId: string,
-  dateText: string
-): Promise<string> {
-  try {
-    const date = normalizeDate(dateText);
-    const now = new Date();
-    return (await getFirstAvailableTimeForDate(businessId, date, now)) ?? "20:30";
-  } catch {
-    return "20:30";
-  }
 }
 
 function formatReservationDateDb(d: Date): string {
@@ -307,23 +207,22 @@ function buildReservationErrorMessage(text: string): WhatsAppInteractiveMessage 
 }
 
 async function createReservation(
-  prismaClient: typeof prisma,
   input: {
     businessId: string;
     customerId: string;
     conversationId?: string;
     partySize: number;
     date: string;
-    time: string;
+    startTime: string;
+    endTime: string;
     tableIds: string[];
   }
 ) {
-  const endTime = addMinutes(input.time, SLOT_DURATION_MINUTES);
   const reservationDate = normalizeDate(input.date);
-  const startDateTime = buildDateTime(reservationDate, input.time);
-  const endDateTime = buildDateTime(reservationDate, endTime);
+  const startDateTime = buildDateTime(reservationDate, input.startTime);
+  const endDateTime = buildDateTime(reservationDate, input.endTime);
 
-  return prismaClient.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     const conflict = await tx.reservation_table.findFirst({
       where: {
         table_id: { in: input.tableIds },
@@ -398,18 +297,19 @@ function mapEnvironmentToId(
 export async function findAvailableTable(
   input: FindTableInput
 ): Promise<FindTableResult> {
-  const { businessId, date, time, partySize, environmentId } = input;
+  const { businessId, date, startTime, endTime, partySize, environmentId } = input;
   console.log("[Reservation] Input:", {
     businessId,
     date,
-    time,
+    startTime,
+    endTime,
     partySize,
     environmentId
   });
 
   const reservationDate = normalizeDate(date);
-  const startDateTime = buildDateTime(reservationDate, time);
-  const endDateTime = buildDateTime(reservationDate, addMinutes(time, SLOT_DURATION_MINUTES));
+  const startDateTime = buildDateTime(reservationDate, startTime);
+  const endDateTime = buildDateTime(reservationDate, endTime);
   console.log("[Reservation] Time range:", {
     startTime: startDateTime,
     endTime: endDateTime
@@ -452,18 +352,7 @@ export async function findAvailableTable(
           status: {
             in: [...RESERVATION_OCCUPYING_STATUSES],
           },
-          AND: [
-            {
-              start_time: {
-                lt: endDateTime,
-              },
-            },
-            {
-              end_time: {
-                gt: startDateTime,
-              },
-            },
-          ],
+          start_time: startDateTime
         }
       },
       include: { reservation: true }
@@ -490,12 +379,7 @@ export async function findAvailableTable(
         AND: [
           {
             start_time: {
-              lt: endDateTime,
-            },
-          },
-          {
-            end_time: {
-              gt: startDateTime,
+              equals: startDateTime,
             },
           },
         ],
@@ -527,26 +411,6 @@ export async function findAvailableTable(
 
   console.log("[Reservation] No available tables found");
   return { tableIds: null, reason: "NO_AVAILABILITY" };
-}
-
-async function suggestAlternativeTimes(
-  prismaClient: typeof prisma,
-  input: FindTableInput
-): Promise<{ time: string; tableIds: string[] }[]> {
-  const offsets = [-60, -30, 30, 60];
-  const suggestions: { time: string; tableIds: string[] }[] = [];
-  for (const offset of offsets) {
-    const candidateTime = addMinutesWithWrap(input.time, offset);
-    const result = await findAvailableTable({
-      ...input,
-      time: candidateTime
-    });
-    if (result.tableIds) {
-      suggestions.push({ time: candidateTime, tableIds: result.tableIds });
-    }
-    if (suggestions.length >= 3) break;
-  }
-  return suggestions;
 }
 
 function selectTables(
@@ -598,28 +462,21 @@ export async function handleViewReservationIntent(
   const dateStr = formatReservationDateDb(r.reservation_date);
   const timeStr = formatDbTimeReservation(r.start_time);
   const mesas = r.reservation_table.map((rt) => `- ${rt.table.name}`).join("\n");
-  const statusEsp = reservationStatusLabel(r.status ?? "confirmed");
-  const bodyText = `📋 Tu reserva:\n\n📅 ${dateStr}\n⏰ ${timeStr}\n👥 ${r.party_size}\n\nEstado: ${statusEsp}\n\nMesas:\n${mesas}`;
+  const summaryText = `🤖\n\n*Tu reserva* 📋\n\n📅 ${dateStr}\n⏰ ${timeStr}\n👥 ${r.party_size}\n\nMesas:\n${mesas}`;
+  const qrDataUrl = await generateReservationQR(
+    (r as unknown as { checkin_token: string }).checkin_token
+  );
 
   return {
-    content: {
-      type: "interactive",
-      interactive: {
-        type: "button",
-        header: { type: "text", text: "" },
-        body: { text: `🤖\n\n${bodyText}` },
-        footer: { text: "Opciones" },
-        action: {
-          buttons: [
-            {
-              type: "reply",
-              reply: { id: "VIEW_QR", title: "Ver código QR" }
-            }
-          ]
-        }
+    content: summaryText,
+    isInteractive: false,
+    followUps: [
+      { type: "image", dataUrl: qrDataUrl },
+      {
+        type: "text",
+        message: "🤖\n\n¡Gracias por reservar con nosotros! Te esperamos 🙌"
       }
-    },
-    isInteractive: true
+    ]
   };
 }
 
@@ -681,7 +538,6 @@ export const handleReservationIntent = async (
   const reservation: ReservationState | undefined = metadata.reservation;
   const messageText = ctx.message?.text?.body?.trim() ?? '';
   const dateRegex = /^\d{1,2}\/\d{1,2}(\/\d{4})?$/;
-  const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
   const nextDateExample = ctx.business?.id
     ? await getNextDateExample(ctx.business.id)
     : "05/04";
@@ -745,7 +601,11 @@ export const handleReservationIntent = async (
               buttons: [
                 {
                   type: "reply",
-                  reply: { id: "VIEW_RESERVATION", title: "Modificar reserva" }
+                  reply: { id: "VIEW_RESERVATION", title: "Ver mi reserva" }
+                },
+                {
+                  type: "reply",
+                  reply: { id: "RESERVATION_RESET", title: "Editar reserva" }
                 },
                 {
                   type: "reply",
@@ -796,64 +656,102 @@ export const handleReservationIntent = async (
       const nextState: ReservationState = {
         ...reservation,
         date: messageText,
-        step: 'ASK_TIME'
+        step: 'ASK_SLOT'
       };
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: nextState }
       });
-      const timeExample = ctx.business?.id
-        ? await getTimeExampleForDate(ctx.business.id, messageText)
-        : "20:30";
-      return `🤖\n\n*¡Fecha registrada!* ✅\n\nPerfecto, ya agendé la fecha.\n\n*Hora de reserva* ⏰\n\n¿A qué hora? (Ej: ${timeExample})`;
-    }
-    case 'ASK_TIME': {
-      if (!messageText) {
-        const timeExample = ctx.business?.id && reservation.date
-          ? await getTimeExampleForDate(ctx.business.id, reservation.date)
-          : "20:30";
-        return `🤖\n\n*Hora de reserva* ⏰\n\n¿A qué hora? (Ej: ${timeExample})`;
-      }
-      if (!timeRegex.test(messageText)) {
-        const timeExample = ctx.business?.id && reservation.date
-          ? await getTimeExampleForDate(ctx.business.id, reservation.date)
-          : "20:30";
-        return buildReservationErrorMessage(
-          `🤖\n\n*Hora inválida* ❌\n\nEscribí nuevamente la hora en formato HH:mm (ej: ${timeExample}) así avanzamos rápido con tu reserva.`
-        );
-      }
       if (!ctx.business?.id) {
         return buildReservationErrorMessage(
           "🤖\n\n*Sin disponibilidad* ❌\n\nNo hay disponibilidad."
         );
       }
-      try {
-        await validateReservationShift({
-          businessId: ctx.business.id,
-          dateText: reservation.date ?? "",
-          timeText: messageText
+      const date = normalizeDate(messageText);
+      const now = new Date();
+      const slots = await getBusinessSlots(ctx.business.id, date);
+      const minReservationDateTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+      const availableSlots = slots.filter((slot) => {
+        const start = buildDateTime(date, slot.start_time);
+        return start.getTime() >= minReservationDateTime.getTime();
+      });
+      if (!availableSlots.length) {
+        return buildReservationErrorMessage(
+          "🤖\n\n*Sin slots disponibles* ❌\n\nNo encontramos horarios disponibles para esa fecha. Probá con otra fecha y te ayudo."
+        );
+      }
+      return buildListMessageFromButtons(
+        "🤖\n\n*¡Fecha registrada!* ✅\n\nPerfecto, ya agendé la fecha.\n\n*Horario disponible* 🕒\n\nElegí un horario:",
+        availableSlots.map((slot) => ({
+          title: slot.start_time,
+          payload: `RESERVATION_SLOT:${slot.id}`,
+          description: `${slot.start_time} - ${slot.end_time}`,
+          sectionTitle: "Horarios"
+        })),
+        "Ver horarios",
+        "",
+        "Seleccioná una opción para continuar"
+      );
+    }
+    case 'ASK_SLOT': {
+      if (!ctx.business?.id || !reservation.date) {
+        return buildReservationErrorMessage(
+          "🤖\n\n*Sin disponibilidad* ❌\n\nNo hay disponibilidad."
+        );
+      }
+      if (!ctx.payloadId?.startsWith("RESERVATION_SLOT:")) {
+        const date = normalizeDate(reservation.date);
+        const now = new Date();
+        const slots = await getBusinessSlots(ctx.business.id, date);
+        const minReservationDateTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+        const availableSlots = slots.filter((slot) => {
+          const start = buildDateTime(date, slot.start_time);
+          return start.getTime() >= minReservationDateTime.getTime();
         });
-      } catch (error) {
-        const reason = (error as Error).message;
-        if (reason === "PAST_DATE") {
+        if (!availableSlots.length) {
           return buildReservationErrorMessage(
-            `🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Escribí nuevamente una fecha a futuro en formato DD/MM (ej: ${nextDateExample}), con al menos 8 horas de anticipación, y te reservo enseguida.`
+            "🤖\n\n*Sin slots disponibles* ❌\n\nNo encontramos horarios disponibles para esa fecha. Probá con otra fecha y te ayudo."
           );
         }
-        if (reason === "OUTSIDE_BUSINESS_HOURS") {
-          return buildReservationErrorMessage(
-            "🤖\n\n*Fuera de horario* 🕒\n\nEse horario está fuera del horario de atención. Probá otra hora dentro de nuestro horario y lo coordinamos ahora."
-          );
-        }
-        if (reason === "INVALID_SHIFT") {
-          return buildReservationErrorMessage(
-            "🤖\n\n*Turno no disponible* 🚫\n\nPara darte el mejor servicio, ese turno no está disponible para reservas. Elegí otro turno y te lo confirmo al instante."
-          );
-        }
-        throw error;
+        return buildListMessageFromButtons(
+          "🤖\n\n*Horario requerido* ⏰\n\nElegí un horario de la lista para continuar.",
+          availableSlots.map((slot) => ({
+            title: slot.start_time,
+            payload: `RESERVATION_SLOT:${slot.id}`,
+            description: `${slot.start_time} - ${slot.end_time}`,
+            sectionTitle: "Horarios"
+          })),
+          "Ver horarios",
+          "",
+          "Seleccioná una opción para continuar"
+        );
+      }
+      const slotId = ctx.payloadId.split(":")[1];
+      const slots = await prisma.$queryRaw<
+        Array<{
+          id: string;
+          start_time: string;
+          end_time: string;
+          is_active: boolean | null;
+        }>
+      >`
+        SELECT id, start_time, end_time, is_active
+        FROM reservation_slot
+        WHERE id = ${slotId}::uuid
+          AND business_id = ${ctx.business.id}::uuid
+          AND is_active = true
+        LIMIT 1
+      `;
+      const slot = slots[0] ?? null;
+      if (!slot) {
+        return buildReservationErrorMessage(
+          "🤖\n\n*Slot inválido* ❌\n\nEse horario ya no está disponible. Elegí otro para continuar."
+        );
       }
       const nextState: ReservationState = {
         ...reservation,
-        time: messageText,
+        slotId: slot.id,
+        time: slot.start_time,
+        endTime: slot.end_time,
         step: 'ASK_PARTY_SIZE'
       };
       await updateConversationState(ctx.conversationId, {
@@ -1027,18 +925,20 @@ export const handleReservationIntent = async (
       const result = await findAvailableTable({
         businessId: ctx.business.id,
         date: reservation.date ?? '',
-        time: reservation.time ?? '',
+        startTime: reservation.time ?? '',
+        endTime: reservation.endTime ?? '',
         partySize: reservation.partySize ?? 0,
         environmentId: reservation.environmentId
       });
       if (result.tableIds && ctx.customer?.id) {
-        const created = await createReservation(prisma, {
+        const created = await createReservation({
           businessId: ctx.business.id,
           customerId: ctx.customer.id,
           conversationId: ctx.conversationId,
           partySize: reservation.partySize ?? 0,
           date: reservation.date ?? "",
-          time: reservation.time ?? "",
+          startTime: reservation.time ?? "",
+          endTime: reservation.endTime ?? "",
           tableIds: result.tableIds
         });
 
@@ -1086,26 +986,10 @@ export const handleReservationIntent = async (
         return confirmResult;
       }
 
-      const suggestions = await suggestAlternativeTimes(prisma, {
-        businessId: ctx.business.id,
-        date: reservation.date ?? '',
-        time: reservation.time ?? '',
-        partySize: reservation.partySize ?? 0,
-        environmentId: reservation.environmentId
-      });
-
-      if (suggestions.length) {
-        const options = suggestions.map((s) => `- ${s.time}`).join('\n');
-        await updateConversationState(ctx.conversationId, {
-          metadata: { ...metadata, reservation: undefined }
-        });
-        return `🤖\n\nNo hay disponibilidad a las ${reservation.time ?? '-'}.\nTe puedo ofrecer:\n${options}`;
-      }
-
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: undefined }
       });
-      return '🤖\n\n*Sin disponibilidad* ❌\n\nNo hay disponibilidad para ese horario';
+      return '🤖\n\n*Sin disponibilidad* ❌\n\nNo hay disponibilidad para ese horario predefinido.';
 
     }
     default:
