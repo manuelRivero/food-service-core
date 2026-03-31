@@ -167,6 +167,13 @@ function normalizeTimeInput(time: string | Date): string {
     ).padStart(2, "0")}`;
   }
   const value = String(time).trim();
+  // Soporta strings ISO de DateTime, ej: "1970-01-01T19:00:00.000Z"
+  const asDate = new Date(value);
+  if (!Number.isNaN(asDate.getTime())) {
+    return `${String(asDate.getUTCHours()).padStart(2, "0")}:${String(
+      asDate.getUTCMinutes()
+    ).padStart(2, "0")}`;
+  }
   const match = value.match(/^(\d{1,2}):(\d{2})/);
   if (!match) {
     throw new Error("INVALID_TIME");
