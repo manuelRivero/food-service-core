@@ -84,8 +84,24 @@ function addMinutes(time: string, minutes: number): string {
   date.setHours(h, m + minutes, 0);
   return date.toTimeString().slice(0, 5);
 }
-export function buildDateTime(date: Date, time: string): Date {
-  const [hours, minutes] = time.split(":").map(Number);
+
+function normalizeTimeInput(time: string | Date): string {
+  if (time instanceof Date) {
+    return `${String(time.getUTCHours()).padStart(2, "0")}:${String(
+      time.getUTCMinutes()
+    ).padStart(2, "0")}`;
+  }
+  const value = String(time).trim();
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) {
+    throw new Error("INVALID_TIME");
+  }
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+export function buildDateTime(date: Date, time: string | Date): Date {
+  const normalized = normalizeTimeInput(time);
+  const [hours, minutes] = normalized.split(":").map(Number);
 
   const result = new Date(date);
   result.setHours(hours, minutes, 0, 0);
@@ -101,8 +117,8 @@ async function getBusinessSlots(
   const rows = await prisma.$queryRaw<
     Array<{
       id: string;
-      start_time: string;
-      end_time: string;
+      start_time: string | Date;
+      end_time: string | Date;
       is_active: boolean | null;
     }>
   >`
@@ -113,7 +129,12 @@ async function getBusinessSlots(
       AND is_active = true
     ORDER BY start_time ASC
   `;
-  return rows;
+  return rows.map((row) => ({
+    id: row.id,
+    start_time: normalizeTimeInput(row.start_time),
+    end_time: normalizeTimeInput(row.end_time),
+    is_active: row.is_active
+  }));
 }
 
 function formatDateExample(date: Date): string {
