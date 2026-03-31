@@ -183,6 +183,77 @@ async function validateReservationShift(params: {
   }
 }
 
+function formatDateExample(date: Date): string {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${day}/${month}`;
+}
+
+async function getFirstAvailableTimeForDate(
+  businessId: string,
+  date: Date,
+  now: Date
+): Promise<string | null> {
+  const shifts = (await getBusinessShifts(prisma, businessId, date)).filter(
+    (s) => !s.is_closed
+  );
+  if (!shifts.length) return null;
+
+  const minReservationDateTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  const isSameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+
+  const nowTime = `${String(now.getHours()).padStart(2, "0")}:${String(
+    now.getMinutes()
+  ).padStart(2, "0")}`;
+  const currentShift = isSameDay ? findShiftForTime(nowTime, shifts) : null;
+
+  for (const shift of shifts) {
+    if (
+      currentShift &&
+      currentShift.opens_at === shift.opens_at &&
+      currentShift.closes_at === shift.closes_at
+    ) {
+      continue;
+    }
+    const candidate = buildDateTime(date, shift.opens_at);
+    if (candidate.getTime() >= minReservationDateTime.getTime()) {
+      return shift.opens_at;
+    }
+  }
+
+  return null;
+}
+
+async function getNextDateExample(businessId: string): Promise<string> {
+  const now = new Date();
+  for (let offset = 0; offset < 30; offset += 1) {
+    const date = new Date(now);
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() + offset);
+    const time = await getFirstAvailableTimeForDate(businessId, date, now);
+    if (time) return formatDateExample(date);
+  }
+  const fallback = new Date(now);
+  fallback.setDate(fallback.getDate() + 1);
+  return formatDateExample(fallback);
+}
+
+async function getTimeExampleForDate(
+  businessId: string,
+  dateText: string
+): Promise<string> {
+  try {
+    const date = normalizeDate(dateText);
+    const now = new Date();
+    return (await getFirstAvailableTimeForDate(businessId, date, now)) ?? "20:30";
+  } catch {
+    return "20:30";
+  }
+}
+
 function formatReservationDateDb(d: Date): string {
   const day = d.getUTCDate();
   const month = d.getUTCMonth() + 1;
@@ -611,8 +682,30 @@ export const handleReservationIntent = async (
   const messageText = ctx.message?.text?.body?.trim() ?? '';
   const dateRegex = /^\d{1,2}\/\d{1,2}(\/\d{4})?$/;
   const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+  const nextDateExample = ctx.business?.id
+    ? await getNextDateExample(ctx.business.id)
+    : "05/04";
 
   if (ctx.payloadId === "RESERVATION_CANCEL") {
+    if (!reservation && ctx.customer?.id) {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const activeReservation = await prisma.reservation.findFirst({
+        where: {
+          customer_id: ctx.customer.id,
+          status: { in: [...RESERVATION_OCCUPYING_STATUSES] },
+          reservation_date: { gte: now }
+        },
+        orderBy: [{ reservation_date: "desc" }, { start_time: "desc" }]
+      });
+      if (activeReservation) {
+        await prisma.reservation.update({
+          where: { id: activeReservation.id },
+          data: { status: "closed" }
+        });
+        return "🤖\n\n*Reserva cancelada* ✅\n\nTu reserva fue cancelada. Si querés, te ayudo a crear una nueva.";
+      }
+    }
     await updateConversationState(ctx.conversationId, {
       metadata: { ...metadata, reservation: undefined }
     });
@@ -624,7 +717,7 @@ export const handleReservationIntent = async (
     await updateConversationState(ctx.conversationId, {
       metadata: { ...metadata, reservation: nextState }
     });
-    return '🤖\n\n*Reserva reiniciada* 🔄\n\n¿Para qué fecha querés reservar? (Ej: 05/04)\n\nRecordá que las reservas deben hacerse con al menos 8 horas de anticipación.';
+    return `🤖\n\n*Reserva reiniciada* 🔄\n\n¿Para qué fecha querés reservar? (Ej: ${nextDateExample})\n\nRecordá que las reservas deben hacerse con al menos 8 horas de anticipación.`;
   }
 
   if (!reservation) {
@@ -639,24 +732,46 @@ export const handleReservationIntent = async (
         }
       });
       if (activeReservation) {
-        return '🤖\n\n*Reserva activa* ⚠️\n\nYa tenés una reserva activa.\n\nSi querés modificarla o cancelarla decime 🙏';
+        return {
+          type: "interactive",
+          interactive: {
+            type: "button",
+            header: { type: "text", text: "🤖" },
+            body: {
+              text: "📋 *Reserva activa* ⚠️\n\nYa tenés una reserva activa.\n\nPodés gestionarla desde estas opciones:"
+            },
+            footer: { text: "Elegí una opción" },
+            action: {
+              buttons: [
+                {
+                  type: "reply",
+                  reply: { id: "VIEW_RESERVATION", title: "Modificar reserva" }
+                },
+                {
+                  type: "reply",
+                  reply: { id: "RESERVATION_CANCEL", title: "Cancelar reserva" }
+                }
+              ]
+            }
+          }
+        };
       }
     }
     const nextState: ReservationState = { step: 'ASK_DATE' };
     await updateConversationState(ctx.conversationId, {
       metadata: { ...metadata, reservation: nextState }
     });
-    return '🤖\n\n*Coordinemos tu reserva* 📅\n\n¿Para qué fecha querés reservar? (Ej: 05/04)\n\nTe pedimos reservar con al menos 8 horas de anticipación para poder prepararte una mejor experiencia.';
+    return `🤖\n\n*Coordinemos tu reserva* 📅\n\n¿Para qué fecha querés reservar? (Ej: ${nextDateExample})\n\nTe pedimos reservar con al menos 8 horas de anticipación para poder prepararte una mejor experiencia.`;
   }
 
   switch (reservation.step) {
     case 'ASK_DATE': {
       if (!messageText) {
-        return '🤖\n\n*Fecha de reserva* 📅\n\n¿Para qué fecha querés reservar? (Ej: 05/04)\n\nRecordá que las reservas deben hacerse con al menos 8 horas de anticipación.';
+        return `🤖\n\n*Fecha de reserva* 📅\n\n¿Para qué fecha querés reservar? (Ej: ${nextDateExample})\n\nRecordá que las reservas deben hacerse con al menos 8 horas de anticipación.`;
       }
       if (!dateRegex.test(messageText)) {
         return buildReservationErrorMessage(
-          "🤖\n\n*Formato inválido* ❌\n\nEscribí nuevamente la fecha en formato DD/MM (ej: 05/04) y te ayudo a reservar en segundos."
+            `🤖\n\n*Formato inválido* ❌\n\nEscribí nuevamente la fecha en formato DD/MM (ej: ${nextDateExample}) y te ayudo a reservar en segundos.`
         );
       }
       try {
@@ -667,13 +782,13 @@ export const handleReservationIntent = async (
         selected.setHours(0, 0, 0, 0);
         if (selected.getTime() < today.getTime()) {
           return buildReservationErrorMessage(
-            "🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Escribí nuevamente una fecha a futuro en formato DD/MM (ej: 05/04), con al menos 8 horas de anticipación, y te reservo enseguida."
+            `🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Escribí nuevamente una fecha a futuro en formato DD/MM (ej: ${nextDateExample}), con al menos 8 horas de anticipación, y te reservo enseguida.`
           );
         }
       } catch (error) {
         if ((error as Error).message === "INVALID_DATE") {
           return buildReservationErrorMessage(
-            "🤖\n\n*Fecha inválida* ❌\n\nEsa fecha no existe. Escribí nuevamente la fecha en formato DD/MM (ej: 05/04)."
+            `🤖\n\n*Fecha inválida* ❌\n\nEsa fecha no existe. Escribí nuevamente la fecha en formato DD/MM (ej: ${nextDateExample}).`
           );
         }
         throw error;
@@ -686,15 +801,24 @@ export const handleReservationIntent = async (
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: nextState }
       });
-      return '🤖\n\n*¡Fecha registrada!* ✅\n\nPerfecto, ya agendé la fecha.\n\n*Hora de reserva* ⏰\n\n¿A qué hora? (Ej: 20:30)';
+      const timeExample = ctx.business?.id
+        ? await getTimeExampleForDate(ctx.business.id, messageText)
+        : "20:30";
+      return `🤖\n\n*¡Fecha registrada!* ✅\n\nPerfecto, ya agendé la fecha.\n\n*Hora de reserva* ⏰\n\n¿A qué hora? (Ej: ${timeExample})`;
     }
     case 'ASK_TIME': {
       if (!messageText) {
-        return '🤖\n\n*Hora de reserva* ⏰\n\n¿A qué hora? (Ej: 20:30)';
+        const timeExample = ctx.business?.id && reservation.date
+          ? await getTimeExampleForDate(ctx.business.id, reservation.date)
+          : "20:30";
+        return `🤖\n\n*Hora de reserva* ⏰\n\n¿A qué hora? (Ej: ${timeExample})`;
       }
       if (!timeRegex.test(messageText)) {
+        const timeExample = ctx.business?.id && reservation.date
+          ? await getTimeExampleForDate(ctx.business.id, reservation.date)
+          : "20:30";
         return buildReservationErrorMessage(
-          "🤖\n\n*Hora inválida* ❌\n\nEscribí nuevamente la hora en formato HH:mm (ej: 20:30) así avanzamos rápido con tu reserva."
+          `🤖\n\n*Hora inválida* ❌\n\nEscribí nuevamente la hora en formato HH:mm (ej: ${timeExample}) así avanzamos rápido con tu reserva.`
         );
       }
       if (!ctx.business?.id) {
@@ -712,7 +836,7 @@ export const handleReservationIntent = async (
         const reason = (error as Error).message;
         if (reason === "PAST_DATE") {
           return buildReservationErrorMessage(
-            "🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Escribí nuevamente una fecha a futuro en formato DD/MM (ej: 05/04), con al menos 8 horas de anticipación, y te reservo enseguida."
+            `🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Escribí nuevamente una fecha a futuro en formato DD/MM (ej: ${nextDateExample}), con al menos 8 horas de anticipación, y te reservo enseguida.`
           );
         }
         if (reason === "OUTSIDE_BUSINESS_HOURS") {
@@ -777,8 +901,8 @@ export const handleReservationIntent = async (
           type: 'interactive',
           interactive: {
             type: 'button',
-            header: { type: 'text', text: 'Confirmar reserva' },
-            body: { text: `🤖\n\n*¡Cantidad registrada!* ✅\n\nYa tengo la cantidad de personas.\n\n*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
+            header: { type: 'text', text: '🤖' },
+            body: { text: `*¡Cantidad registrada!* ✅\n\nYa tengo la cantidad de personas.\n\n*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
             footer: { text: 'Seleccioná una opción' },
             action: {
               buttons: [
@@ -849,8 +973,8 @@ export const handleReservationIntent = async (
         type: 'interactive',
         interactive: {
           type: 'button',
-          header: { type: 'text', text: 'Confirmar reserva' },
-          body: { text: `🤖\n\n*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
+          header: { type: 'text', text: '🤖' },
+          body: { text: `*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
           footer: { text: 'Seleccioná una opción' },
           action: {
             buttons: [
@@ -879,8 +1003,8 @@ export const handleReservationIntent = async (
           type: 'interactive',
           interactive: {
             type: 'button',
-            header: { type: 'text', text: 'Confirmar reserva' },
-            body: { text: `🤖\n\n*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
+            header: { type: 'text', text: '🤖' },
+            body: { text: `*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
             footer: { text: 'Seleccioná una opción' },
             action: {
               buttons: [
@@ -945,7 +1069,7 @@ export const handleReservationIntent = async (
           }
         });
 
-        const bodyText = `🤖\n\n✅ Reserva confirmada\n\n📅 ${reservation.date ?? "-"}\n⏰ ${reservation.time ?? "-"}\n👥 ${reservation.partySize ?? "-"}\n\n📍 Mostrá este código al llegar 👇\n\nPodés compartirlo con quienes vengan con vos`;
+        const bodyText = `🤖\n\n*Reserva confirmada* ✅\n\n📅 ${reservation.date ?? "-"}\n⏰ ${reservation.time ?? "-"}\n👥 ${reservation.partySize ?? "-"}\n\n📍 Mostrá este código al llegar 👇\n\nPodés compartirlo con quienes vengan con vos`;
 
         const confirmResult: HandlerResult = {
           content: bodyText,
