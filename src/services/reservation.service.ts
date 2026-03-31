@@ -85,6 +85,95 @@ function addMinutesWithWrap(time: string, minutes: number): string {
   return `${hh}:${mm}`;
 }
 
+type BusinessShift = {
+  opens_at: string;
+  closes_at: string;
+  is_closed: boolean;
+};
+
+const toMinutes = (value: string): number => {
+  const [hh, mm] = value.split(":").map((v) => Number(v));
+  return (hh || 0) * 60 + (mm || 0);
+};
+
+const isTimeInShift = (time: string, shift: BusinessShift): boolean => {
+  const current = toMinutes(time);
+  const start = toMinutes(shift.opens_at);
+  const end = toMinutes(shift.closes_at);
+  if (start === end) return false;
+  if (end > start) return current >= start && current < end;
+  return current >= start || current < end;
+};
+
+async function getBusinessShifts(
+  prismaClient: typeof prisma,
+  businessId: string,
+  date: Date
+): Promise<BusinessShift[]> {
+  return prismaClient.business_hours.findMany({
+    where: {
+      business_id: businessId,
+      day_of_week: date.getDay()
+    },
+    orderBy: { opens_at: "asc" }
+  });
+}
+
+function findShiftForTime(
+  time: string,
+  shifts: BusinessShift[]
+): BusinessShift | null {
+  const openShifts = shifts.filter((s) => !s.is_closed);
+  for (const shift of openShifts) {
+    if (isTimeInShift(time, shift)) return shift;
+  }
+  return null;
+}
+
+async function validateReservationShift(params: {
+  businessId: string;
+  dateText: string;
+  timeText: string;
+}) {
+  const reservationDate = normalizeDate(params.dateText);
+  const now = new Date();
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const selected = new Date(reservationDate);
+  selected.setHours(0, 0, 0, 0);
+
+  if (selected.getTime() < today.getTime()) {
+    throw new Error("PAST_DATE");
+  }
+
+  const reservationShifts = await getBusinessShifts(
+    prisma,
+    params.businessId,
+    reservationDate
+  );
+  const selectedShift = findShiftForTime(params.timeText, reservationShifts);
+  if (!selectedShift) {
+    throw new Error("OUTSIDE_BUSINESS_HOURS");
+  }
+
+  const isSameDay = selected.getTime() === today.getTime();
+  if (!isSameDay) return;
+
+  const nowTime = `${String(now.getHours()).padStart(2, "0")}:${String(
+    now.getMinutes()
+  ).padStart(2, "0")}`;
+  const todayShifts = await getBusinessShifts(prisma, params.businessId, now);
+  const currentShift = findShiftForTime(nowTime, todayShifts);
+
+  if (
+    currentShift &&
+    currentShift.opens_at === selectedShift.opens_at &&
+    currentShift.closes_at === selectedShift.closes_at
+  ) {
+    throw new Error("INVALID_SHIFT");
+  }
+}
+
 function formatReservationDateDb(d: Date): string {
   const day = d.getUTCDate();
   const month = d.getUTCMonth() + 1;
@@ -537,6 +626,28 @@ export const handleReservationIntent = async (
       if (!timeRegex.test(messageText)) {
         return '🤖\n\n❌ Hora inválida. Usá formato HH:mm (ej: 20:30)';
       }
+      if (!ctx.business?.id) {
+        return '🤖\n\n❌ No hay disponibilidad';
+      }
+      try {
+        await validateReservationShift({
+          businessId: ctx.business.id,
+          dateText: reservation.date ?? "",
+          timeText: messageText
+        });
+      } catch (error) {
+        const reason = (error as Error).message;
+        if (reason === "PAST_DATE") {
+          return "🤖\n\n❌ La fecha seleccionada ya pasó.";
+        }
+        if (reason === "OUTSIDE_BUSINESS_HOURS") {
+          return "🤖\n\n❌ Ese horario está fuera del horario de atención.";
+        }
+        if (reason === "INVALID_SHIFT") {
+          return "🤖\n\n❌ No podés reservar en el turno actual. Elegí otro turno.";
+        }
+        throw error;
+      }
       const nextState: ReservationState = {
         ...reservation,
         time: messageText,
@@ -585,8 +696,8 @@ export const handleReservationIntent = async (
           type: 'interactive',
           interactive: {
             type: 'button',
-            header: { type: 'text', text: 'Confirmar reserva' },
-            body: { text: `🤖\n\nConfirmá tu reserva:\n${summary}` },
+            header: { type: 'text', text: '🤖\n\nConfirmar reserva' },
+            body: { text: `Confirmá tu reserva:\n${summary}` },
             footer: { text: 'Seleccioná una opción' },
             action: {
               buttons: [
