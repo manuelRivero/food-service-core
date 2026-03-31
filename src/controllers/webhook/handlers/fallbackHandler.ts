@@ -40,7 +40,12 @@ export class FallbackHandler implements IntentHandler {
       return textResponse('Disculpá, no pude procesar tu mensaje. Intentá de nuevo.');
     }
 
-    const hasReservationCandidate = ctx.detection.candidates.some((candidate) =>
+    const detectionCandidates =
+      'detection' in ctx ? ctx.detection.candidates : [];
+    const hasReservationCandidate = detectionCandidates.some((candidate: {
+      intent: ConversationIntent;
+      confidence: number;
+    }) =>
       candidate.intent === ConversationIntent.RESERVATION ||
       candidate.intent === ConversationIntent.VIEW_RESERVATION ||
       candidate.intent === ConversationIntent.VIEW_QR
