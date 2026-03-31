@@ -591,23 +591,23 @@ export const handleReservationIntent = async (
         }
       });
       if (activeReservation) {
-        return '🤖\n\n⚠️ Ya tenés una reserva activa.\n\nSi querés modificarla o cancelarla decime 🙏';
+        return '🤖\n\n*Reserva activa* ⚠️\n\nYa tenés una reserva activa.\n\nSi querés modificarla o cancelarla decime 🙏';
       }
     }
     const nextState: ReservationState = { step: 'ASK_DATE' };
     await updateConversationState(ctx.conversationId, {
       metadata: { ...metadata, reservation: nextState }
     });
-    return '🤖\n\n¿Para qué fecha querés reservar? (Ej: 05/04)';
+    return '🤖\n\n*Coordinemos tu reserva* 📅\n\n¿Para qué fecha querés reservar? (Ej: 05/04)\n\nTe pedimos reservar con al menos 8 horas de anticipación para poder prepararte una mejor experiencia.';
   }
 
   switch (reservation.step) {
     case 'ASK_DATE': {
       if (!messageText) {
-        return '🤖\n\n¿Para qué fecha querés reservar? (Ej: 05/04)';
+        return '🤖\n\n*Fecha de reserva* 📅\n\n¿Para qué fecha querés reservar? (Ej: 05/04)\n\nRecordá que las reservas deben hacerse con al menos 8 horas de anticipación.';
       }
       if (!dateRegex.test(messageText)) {
-        return '🤖\n\n❌ Formato inválido. Usá DD/MM (ej: 05/04)';
+        return '🤖\n\n*Formato inválido* ❌\n\nEscribila en formato DD/MM (ej: 05/04) y te ayudo a reservar en segundos.';
       }
       const nextState: ReservationState = {
         ...reservation,
@@ -617,17 +617,17 @@ export const handleReservationIntent = async (
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: nextState }
       });
-      return '🤖\n\n¿A qué hora? (Ej: 20:30)';
+      return '🤖\n\n*Hora de reserva* ⏰\n\n¿A qué hora? (Ej: 20:30)';
     }
     case 'ASK_TIME': {
       if (!messageText) {
-        return '🤖\n\n¿A qué hora? (Ej: 20:30)';
+        return '🤖\n\n*Hora de reserva* ⏰\n\n¿A qué hora? (Ej: 20:30)';
       }
       if (!timeRegex.test(messageText)) {
-        return '🤖\n\n❌ Hora inválida. Usá formato HH:mm (ej: 20:30)';
+        return '🤖\n\n*Hora inválida* ❌\n\nEscribila en formato HH:mm (ej: 20:30) así avanzamos rápido con tu reserva.';
       }
       if (!ctx.business?.id) {
-        return '🤖\n\n❌ No hay disponibilidad';
+        return '🤖\n\n*Sin disponibilidad* ❌\n\nNo hay disponibilidad.';
       }
       try {
         await validateReservationShift({
@@ -638,13 +638,13 @@ export const handleReservationIntent = async (
       } catch (error) {
         const reason = (error as Error).message;
         if (reason === "PAST_DATE") {
-          return "🤖\n\n❌ La fecha seleccionada ya pasó.";
+          return "🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Probá con una nueva fecha a futuro, con al menos 8 horas de anticipación, y te reservo enseguida.";
         }
         if (reason === "OUTSIDE_BUSINESS_HOURS") {
-          return "🤖\n\n❌ Ese horario está fuera del horario de atención.";
+          return "🤖\n\n*Fuera de horario* 🕒\n\nEse horario está fuera del horario de atención. Probá otra hora dentro de nuestro horario y lo coordinamos ahora.";
         }
         if (reason === "INVALID_SHIFT") {
-          return "🤖\n\n❌ No podés reservar en el turno actual. Elegí otro turno.";
+          return "🤖\n\n*Turno no disponible* 🚫\n\nPara darte el mejor servicio, ese turno no está disponible para reservas. Elegí otro turno y te lo confirmo al instante.";
         }
         throw error;
       }
@@ -656,12 +656,12 @@ export const handleReservationIntent = async (
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: nextState }
       });
-      return '🤖\n\n¿Para cuántas personas?';
+      return '🤖\n\n*Cantidad de personas* 👥\n\n¿Para cuántas personas?';
     }
     case 'ASK_PARTY_SIZE': {
       const partySize = Number(messageText);
       if (Number.isNaN(partySize) || partySize <= 0) {
-        return '🤖\n\n❌ Indicá un número válido de personas (ej: 4)';
+        return '🤖\n\n*Número inválido* ❌\n\nIndicá un número válido de personas (ej: 4) y seguimos con tu reserva.';
       }
       const nextState: ReservationState = {
         ...reservation,
@@ -696,8 +696,8 @@ export const handleReservationIntent = async (
           type: 'interactive',
           interactive: {
             type: 'button',
-            header: { type: 'text', text: '🤖\n\nConfirmar reserva' },
-            body: { text: `Confirmá tu reserva:\n${summary}` },
+            header: { type: 'text', text: 'Confirmar reserva' },
+            body: { text: `🤖\n\n*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
             footer: { text: 'Seleccioná una opción' },
             action: {
               buttons: [
@@ -729,7 +729,7 @@ export const handleReservationIntent = async (
       });
 
       return buildListMessageFromButtons(
-        '🤖\n\n¿En qué ambiente preferís reservar?',
+        '🤖\n\n*Preferencia de ambiente* 🪑\n\n¿En qué ambiente preferís reservar?',
         buttons,
         'Ver opciones',
         '',
@@ -769,7 +769,7 @@ export const handleReservationIntent = async (
         interactive: {
           type: 'button',
           header: { type: 'text', text: 'Confirmar reserva' },
-          body: { text: `🤖\n\nConfirmá tu reserva:\n${summary}` },
+          body: { text: `🤖\n\n*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
           footer: { text: 'Seleccioná una opción' },
           action: {
             buttons: [
@@ -791,7 +791,7 @@ export const handleReservationIntent = async (
         await updateConversationState(ctx.conversationId, {
           metadata: { ...metadata, reservation: undefined }
         });
-        return '🤖\n\nReserva cancelada. ¿Querés que te ayude en algo más?';
+        return '🤖\n\n*Reserva cancelada* 🛑\n\nReserva cancelada. ¿Querés que te ayude en algo más?';
       }
 
       if (ctx.payloadId !== 'RESERVATION_CONFIRM') {
@@ -806,7 +806,7 @@ export const handleReservationIntent = async (
           interactive: {
             type: 'button',
             header: { type: 'text', text: 'Confirmar reserva' },
-            body: { text: `🤖\n\nConfirmá tu reserva:\n${summary}` },
+            body: { text: `🤖\n\n*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
             footer: { text: 'Seleccioná una opción' },
             action: {
               buttons: [
@@ -824,7 +824,7 @@ export const handleReservationIntent = async (
         };
       }
       if (!ctx.business?.id) {
-        return '❌ No hay disponibilidad';
+        return '🤖\n\n*Sin disponibilidad* ❌\n\nNo hay disponibilidad.';
       }
       const result = await findAvailableTable({
         businessId: ctx.business.id,
@@ -907,7 +907,7 @@ export const handleReservationIntent = async (
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: undefined }
       });
-      return '🤖\n\nNo hay disponibilidad para ese horario';
+      return '🤖\n\n*Sin disponibilidad* ❌\n\nNo hay disponibilidad para ese horario';
 
     }
     default:
