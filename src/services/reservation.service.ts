@@ -287,8 +287,8 @@ function buildReservationErrorMessage(text: string): WhatsAppInteractiveMessage 
     type: "interactive",
     interactive: {
       type: "button",
-      header: { type: "text", text: "Reserva" },
-      body: { text },
+      header: { type: "text", text: "" },
+      body: { text: text.startsWith("🤖") ? text : `🤖\n\n${text}` },
       footer: { text: "Elegí una opción" },
       action: {
         buttons: [
@@ -599,15 +599,15 @@ export async function handleViewReservationIntent(
   const timeStr = formatDbTimeReservation(r.start_time);
   const mesas = r.reservation_table.map((rt) => `- ${rt.table.name}`).join("\n");
   const statusEsp = reservationStatusLabel(r.status ?? "confirmed");
-  const bodyText = `🤖\n\n📋 Tu reserva:\n\n📅 ${dateStr}\n⏰ ${timeStr}\n👥 ${r.party_size}\n\nEstado: ${statusEsp}\n\nMesas:\n${mesas}`;
+  const bodyText = `📋 Tu reserva:\n\n📅 ${dateStr}\n⏰ ${timeStr}\n👥 ${r.party_size}\n\nEstado: ${statusEsp}\n\nMesas:\n${mesas}`;
 
   return {
     content: {
       type: "interactive",
       interactive: {
         type: "button",
-        header: { type: "text", text: "Tu reserva" },
-        body: { text: bodyText },
+        header: { type: "text", text: "" },
+        body: { text: `🤖\n\n${bodyText}` },
         footer: { text: "Opciones" },
         action: {
           buttons: [
@@ -736,9 +736,9 @@ export const handleReservationIntent = async (
           type: "interactive",
           interactive: {
             type: "button",
-            header: { type: "text", text: "🤖" },
+            header: { type: "text", text: "" },
             body: {
-              text: "📋 *Reserva activa* ⚠️\n\nYa tenés una reserva activa.\n\nPodés gestionarla desde estas opciones:"
+              text: "🤖\n\n📋 *Reserva activa* ⚠️\n\nYa tenés una reserva activa.\n\nPodés gestionarla desde estas opciones:"
             },
             footer: { text: "Elegí una opción" },
             action: {
@@ -901,8 +901,8 @@ export const handleReservationIntent = async (
           type: 'interactive',
           interactive: {
             type: 'button',
-            header: { type: 'text', text: '🤖' },
-            body: { text: `*¡Cantidad registrada!* ✅\n\nYa tengo la cantidad de personas.\n\n*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
+            header: { type: 'text', text: '' },
+            body: { text: `🤖\n\n*¡Cantidad registrada!* ✅\n\nYa tengo la cantidad de personas.\n\n*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
             footer: { text: 'Seleccioná una opción' },
             action: {
               buttons: [
@@ -973,8 +973,8 @@ export const handleReservationIntent = async (
         type: 'interactive',
         interactive: {
           type: 'button',
-          header: { type: 'text', text: '🤖' },
-          body: { text: `*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
+          header: { type: 'text', text: '' },
+          body: { text: `🤖\n\n*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
           footer: { text: 'Seleccioná una opción' },
           action: {
             buttons: [
@@ -1003,8 +1003,8 @@ export const handleReservationIntent = async (
           type: 'interactive',
           interactive: {
             type: 'button',
-            header: { type: 'text', text: '🤖' },
-            body: { text: `*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
+            header: { type: 'text', text: '' },
+            body: { text: `🤖\n\n*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
             footer: { text: 'Seleccioná una opción' },
             action: {
               buttons: [
