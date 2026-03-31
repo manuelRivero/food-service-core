@@ -268,6 +268,15 @@ function formatDbTimeReservation(d: Date): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+function formatDisplayTime(value?: string): string {
+  if (!value) return "-";
+  try {
+    return normalizeTimeInput(value);
+  } catch {
+    return value;
+  }
+}
+
 function reservationStatusLabel(status: string): string {
   switch (status) {
     case "confirmed":
@@ -884,7 +893,7 @@ export const handleReservationIntent = async (
         });
         const summary = [
           `Fecha: ${nextState.date ?? '-'}`,
-          `Hora: ${nextState.time ?? '-'}`,
+          `Hora: ${formatDisplayTime(nextState.time)}`,
           `Personas: ${nextState.partySize ?? '-'}`,
           `Ambiente: sin preferencia`
         ].join('\n');
@@ -955,7 +964,7 @@ export const handleReservationIntent = async (
 
       const summary = [
         `Fecha: ${nextState.date ?? '-'}`,
-        `Hora: ${nextState.time ?? '-'}`,
+        `Hora: ${formatDisplayTime(nextState.time)}`,
         `Personas: ${nextState.partySize ?? '-'}`,
         `Ambiente: ${environmentName ?? 'sin preferencia'}`
       ].join('\n');
@@ -986,7 +995,7 @@ export const handleReservationIntent = async (
       if (ctx.payloadId !== 'RESERVATION_CONFIRM') {
         const summary = [
           `Fecha: ${reservation.date ?? '-'}`,
-          `Hora: ${reservation.time ?? '-'}`,
+          `Hora: ${formatDisplayTime(reservation.time)}`,
           `Personas: ${reservation.partySize ?? '-'}`,
           `Ambiente: ${reservation.environmentId ?? 'sin preferencia'}`
         ].join('\n');
@@ -1062,7 +1071,7 @@ export const handleReservationIntent = async (
           }
         });
 
-        const bodyText = `🤖\n\n*Reserva confirmada* ✅\n\n📅 ${reservation.date ?? "-"}\n⏰ ${reservation.time ?? "-"}\n👥 ${reservation.partySize ?? "-"}\n\n📍 Mostrá este código al llegar 👇\n\nPodés compartirlo con quienes vengan con vos`;
+        const bodyText = `🤖\n\n*Reserva confirmada* ✅\n\n📅 ${reservation.date ?? "-"}\n⏰ ${formatDisplayTime(reservation.time)}\n👥 ${reservation.partySize ?? "-"}\n\n📍 *Importante:* para ingresar, cada persona del grupo (o vos si venís solo/a) debe presentar este QR.\n\nReenviáselo ahora a quienes te acompañen para agilizar el ingreso 👇`;
 
         const confirmResult: HandlerResult = {
           content: bodyText,
