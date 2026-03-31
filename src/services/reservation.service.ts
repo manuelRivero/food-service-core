@@ -763,24 +763,8 @@ export const handleReservationIntent = async (
         const bodyText = `🤖\n\n✅ Reserva confirmada\n\n📅 ${reservation.date ?? "-"}\n⏰ ${reservation.time ?? "-"}\n👥 ${reservation.partySize ?? "-"}\n\n📍 Mostrá este código al llegar 👇\n\nPodés compartirlo con quienes vengan con vos`;
 
         const confirmResult: HandlerResult = {
-          content: {
-            type: "interactive",
-            interactive: {
-              type: "button",
-              header: { type: "text", text: "Reserva lista" },
-              body: { text: bodyText },
-              footer: { text: "Seguí tu reserva" },
-              action: {
-                buttons: [
-                  {
-                    type: "reply",
-                    reply: { id: "VIEW_RESERVATION", title: "Ver mi reserva" }
-                  }
-                ]
-              }
-            }
-          },
-          isInteractive: true,
+          content: bodyText,
+          isInteractive: false,
           followUps: [
             ...(followUps ?? []),
             {
