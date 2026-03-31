@@ -25,6 +25,8 @@ import { SmallTalkHandler } from './smallTalkHandler';
 import { EditAddressHandler } from './editAddressHandler';
 import { BusinessHoursHandler } from './businessHoursHandler';
 import { ReservationHandler } from './reservationHandler';
+import { ViewReservationHandler } from './viewReservationHandler';
+import { ViewQrHandler } from './viewQrHandler';
 
 // Fallback
 import { FallbackHandler } from './fallbackHandler';
@@ -68,6 +70,8 @@ export const handlers = [
   new SmallTalkHandler(),
   new EditAddressHandler(),
   new BusinessHoursHandler(),
+  new ViewReservationHandler(),
+  new ViewQrHandler(),
   new ReservationHandler(),
   new RemoveItemHandler(),
   new ProductQueryHandler(),

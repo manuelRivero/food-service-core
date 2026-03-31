@@ -51,10 +51,20 @@ export interface EnrichedContext extends WebhookContext {
   };
 }
 
+export type HandlerFollowUp = {
+  type: "image";
+  dataUrl: string;
+} | {
+  type: "text";
+  message: string;
+};
+
 // Resultado de handler
 export interface HandlerResult {
   content: string | object;
   isInteractive: boolean;
+  /** Envíos extra tras el mensaje principal (ej. QR) */
+  followUps?: HandlerFollowUp[];
 }
 
 // Clasificación de intención

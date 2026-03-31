@@ -2,7 +2,7 @@
 
 import { extractContext } from './extractor';
 import { dispatchIntent, dispatchInteractive } from './dispachers';
-import { sendResponse } from './sender';
+import { sendResponse, sendResponseWithQrSequence } from './sender';
 import { detectIntentWithConfidence, DetectionContext } from '../../services/ai/detection.service';
 import {
   findBusinessByPhoneNumberId,
@@ -158,10 +158,20 @@ export const processWebhook = async (payload: any): Promise<void> => {
     const onboardingReminder =
       'Para continuar con un pedido necesito tu dirección.';
 
-    const toHandlerResult = (result: any) => ({
-      content: result,
-      isInteractive: typeof result !== 'string'
-    });
+    const toHandlerResult = (result: any) => {
+      if (
+        result &&
+        typeof result === "object" &&
+        "content" in result &&
+        typeof result.isInteractive === "boolean"
+      ) {
+        return result;
+      }
+      if (typeof result === "string") {
+        return { content: result, isInteractive: false };
+      }
+      return { content: result, isInteractive: true };
+    };
 
     const reservationStep =
       (enrichedBase.conversationState?.metadata as any)?.reservation?.step;
@@ -172,7 +182,7 @@ export const processWebhook = async (payload: any): Promise<void> => {
       );
       if (reservationResult) {
         const handlerResult = toHandlerResult(reservationResult);
-        await sendResponse(ctx, handlerResult);
+        await sendResponseWithQrSequence(ctx, handlerResult);
         await createConversationMessage(
           conversation.id,
           'ai',
@@ -404,7 +414,7 @@ export const processWebhook = async (payload: any): Promise<void> => {
       const result = await dispatchInteractive(enrichedBase);
 
       if (result) {
-        await sendResponse(ctx, result);
+        await sendResponseWithQrSequence(ctx, result);
         await createConversationMessage(
           conversation.id,
           'ai',

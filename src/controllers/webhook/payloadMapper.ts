@@ -137,6 +137,8 @@ export const detectIntentFromPayload = (
     VIEW_CART: ConversationIntent.VIEW_CART,
       EDIT_ADDRESS: ConversationIntent.EDIT_ADDRESS,
     BUSINESS_HOURS: ConversationIntent.BUSINESS_HOURS,
+    VIEW_RESERVATION: ConversationIntent.VIEW_RESERVATION,
+    VIEW_QR: ConversationIntent.VIEW_QR,
     RESERVATION_CONFIRM: ConversationIntent.RESERVATION,
     RESERVATION_CANCEL: ConversationIntent.RESERVATION,
     RESERVATION_ENV_NONE: ConversationIntent.RESERVATION,

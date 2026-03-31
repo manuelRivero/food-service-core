@@ -38,6 +38,7 @@ model business {
   orders                 orders[]
   reservation            reservation[]
   reservation_block      reservation_block[]
+  reservation_config     reservation_config?
   table                  table[]
 }
 
@@ -343,6 +344,7 @@ model environment {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model reservation {
   id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  checkin_token     String              @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   business_id       String              @db.Uuid
   customer_id       String              @db.Uuid
   conversation_id   String?             @db.Uuid
@@ -353,6 +355,7 @@ model reservation {
   status            String?             @default("confirmed")
   notes             String?
   created_at        DateTime?           @default(now()) @db.Timestamptz(6)
+  arrived_count     Int?                @default(0)
   business          business            @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_reservation_business")
   conversation      conversation?       @relation(fields: [conversation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_conversation")
   customer          customer            @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_customer")
@@ -363,12 +366,13 @@ model reservation {
 }
 
 model reservation_table {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   reservation_id String      @db.Uuid
   table_id       String      @db.Uuid
   reservation    reservation @relation(fields: [reservation_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_reservation_table_reservation")
   table          table       @relation(fields: [table_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_reservation_table_table")
 
-  @@id([reservation_id, table_id])
+  @@unique([reservation_id, table_id], map: "unique_reservation_table")
   @@index([reservation_id], map: "idx_rt_reservation")
   @@index([table_id], map: "idx_rt_table")
 }
@@ -405,4 +409,19 @@ model table {
 
   @@index([business_id], map: "idx_table_business")
   @@index([environment_id], map: "idx_table_environment")
+}
+
+model reservation_config {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id             String    @unique @db.Uuid
+  slot_duration_minutes   Int?      @default(120)
+  min_advance_minutes     Int?      @default(30)
+  max_days_ahead          Int?      @default(15)
+  same_day_cutoff         DateTime? @db.Time(6)
+  max_reservation_time    DateTime? @db.Time(6)
+  allow_table_combination Boolean?  @default(true)
+  max_party_size          Int?      @default(20)
+  is_enabled              Boolean?  @default(true)
+  created_at              DateTime? @default(now()) @db.Timestamptz(6)
+  business                business  @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_res_config_business")
 }

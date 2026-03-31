@@ -1,4 +1,4 @@
-import { HandlerResult } from '../types';
+import { HandlerFollowUp, HandlerResult } from '../types';
 
 export const parseProductId = (payloadId: string): string => {
     return payloadId.split(':')[1] ?? '';
@@ -43,9 +43,13 @@ export const extractPayloadId = (message: any): string | undefined => {
 // src/controllers/webhook/handlerHelpers.ts
 
 
-export const textResponse = (content: string): HandlerResult => ({
+export const textResponse = (
+  content: string,
+  followUps?: HandlerFollowUp[]
+): HandlerResult => ({
   content,
-  isInteractive: false
+  isInteractive: false,
+  ...(followUps?.length ? { followUps } : {})
 });
 
 export const listResponse = (listMessage: any): HandlerResult => ({
@@ -53,9 +57,13 @@ export const listResponse = (listMessage: any): HandlerResult => ({
   isInteractive: true
 });
 
-export const interactiveResponse = (interactiveMessage: any): HandlerResult => ({
+export const interactiveResponse = (
+  interactiveMessage: any,
+  followUps?: HandlerFollowUp[]
+): HandlerResult => ({
   content: interactiveMessage,
-  isInteractive: true
+  isInteractive: true,
+  ...(followUps?.length ? { followUps } : {})
 });
 
 export const noResponse = (): null => null;

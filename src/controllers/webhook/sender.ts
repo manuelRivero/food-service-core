@@ -63,6 +63,34 @@ export const sendResponse = async (
       interactiveMessage: message as WhatsAppInteractiveMessage
     });
   }
+
+};
+
+export const sendResponseWithQrSequence = async (
+  ctx: WebhookContext,
+  result: HandlerResult
+): Promise<void> => {
+  await sendResponse(ctx, result);
+
+  if (!result.followUps?.length) {
+    return;
+  }
+
+  for (const follow of result.followUps) {
+    if (follow.type === 'image') {
+      await sender.sendImageFromDataUrl({
+        phoneNumberId: ctx.phoneNumberId,
+        to: ctx.to,
+        dataUrl: follow.dataUrl
+      });
+    } else if (follow.type === 'text') {
+      await sender.sendTextMessage({
+        phoneNumberId: ctx.phoneNumberId,
+        to: ctx.to,
+        message: follow.message
+      });
+    }
+  }
 };
 
 export const sendResponseNoContext = async (

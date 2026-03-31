@@ -1,8 +1,10 @@
 import { prisma } from '../lib/prisma';
-import type { EnrichedContext } from '../controllers/webhook/types';
+import { RESERVATION_OCCUPYING_STATUSES } from '../constants/reservation';
+import type { EnrichedContext, HandlerResult } from '../controllers/webhook/types';
 import type { WhatsAppInteractiveMessage, WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
 import { updateConversationState } from '../repositories/conversationState.repository';
 import { buildListMessageFromButtons } from '../whatsappBuilders';
+import { generateReservationQR } from '../utils/reservationQr';
 
 export type ReservationStep =
   | 'ASK_DATE'
@@ -83,6 +85,34 @@ function addMinutesWithWrap(time: string, minutes: number): string {
   return `${hh}:${mm}`;
 }
 
+function formatReservationDateDb(d: Date): string {
+  const day = d.getUTCDate();
+  const month = d.getUTCMonth() + 1;
+  const year = d.getUTCFullYear();
+  return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
+}
+
+function formatDbTimeReservation(d: Date): string {
+  const h = d.getUTCHours();
+  const m = d.getUTCMinutes();
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function reservationStatusLabel(status: string): string {
+  switch (status) {
+    case "confirmed":
+      return "Confirmada";
+    case "partial":
+      return "Parcial";
+    case "completed":
+      return "Completada";
+    case "closed":
+      return "Cerrada";
+    default:
+      return status;
+  }
+}
+
 async function createReservation(
   prismaClient: typeof prisma,
   input: {
@@ -98,7 +128,7 @@ async function createReservation(
   const endTime = addMinutes(input.time, SLOT_DURATION_MINUTES);
   const reservationDate = normalizeDate(input.date);
   const startDateTime = buildDateTime(reservationDate, input.time);
-const endDateTime = buildDateTime(reservationDate, endTime);
+  const endDateTime = buildDateTime(reservationDate, endTime);
 
   return prismaClient.$transaction(async (tx) => {
     const conflict = await tx.reservation_table.findFirst({
@@ -107,7 +137,7 @@ const endDateTime = buildDateTime(reservationDate, endTime);
         reservation: {
           reservation_date: normalizeDate(input.date),
           status: {
-            in: ["confirmed", "pending"],
+            in: [...RESERVATION_OCCUPYING_STATUSES],
           },
           AND: [
             {
@@ -227,7 +257,7 @@ export async function findAvailableTable(
         reservation: {
           reservation_date: reservationDate,
           status: {
-            in: ["confirmed", "pending"],
+            in: [...RESERVATION_OCCUPYING_STATUSES],
           },
           AND: [
             {
@@ -344,21 +374,137 @@ function selectTables(
   return null;
 }
 
-const parsePartySize = (value: string): number | null => {
-  const match = value.match(/\d+/);
-  if (!match) return null;
-  const numberValue = Number(match[0]);
-  return Number.isNaN(numberValue) || numberValue <= 0 ? null : numberValue;
-};
+export async function handleViewReservationIntent(
+  ctx: EnrichedContext
+): Promise<HandlerResult> {
+  if (!ctx.customer?.id) {
+    return {
+      content: "🤖\n\nNo encontramos tu usuario.",
+      isInteractive: false
+    };
+  }
+
+  const r = await prisma.reservation.findFirst({
+    where: {
+      customer_id: ctx.customer.id,
+      status: { in: [...RESERVATION_OCCUPYING_STATUSES] }
+    },
+    orderBy: [{ reservation_date: "desc" }, { start_time: "desc" }],
+    include: {
+      reservation_table: { include: { table: true } }
+    }
+  });
+
+  if (!r) {
+    return {
+      content: "🤖\n\nNo tenés reservas activas.",
+      isInteractive: false
+    };
+  }
+
+  const dateStr = formatReservationDateDb(r.reservation_date);
+  const timeStr = formatDbTimeReservation(r.start_time);
+  const mesas = r.reservation_table.map((rt) => `- ${rt.table.name}`).join("\n");
+  const statusEsp = reservationStatusLabel(r.status ?? "confirmed");
+  const bodyText = `🤖\n\n📋 Tu reserva:\n\n📅 ${dateStr}\n⏰ ${timeStr}\n👥 ${r.party_size}\n\nEstado: ${statusEsp}\n\nMesas:\n${mesas}`;
+
+  return {
+    content: {
+      type: "interactive",
+      interactive: {
+        type: "button",
+        header: { type: "text", text: "Tu reserva" },
+        body: { text: bodyText },
+        footer: { text: "Opciones" },
+        action: {
+          buttons: [
+            {
+              type: "reply",
+              reply: { id: "VIEW_QR", title: "Ver código QR" }
+            }
+          ]
+        }
+      }
+    },
+    isInteractive: true
+  };
+}
+
+export async function handleViewQrIntent(
+  ctx: EnrichedContext
+): Promise<HandlerResult> {
+  if (!ctx.customer?.id) {
+    return {
+      content: "🤖\n\nNo encontramos tu usuario.",
+      isInteractive: false
+    };
+  }
+
+  const metadata = ctx.conversationState?.metadata ?? {};
+  const lastId = metadata.lastReservationId as string | undefined;
+
+  let r =
+    lastId != null
+      ? await prisma.reservation.findFirst({
+          where: { id: lastId, customer_id: ctx.customer.id }
+        })
+      : null;
+
+  if (!r) {
+    r = await prisma.reservation.findFirst({
+      where: {
+        customer_id: ctx.customer.id,
+        status: { in: [...RESERVATION_OCCUPYING_STATUSES] }
+      },
+      orderBy: [{ reservation_date: "desc" }, { start_time: "desc" }]
+    });
+  }
+
+  if (!r) {
+    return {
+      content:
+        "🤖\n\nNo encontré una reserva para mostrar el código.",
+      isInteractive: false
+    };
+  }
+
+  const qrDataUrl = await generateReservationQR(
+    (r as unknown as { checkin_token: string }).checkin_token
+  );
+
+  return {
+    content: "🤖\n\nAcá está tu código QR para el ingreso.",
+    isInteractive: false,
+    followUps: [{ type: "image", dataUrl: qrDataUrl }]
+  };
+}
 
 export const handleReservationIntent = async (
   ctx: EnrichedContext
-): Promise<string | WhatsAppInteractiveMessage | WhatsAppListMessage | null> => {
+): Promise<
+  string | WhatsAppInteractiveMessage | WhatsAppListMessage | HandlerResult | null
+> => {
   const metadata = ctx.conversationState?.metadata ?? {};
   const reservation: ReservationState | undefined = metadata.reservation;
   const messageText = ctx.message?.text?.body?.trim() ?? '';
+  const dateRegex = /^\d{1,2}\/\d{1,2}(\/\d{4})?$/;
+  const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
   if (!reservation) {
+    if (ctx.customer?.id) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const activeReservation = await prisma.reservation.findFirst({
+        where: {
+          customer_id: ctx.customer.id,
+          status: { in: [...RESERVATION_OCCUPYING_STATUSES] },
+          reservation_date: { gte: today }
+        }
+      });
+      if (activeReservation) {
+        return '🤖\n\n⚠️ Ya tenés una reserva activa.\n\nSi querés modificarla o cancelarla decime 🙏';
+      }
+    }
     const nextState: ReservationState = { step: 'ASK_DATE' };
     await updateConversationState(ctx.conversationId, {
       metadata: { ...metadata, reservation: nextState }
@@ -370,6 +516,9 @@ export const handleReservationIntent = async (
     case 'ASK_DATE': {
       if (!messageText) {
         return '🤖\n\n¿Para qué fecha querés reservar? (Ej: 05/04)';
+      }
+      if (!dateRegex.test(messageText)) {
+        return '🤖\n\n❌ Formato inválido. Usá DD/MM (ej: 05/04)';
       }
       const nextState: ReservationState = {
         ...reservation,
@@ -385,6 +534,9 @@ export const handleReservationIntent = async (
       if (!messageText) {
         return '🤖\n\n¿A qué hora? (Ej: 20:30)';
       }
+      if (!timeRegex.test(messageText)) {
+        return '🤖\n\n❌ Hora inválida. Usá formato HH:mm (ej: 20:30)';
+      }
       const nextState: ReservationState = {
         ...reservation,
         time: messageText,
@@ -396,9 +548,9 @@ export const handleReservationIntent = async (
       return '🤖\n\n¿Para cuántas personas?';
     }
     case 'ASK_PARTY_SIZE': {
-      const partySize = parsePartySize(messageText);
-      if (!partySize) {
-        return '🤖\n\n¿Para cuántas personas? (Ej: 4)';
+      const partySize = Number(messageText);
+      if (Number.isNaN(partySize) || partySize <= 0) {
+        return '🤖\n\n❌ Indicá un número válido de personas (ej: 4)';
       }
       const nextState: ReservationState = {
         ...reservation,
@@ -571,19 +723,74 @@ export const handleReservationIntent = async (
         environmentId: reservation.environmentId
       });
       if (result.tableIds && ctx.customer?.id) {
-        await createReservation(prisma, {
+        const created = await createReservation(prisma, {
           businessId: ctx.business.id,
           customerId: ctx.customer.id,
           conversationId: ctx.conversationId,
           partySize: reservation.partySize ?? 0,
-          date: reservation.date ?? '',
-          time: reservation.time ?? '',
+          date: reservation.date ?? "",
+          time: reservation.time ?? "",
           tableIds: result.tableIds
         });
+
+        let followUps: HandlerResult["followUps"];
+        try {
+          const checkinToken = (created as unknown as { checkin_token: string })
+            .checkin_token;
+          const qrDataUrl = await generateReservationQR(checkinToken);
+          followUps = [{ type: "image", dataUrl: qrDataUrl }];
+        } catch (err) {
+          console.error("[Reservation] No se pudo generar el QR:", err);
+        }
+
         await updateConversationState(ctx.conversationId, {
-          metadata: { ...metadata, reservation: undefined }
+          metadata: {
+            ...metadata,
+            reservation: undefined,
+            lastReservationId: created.id
+          }
         });
-        return '🤖\n\n✅ Reserva confirmada';
+        await prisma.conversation.update({
+          where: { id: ctx.conversationId },
+          data: {
+            status: "closed",
+            idle_closed_at: new Date(),
+            idle_reminder_sent_at: null,
+            lastReferencedProductId: null
+          }
+        });
+
+        const bodyText = `🤖\n\n✅ Reserva confirmada\n\n📅 ${reservation.date ?? "-"}\n⏰ ${reservation.time ?? "-"}\n👥 ${reservation.partySize ?? "-"}\n\n📍 Mostrá este código al llegar 👇\n\nPodés compartirlo con quienes vengan con vos`;
+
+        const confirmResult: HandlerResult = {
+          content: {
+            type: "interactive",
+            interactive: {
+              type: "button",
+              header: { type: "text", text: "Reserva lista" },
+              body: { text: bodyText },
+              footer: { text: "Seguí tu reserva" },
+              action: {
+                buttons: [
+                  {
+                    type: "reply",
+                    reply: { id: "VIEW_RESERVATION", title: "Ver mi reserva" }
+                  }
+                ]
+              }
+            }
+          },
+          isInteractive: true,
+          followUps: [
+            ...(followUps ?? []),
+            {
+              type: "text",
+              message:
+                "🤖\n\n¡Gracias por reservar con nosotros! Te esperamos 🙌"
+            }
+          ]
+        };
+        return confirmResult;
       }
 
       const suggestions = await suggestAlternativeTimes(prisma, {

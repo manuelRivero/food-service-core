@@ -323,4 +323,84 @@ export class WhatsAppSenderService {
       messageObject: params.interactiveMessage
     });
   }
+
+  private async uploadImageDataUrl(
+    phoneNumberId: string,
+    dataUrl: string
+  ): Promise<string> {
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    if (!token) {
+      throw new Error("WHATSAPP_ACCESS_TOKEN no está definida");
+    }
+
+    const match = dataUrl.match(/^data:(image\/[\w+.-]+);base64,(.+)$/);
+    if (!match) {
+      throw new Error("data URL de imagen inválida");
+    }
+
+    const mime = match[1];
+    const base64 = match[2];
+    const buffer = Buffer.from(base64, "base64");
+    const formData = new FormData();
+    formData.append("messaging_product", "whatsapp");
+    formData.append("type", mime);
+    const blob = new Blob([buffer], { type: mime });
+    formData.append("file", blob, "qr.png");
+
+    const res = await fetch(
+      `${this.baseUrl}/${phoneNumberId}/media`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      }
+    );
+
+    if (!res.ok) {
+      const detail = await res.text();
+      throw new Error(`Error subiendo imagen a WhatsApp: ${res.status} ${detail}`);
+    }
+
+    const json = (await res.json()) as { id: string };
+    if (!json.id) {
+      throw new Error("Respuesta de media sin id");
+    }
+    return json.id;
+  }
+
+  async sendImageFromDataUrl(params: {
+    phoneNumberId: string;
+    to: string;
+    dataUrl: string;
+  }): Promise<void> {
+    const { phoneNumberId, to, dataUrl } = params;
+    const normalizedTo = this.normalizeRecipient(to);
+    const mediaId = await this.uploadImageDataUrl(phoneNumberId, dataUrl);
+
+    try {
+      await axios.post(
+        `${this.baseUrl}/${phoneNumberId}/messages`,
+        {
+          messaging_product: "whatsapp",
+          to: normalizedTo,
+          type: "image",
+          image: { id: mediaId }
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`
+          }
+        }
+      );
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      const status = axiosError.response?.status;
+      const data = axiosError.response?.data;
+      const messageDetail =
+        typeof data === "string" ? data : JSON.stringify(data ?? {});
+      throw new Error(
+        `Error al enviar imagen WhatsApp: ${status ?? "sin_status"} ${messageDetail}`
+      );
+    }
+  }
 }
