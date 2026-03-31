@@ -686,7 +686,7 @@ export const handleReservationIntent = async (
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: nextState }
       });
-      return '🤖\n\n*Hora de reserva* ⏰\n\n¿A qué hora? (Ej: 20:30)';
+      return '🤖\n\n*¡Fecha registrada!* ✅\n\nPerfecto, ya agendé la fecha.\n\n*Hora de reserva* ⏰\n\n¿A qué hora? (Ej: 20:30)';
     }
     case 'ASK_TIME': {
       if (!messageText) {
@@ -735,7 +735,7 @@ export const handleReservationIntent = async (
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: nextState }
       });
-      return '🤖\n\n*Cantidad de personas* 👥\n\n¿Para cuántas personas?';
+      return '🤖\n\n*¡Hora registrada!* ✅\n\nExcelente, ya tengo la hora.\n\n*Cantidad de personas* 👥\n\n¿Para cuántas personas?';
     }
     case 'ASK_PARTY_SIZE': {
       const partySize = Number(messageText);
@@ -778,7 +778,7 @@ export const handleReservationIntent = async (
           interactive: {
             type: 'button',
             header: { type: 'text', text: 'Confirmar reserva' },
-            body: { text: `🤖\n\n*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
+            body: { text: `🤖\n\n*¡Cantidad registrada!* ✅\n\nYa tengo la cantidad de personas.\n\n*Confirmar reserva* ✅\n\nRevisá los datos:\n${summary}` },
             footer: { text: 'Seleccioná una opción' },
             action: {
               buttons: [
@@ -810,7 +810,7 @@ export const handleReservationIntent = async (
       });
 
       return buildListMessageFromButtons(
-        '🤖\n\n*Preferencia de ambiente* 🪑\n\n¿En qué ambiente preferís reservar?',
+        '🤖\n\n*¡Cantidad registrada!* ✅\n\nYa tengo la cantidad de personas.\n\n*Preferencia de ambiente* 🪑\n\n¿En qué ambiente preferís reservar?',
         buttons,
         'Ver opciones',
         '',
