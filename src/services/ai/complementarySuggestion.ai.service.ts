@@ -50,6 +50,13 @@ function parseJsonObject(raw: string): Record<string, unknown> | null {
   }
 }
 
+/** WhatsApp usa *una* pareja de asteriscos para negrita (*así*). El modelo a veces devuelve Markdown (**así**). */
+function normalizeWhatsappBoldMarkers(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '*$1*')
+    .replace(/\*\*+/g, '*');
+}
+
 const MEANINGFUL_TAG_SET = new Set<string>(['STARTER', 'MAIN', 'SIDE', 'DRINK', 'DESSERT']);
 
 function isMenuCategoryTag(v: unknown): v is MenuCategoryTag {
@@ -187,10 +194,15 @@ async function llmMenuStepUnified(params: {
 
   const system = `Sos asistente de un restaurante por WhatsApp. El cliente va armando un pedido; querés acercarlo a un menú completo (entrada, plato fuerte, bebida, guarnición si aplica, postre), UN paso a la vez.
 
+FORMATO DE NEGRITA (WhatsApp Business, obligatorio):
+- En WhatsApp la negrita es con UN solo asterisco de cada lado: *palabra o frase* (ejemplo: *muy rico*).
+- NO uses doble asterisco (**texto**): eso es Markdown y en WhatsApp no se interpreta como negrita; se vería mal.
+- En "pitch" y "bridgeMessage", como máximo un resalte en negrita siguiendo la regla de un asterisco por lado.
+
 TAREA EN UNA SOLA RESPUESTA (JSON):
 1) "nextTag": elegí EXACTAMENTE UNO entre [${allowed}] — solo tags que el cliente aún no cubrió (la lista permitida ya está validada).
-2) "pitch": 2 a 4 oraciones en español (Argentina/latino), para cuando el usuario abra la *lista* de productos: motivá a sumar algo de ESE tipo. Sin listas numeradas; podés usar *una* negrita con asteriscos. No incluyas nombres de platos del catálogo.
-3) "bridgeMessage": 2 a 4 oraciones en español (Argentina/latino), tono cercano. Es el texto que verá el cliente *antes* de la lista, en un mensaje con dos botones ("Ver sugerencias" / "Seguir comprando"). Debe: reconocer lo que ya agregó ("${lastItemName}"), transmitir que el menú se puede completar, y anticipar que tenés sugerencias del tipo asociado a "nextTag" que combinan bien. No listes platos ni ids. Sin markdown salvo *una* negrita opcional.
+2) "pitch": 2 a 4 oraciones en español (Argentina/latino), para cuando el usuario abra la lista de productos: motivá a sumar algo de ESE tipo. Sin listas numeradas. No incluyas nombres de platos del catálogo.
+3) "bridgeMessage": 2 a 4 oraciones en español (Argentina/latino), tono cercano. Es el texto que verá el cliente antes de la lista, junto a botones (Ver sugerencias, Seguir comprando, Finalizar pedido). Debe: reconocer lo que ya agregó ("${lastItemName}"), transmitir que el menú se puede completar, y anticipar que tenés sugerencias del tipo asociado a "nextTag" que combinan bien. No listes platos ni ids.
 4) "orderedIds": array con los UUID de TODOS los productos del catálogo cuyo tag (segunda columna) sea EXACTAMENTE igual a "nextTag", cada id una sola vez, ordenados de MAYOR a MENOR interés para este cliente según el carrito y el último plato agregado. No inventes ids: solo los del catálogo.
 
 Respondé SOLO JSON válido:
@@ -227,11 +239,11 @@ ${catalogLines}`;
   if (!missingOrdered.includes(nextTag)) {
     return null;
   }
-  const pitchTrim = pitch.trim();
+  const pitchTrim = normalizeWhatsappBoldMarkers(pitch.trim());
   if (pitchTrim.length < 10) return null;
 
   let bridgeTrim =
-    typeof bridgeRaw === 'string' ? bridgeRaw.trim() : '';
+    typeof bridgeRaw === 'string' ? normalizeWhatsappBoldMarkers(bridgeRaw.trim()) : '';
   if (bridgeTrim.length < 25 || bridgeTrim.length > 600) {
     bridgeTrim = buildFallbackBridgeMessage(lastItemName, nextTag);
   }

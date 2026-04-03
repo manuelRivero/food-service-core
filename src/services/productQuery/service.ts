@@ -26,6 +26,10 @@ import {
   getActivePrice,
   normalizeMetadata,
 } from './utils';
+import {
+  formatSmartRecommendationsBullets,
+  getSmartRecommendations,
+} from './smartFoodRecommendations';
 
 /**
  * Flujo PRODUCT_QUERY: búsqueda, estado y payloads para WhatsApp (sin envolver en HandlerResult).
@@ -79,12 +83,21 @@ export async function executeProductQuery(
   }
 
   if (items.length > 1) {
+    const smart = await getSmartRecommendations({
+      userQuery: keyword,
+      businessId: ctx.business.id,
+      business: ctx.business,
+      vectorResults: items,
+    });
+
+    const listSource = smart.forList.length > 0 ? smart.forList : items;
+
     await updateConversationState(ctx.conversation.id, {
       mode: 'FILTER_SET',
       metadata: buildMetadataValue({
         pendingProductSelection: true,
         pendingQuestion: userMessage,
-        candidateProductIds: items.map((item) => item.id),
+        candidateProductIds: listSource.map((item) => item.id),
       }),
     } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
 
@@ -92,11 +105,12 @@ export async function executeProductQuery(
       await clearLastReferencedProductId(ctx.conversation.id);
     }
 
-    const listBody = formatBotUserMessage(
-      'Varios resultados',
-      '📋',
-      'Seleccioná un plato de la lista 👇'
-    );
+    const intro =
+      smart.usedLlm && smart.forDisplay.length > 0
+        ? `${formatSmartRecommendationsBullets(smart.forDisplay)}\n\nSeleccioná un plato en la lista 👇`
+        : 'Seleccioná un plato de la lista 👇';
+
+    const listBody = formatBotUserMessage('Varios resultados', '📋', intro);
 
     const listMessage = buildListMessage({
       headerText: '',
@@ -106,11 +120,13 @@ export async function executeProductQuery(
       sections: [
         {
           title: 'Resultados',
-          rows: items.map((item) => ({
+          rows: listSource.map((item) => ({
             id: `SELECT_PRODUCT:${item.id}`,
             title: item.name,
             description: truncateDescription(
-              item.description ?? item.ingredients ?? 'Sin descripción'
+              item.description ??
+                ('ingredients' in item ? item.ingredients : null) ??
+                'Sin descripción'
             ),
           })),
         },
