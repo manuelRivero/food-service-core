@@ -653,7 +653,7 @@ Respondé en español con información útil sobre el plato (precio, porciones s
   }> = [
     {
       type: 'reply',
-      reply: { id: `ADD_ITEM:${item.id}`, title: 'Agregar 1' },
+      reply: { id: `ADD_ITEM:${item.id}:1`, title: 'Agregar 1' },
     },
   ];
 
@@ -1067,7 +1067,7 @@ export const handleCategorySelection = async (
       : 'N/A';
     return {
       title: toRowTitle(item.name),
-      payload: `ADD_ITEM:${item.id}`,
+      payload: `ADD_ITEM:${item.id}:1`,
       description: toRowDescription(priceText),
       sectionTitle: 'Platillos'
     };

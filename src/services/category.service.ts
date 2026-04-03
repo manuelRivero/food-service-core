@@ -126,7 +126,7 @@ export const buildCategoryProductListMessage = async (
             : 'N/A';
         return {
             title: truncateTitle(item.name),
-            payload: `ADD_ITEM:${item.id}`,
+            payload: `ADD_ITEM:${item.id}:1`,
             description: truncateDescription(priceText),
             sectionTitle: 'Platillos'
         };

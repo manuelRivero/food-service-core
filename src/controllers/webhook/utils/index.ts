@@ -5,8 +5,8 @@ export const parseProductId = (payloadId: string): string => {
 };
 
 /**
- * `ADD_ITEM:<productId>` o `ADD_ITEM:<productId>:<qty>` (qty 1–99).
- * El id del producto puede ser UUID; la cantidad es el último segmento numérico.
+ * `ADD_ITEM:<productId>` (legacy, sin cantidad explícita) o `ADD_ITEM:<productId>:<qty>` (qty 1–99).
+ * Con UUID estándar: parts[1]=id, parts[2]=qty. La cantidad es el último segmento numérico.
  */
 export function parseAddItemButtonPayload(payloadId: string): {
   productId: string;

@@ -201,7 +201,7 @@ export class ProductAttributeQuestionHandler implements IntentHandler {
                 {
                   type: 'reply',
                   reply: {
-                    id: `ADD_ITEM:${ctx.conversation.lastReferencedProductId}`,
+                    id: `ADD_ITEM:${ctx.conversation.lastReferencedProductId}:1`,
                     title: 'Agregar'
                   }
                 }
@@ -283,7 +283,7 @@ export class ProductAttributeQuestionHandler implements IntentHandler {
                 {
                   type: 'reply',
                   reply: {
-                    id: `ADD_ITEM:${product.id}`,
+                    id: `ADD_ITEM:${product.id}:1`,
                     title: 'Agregar'
                   }
                 }

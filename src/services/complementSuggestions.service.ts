@@ -140,7 +140,7 @@ export async function materializeComplementSuggestionsList(
 
   const suggestionButtons = ordered.map((row) => ({
     title: truncateTitle(row.name),
-    payload: `ADD_ITEM:${row.id}`,
+    payload: `ADD_ITEM:${row.id}:1`,
     description: truncateDescription(row.menu_category.name, 72),
     sectionTitle: 'Sugerencias',
   }));

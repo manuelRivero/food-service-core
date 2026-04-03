@@ -18,9 +18,10 @@ function resolveAddItemQuantity(params: {
   payloadId: string;
   metadata: ReturnType<typeof normalizeMetadata>;
 }): number {
-  const explicit = parseAddItemButtonPayload(params.payloadId).quantityFromPayload;
-  if (explicit != null && explicit >= 1) {
-    return Math.min(99, Math.floor(explicit));
+  const { quantityFromPayload } = parseAddItemButtonPayload(params.payloadId);
+  // ADD_ITEM:<id>:<n> en el payload siempre manda (p. ej. :1 en "Agregar 1"); no pisar con sugerencias.
+  if (quantityFromPayload != null) {
+    return Math.min(99, Math.max(1, Math.floor(quantityFromPayload)));
   }
   const last = params.metadata.lastListSuggestedQuantity;
   if (last != null && last >= 1) {
