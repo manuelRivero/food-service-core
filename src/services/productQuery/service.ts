@@ -84,9 +84,11 @@ export async function executeProductQuery(
 
   if (items.length > 1) {
     const smart = await getSmartRecommendations({
-      userQuery: keyword,
+      userQuery: userMessage.trim() || keyword,
+      termSource: `${keyword} ${userMessage}`.trim(),
       businessId: ctx.business.id,
       business: ctx.business,
+      quantity: classification?.quantity ?? null,
       vectorResults: items,
     });
 
@@ -106,7 +108,7 @@ export async function executeProductQuery(
     }
 
     const intro =
-      smart.usedLlm && smart.forDisplay.length > 0
+      smart.forDisplay.length > 0
         ? `${formatSmartRecommendationsBullets(smart.forDisplay)}\n\nSeleccioná un plato en la lista 👇`
         : 'Seleccioná un plato de la lista 👇';
 

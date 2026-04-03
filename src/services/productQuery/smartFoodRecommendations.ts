@@ -18,17 +18,78 @@ export type SmartFoodRecommendation = {
 };
 
 export type GetSmartRecommendationsResult = {
-  /** Hasta 3 ítems con razón del LLM (vacío si hubo fallback sin bullets). */
+  /** Hasta 3 ítems con razón del LLM o fallback (vacío si IA desactivada sin bullets). */
   forDisplay: SmartFoodRecommendation[];
   /** Filas para la lista interactiva y metadata. */
   forList: SmartFoodRecommendation[];
   usedLlm: boolean;
 };
 
-const TOP_VECTOR_FOR_LLM = 8;
+const TOP_FOR_LLM = 5;
 const TOP_PICKS = 3;
+const TOP_FALLBACK_DISPLAY = 3;
 
 const FALLBACK_REASON = 'Buena coincidencia con tu búsqueda.';
+
+/** Palabras que no sirven para filtrar por coincidencia léxica. */
+const SPANISH_STOPWORDS = new Set([
+  'algo',
+  'como',
+  'con',
+  'cual',
+  'cuando',
+  'cuatro',
+  'cinco',
+  'de',
+  'del',
+  'diez',
+  'doce',
+  'dos',
+  'el',
+  'en',
+  'esa',
+  'ese',
+  'eso',
+  'esta',
+  'este',
+  'favor',
+  'hay',
+  'las',
+  'los',
+  'mas',
+  'me',
+  'mi',
+  'muy',
+  'nueve',
+  'nos',
+  'ocho',
+  'once',
+  'por',
+  'para',
+  'pedido',
+  'que',
+  'quiero',
+  'se',
+  'seis',
+  'siete',
+  'sin',
+  'son',
+  'su',
+  'sus',
+  'tengo',
+  'traer',
+  'tu',
+  'tres',
+  'una',
+  'uno',
+  'unos',
+  'unas',
+  'ver',
+  'vos',
+  'y',
+  'ya',
+  'yo',
+]);
 
 function stripCodeFences(raw: string): string {
   return raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
@@ -61,6 +122,79 @@ function tryParseRecommendationsJson(
   }
 }
 
+function normalizeForMatch(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '');
+}
+
+/**
+ * Términos significativos para filtrar nombre/descripción (evita pulpo cuando buscás pollo).
+ */
+export function extractSearchTerms(termSource: string): string[] {
+  const raw = normalizeForMatch(termSource.trim());
+  if (!raw) return [];
+  const parts = raw.split(/[^a-z0-9ñ]+/i).filter(Boolean);
+  const terms = new Set<string>();
+  for (const w of parts) {
+    if (w.length < 3 || /^\d+$/.test(w) || SPANISH_STOPWORDS.has(w)) continue;
+    terms.add(w);
+  }
+  return [...terms];
+}
+
+function itemMatchesAnyTerm(item: MenuItemSearchResult, terms: string[]): boolean {
+  if (terms.length === 0) return true;
+  const hay = normalizeForMatch(`${item.name} ${item.description ?? ''}`);
+  return terms.some((t) => hay.includes(t));
+}
+
+function keywordPrefilter(
+  items: MenuItemSearchResult[],
+  terms: string[]
+): MenuItemSearchResult[] {
+  if (terms.length === 0) return items;
+  const matched = items.filter((i) => itemMatchesAnyTerm(i, terms));
+  return matched.length > 0 ? matched : items;
+}
+
+function dedupeMenuResults(items: MenuItemSearchResult[]): MenuItemSearchResult[] {
+  const seenId = new Set<string>();
+  const seenName = new Set<string>();
+  const out: MenuItemSearchResult[] = [];
+  for (const item of items) {
+    const nameKey = normalizeForMatch(item.name.trim());
+    if (seenId.has(item.id) || seenName.has(nameKey)) continue;
+    seenId.add(item.id);
+    seenName.add(nameKey);
+    out.push(item);
+  }
+  return out;
+}
+
+function keywordRelevanceScore(item: MenuItemSearchResult, terms: string[]): number {
+  if (terms.length === 0) return 0;
+  const name = normalizeForMatch(item.name);
+  const desc = normalizeForMatch(item.description ?? '');
+  let s = 0;
+  for (const t of terms) {
+    if (name.includes(t)) s += 4;
+    else if (desc.includes(t)) s += 1;
+  }
+  return s;
+}
+
+function sortByKeywordRelevance(
+  items: MenuItemSearchResult[],
+  terms: string[]
+): MenuItemSearchResult[] {
+  if (terms.length === 0) return items;
+  return [...items].sort(
+    (a, b) => keywordRelevanceScore(b, terms) - keywordRelevanceScore(a, terms)
+  );
+}
+
 async function loadCategoryNamesByItemId(
   businessId: string,
   ids: string[]
@@ -90,12 +224,26 @@ function menuResultsToSmart(
   }));
 }
 
+function buildLlmFailureDisplay(
+  sortedFiltered: MenuItemSearchResult[]
+): SmartFoodRecommendation[] {
+  return menuResultsToSmart(
+    sortedFiltered.slice(0, TOP_FALLBACK_DISPLAY),
+    FALLBACK_REASON
+  );
+}
+
+type PromptOptions = {
+  quantity?: number | null;
+};
+
 /**
- * Arma el prompt para reordenar y explicar hasta 3 platos a partir de candidatos vectoriales.
+ * Arma el prompt para reordenar y explicar hasta 3 platos a partir de candidatos filtrados.
  */
 export function FOOD_RECOMMENDER_PROMPT(
   userQuery: string,
-  candidates: FoodRecommenderCandidate[]
+  candidates: FoodRecommenderCandidate[],
+  options?: PromptOptions
 ): string {
   const lines = candidates
     .map((c, i) => {
@@ -104,63 +252,93 @@ export function FOOD_RECOMMENDER_PROMPT(
     })
     .join('\n');
 
-  return `Sos asistente de un restaurante por WhatsApp. El cliente escribió: "${userQuery}".
+  const qty = options?.quantity;
+  const qtyBlock =
+    qty != null && qty > 0
+      ? `\nCantidad pedida (porciones / personas, según interprete el mensaje): ${qty}. Tené en cuenta si el plato parece individual, para compartir o adecuado para varias personas según nombre y descripción; no inventes porciones que no figuren en el texto.`
+      : '';
 
-Inferí preferencias implícitas (liviano vs contundente, tipo de comida, ingredientes que encajan o no) solo a partir de esa consulta y de las fichas siguientes.
+  return `Sos asistente de un restaurante por WhatsApp. El cliente escribió: "${userQuery}".${qtyBlock}
 
-Candidatos (resultado de búsqueda por similitud en el menú). Debés elegir SOLO ítems cuyo id aparezca exactamente acá:
+Reglas estrictas (incumplir invalida la respuesta):
+- NO inventes ingredientes, alérgenos, calorías ni datos que NO aparezcan literalmente en nombre o descripción de cada ítem.
+- Solo podés basar la razón en categoría, nombre y descripción provistos. Si no estás seguro de un detalle culinario, usá formulaciones como "puede ser una opción liviana" o "podría encajar si buscás algo así", sin afirmar hechos no escritos.
+
+Inferí preferencias implícitas solo a partir del mensaje del cliente y de las fichas (sin suposiciones externas).
+
+Candidatos (ya filtrados por relevancia). Elegí SOLO ítems cuyo id esté exactamente en esta lista:
 ${lines}
 
 Tareas:
 1) Elegí hasta ${TOP_PICKS} ítems que mejor respondan a la intención del cliente.
 2) Ordenalos del más al menos adecuado.
-3) Para cada uno, una razón breve en español (máximo ~18 palabras), alineada con nombre/categoría/descripción; no inventes alérgenos ni datos que no figuren.
+3) Para cada uno, una razón breve en español (máximo ~18 palabras), cumpliendo las reglas de arriba.
 
 Respondé SOLO JSON válido, sin markdown ni texto extra:
 {"recommendations":[{"id":"<uuid>","reason":"<texto>"}]}`;
 }
 
+function buildFilteredPipeline(
+  vectorItems: MenuItemSearchResult[],
+  termSource: string
+): MenuItemSearchResult[] {
+  const deduped = dedupeMenuResults(vectorItems);
+  const terms = extractSearchTerms(termSource);
+  const filtered = keywordPrefilter(deduped, terms);
+  return sortByKeywordRelevance(filtered, terms);
+}
+
 /**
- * Búsqueda vectorial existente + re-ranking y razones vía LLM.
+ * Búsqueda vectorial existente + pre-filtro léxico, deduplicación, re-ranking LLM.
  * Si `vectorResults` se omite, se llama a {@link MenuService.searchMenuItemsByKeyword}.
  */
 export async function getSmartRecommendations(params: {
+  /** Texto mostrado al modelo como mensaje del cliente. */
   userQuery: string;
+  /** Texto para extraer términos de filtro (p. ej. nombre detectado + mensaje completo). */
+  termSource?: string;
   businessId: string;
   business: Business;
-  /** Evita repetir la búsqueda vectorial cuando ya tenés los resultados. */
+  quantity?: number | null;
   vectorResults?: MenuItemSearchResult[];
 }): Promise<GetSmartRecommendationsResult> {
   const { userQuery, businessId, business } = params;
-  const trimmedQuery = userQuery.trim();
+  const trimmedUtterance = userQuery.trim();
+  const termSource = (params.termSource ?? userQuery).trim();
 
   const vectorItems =
     params.vectorResults ??
     (await MenuService.searchMenuItemsByKeyword({
       businessId,
-      keyword: trimmedQuery,
+      keyword: trimmedUtterance,
     }));
 
   if (vectorItems.length === 0) {
     return { forDisplay: [], forList: [], usedLlm: false };
   }
 
-  const fallbackList = menuResultsToSmart(vectorItems, FALLBACK_REASON);
+  const sortedFiltered = buildFilteredPipeline(vectorItems, termSource);
+  const fallbackListFull = menuResultsToSmart(sortedFiltered, FALLBACK_REASON);
+  const llmFailureResult = (): GetSmartRecommendationsResult => ({
+    forDisplay: buildLlmFailureDisplay(sortedFiltered),
+    forList: menuResultsToSmart(sortedFiltered, ''),
+    usedLlm: false,
+  });
 
   const useAi =
     business.openai_active !== false &&
     !business.ai_blocked &&
-    trimmedQuery.length > 0;
+    trimmedUtterance.length > 0;
 
   if (!useAi) {
     return {
       forDisplay: [],
-      forList: fallbackList,
+      forList: fallbackListFull,
       usedLlm: false,
     };
   }
 
-  const topForLlm = vectorItems.slice(0, TOP_VECTOR_FOR_LLM);
+  const topForLlm = sortedFiltered.slice(0, TOP_FOR_LLM);
   const ids = topForLlm.map((i) => i.id);
   const categoryById = await loadCategoryNamesByItemId(businessId, ids);
 
@@ -176,8 +354,10 @@ export async function getSmartRecommendations(params: {
 
   try {
     const system =
-      'Sos un motor de recomendación de menú. Respondés únicamente JSON con el formato pedido.';
-    const user = FOOD_RECOMMENDER_PROMPT(trimmedQuery, candidates);
+      'Sos un motor de recomendación de menú. Respondés únicamente JSON con el formato pedido. No inventás datos que no estén en las fichas.';
+    const user = FOOD_RECOMMENDER_PROMPT(trimmedUtterance, candidates, {
+      quantity: params.quantity,
+    });
 
     const { content } = await generateAIResponse(business, [
       { role: 'system', content: system },
@@ -185,12 +365,12 @@ export async function getSmartRecommendations(params: {
     ]);
 
     if (!content || content.includes('🚫') || content.includes('⚡')) {
-      return { forDisplay: [], forList: fallbackList, usedLlm: false };
+      return llmFailureResult();
     }
 
     const parsed = tryParseRecommendationsJson(content);
     if (!parsed) {
-      return { forDisplay: [], forList: fallbackList, usedLlm: false };
+      return llmFailureResult();
     }
 
     const picked: SmartFoodRecommendation[] = [];
@@ -207,11 +387,10 @@ export async function getSmartRecommendations(params: {
     }
 
     if (picked.length === 0) {
-      return { forDisplay: [], forList: fallbackList, usedLlm: false };
+      return llmFailureResult();
     }
 
-    /** Lista interactiva: todos los hallazgos vectoriales; el cuerpo del mensaje destaca el top del LLM. */
-    const fullList = menuResultsToSmart(vectorItems, '');
+    const fullList = menuResultsToSmart(sortedFiltered, '');
 
     return {
       forDisplay: picked,
@@ -219,7 +398,7 @@ export async function getSmartRecommendations(params: {
       usedLlm: true,
     };
   } catch {
-    return { forDisplay: [], forList: fallbackList, usedLlm: false };
+    return llmFailureResult();
   }
 }
 

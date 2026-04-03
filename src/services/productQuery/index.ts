@@ -2,6 +2,7 @@ export { executeProductQuery } from './service';
 export type { ProductQueryServiceResult } from './types';
 export { formatBotUserMessage } from './utils';
 export {
+  extractSearchTerms,
   FOOD_RECOMMENDER_PROMPT,
   formatSmartRecommendationsBullets,
   getSmartRecommendations,
