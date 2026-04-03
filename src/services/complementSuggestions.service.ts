@@ -49,6 +49,10 @@ export function buildComplementBridgeInteractive(bridgeBodyFormatted: string): W
             type: 'reply',
             reply: { id: 'VIEW_MENU', title: 'Seguir comprando' },
           },
+          {
+            type: 'reply',
+            reply: { id: 'CHECKOUT', title: 'Finalizar pedido' },
+          },
         ],
       },
     },
@@ -131,7 +135,7 @@ export async function materializeComplementSuggestionsList(
   const suggestionBody = formatBotUserMessage(
     snapshot.title,
     snapshot.titleEmoji,
-    `${snapshot.pitchBody}\n\nTocá el botón y elegí un producto 👇`
+    `${snapshot.pitchBody}\n\nTocá el botón y elegí 👇`
   );
 
   const suggestionButtons = ordered.map((row) => ({
