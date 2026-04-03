@@ -19,6 +19,7 @@ export type SmartFoodRecommendation = {
 
 export type GetSmartRecommendationsResult = {
   forDisplay: SmartFoodRecommendation[];
+  /** Listado WhatsApp: alineado con el LLM (mismos ids y orden); en fallback, top 3 del vector. */
   forList: SmartFoodRecommendation[];
   usedLlm: boolean;
   /** Mensaje contextual opcional del LLM (porciones, cantidad, guía). Sin plantillas en código. */
@@ -217,11 +218,11 @@ export async function getSmartRecommendations(params: {
   }
 
   const deduped = dedupeById(vectorItems);
-  const fallbackListFull = menuResultsToSmart(deduped, FALLBACK_REASON);
+  const topVectorFallback = deduped.slice(0, TOP_FALLBACK_DISPLAY);
 
   const llmFailureResult = (): GetSmartRecommendationsResult => ({
     forDisplay: buildLlmFailureDisplay(deduped),
-    forList: menuResultsToSmart(deduped, ''),
+    forList: menuResultsToSmart(topVectorFallback, ''),
     usedLlm: false,
     llmNote: null,
   });
@@ -234,7 +235,7 @@ export async function getSmartRecommendations(params: {
   if (!useAi) {
     return {
       forDisplay: [],
-      forList: fallbackListFull,
+      forList: menuResultsToSmart(topVectorFallback, FALLBACK_REASON),
       usedLlm: false,
       llmNote: null,
     };
@@ -290,11 +291,9 @@ export async function getSmartRecommendations(params: {
       return llmFailureResult();
     }
 
-    const fullList = menuResultsToSmart(deduped, '');
-
     return {
       forDisplay: picked,
-      forList: fullList,
+      forList: picked,
       usedLlm: true,
       llmNote: parsed.note,
     };
