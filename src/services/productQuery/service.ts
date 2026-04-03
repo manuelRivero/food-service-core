@@ -16,7 +16,7 @@ import {
 } from '../../repositories/conversationState.repository';
 import { MenuService } from '../menu.service';
 import { generateProductAwareResponse } from '../ai/openai.service';
-import { truncateDescription } from '../../whatsappBuilders';
+import { truncateDescription, truncateTitle } from '../../whatsappBuilders';
 import type { ConversationMode, ProductQueryServiceResult } from './types';
 import {
   buildListMessage,
@@ -30,6 +30,7 @@ import {
 } from './utils';
 import { buildRecommendationCartSummary } from './recommendationCartSummary';
 import {
+  dedupeMenuItemSearchResultsById,
   formatSmartRecommendationsBlock,
   getSmartRecommendations,
 } from './smartFoodRecommendations';
@@ -52,10 +53,11 @@ export async function executeProductQuery(
     );
   }
 
-  const items = await MenuService.searchMenuItemsByKeyword({
+  const rawSearch = await MenuService.searchMenuItemsByKeyword({
     businessId: ctx.business.id,
     keyword,
   });
+  const items = dedupeMenuItemSearchResultsById(rawSearch);
 
   if (items.length === 0) {
     const bodyCopy = `No encontramos productos relacionados con "${keyword}" en nuestro menú.`;
@@ -116,7 +118,7 @@ export async function executeProductQuery(
         ...prevMulti,
         pendingProductSelection: true,
         pendingQuestion: userMessage,
-        candidateProductIds: listSource.map((item) => item.id),
+        candidateProductIds: [...new Set(listSource.map((item) => item.id))],
         ...(partySize != null ? { requestedPartySize: partySize } : {}),
       }),
     } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
@@ -147,13 +149,16 @@ export async function executeProductQuery(
               sq != null && sq > 1
                 ? `SELECT_PRODUCT:${item.id}:${sq}`
                 : `SELECT_PRODUCT:${item.id}`;
+            const descRaw = (
+              item.description ??
+              ('ingredients' in item ? item.ingredients : null) ??
+              ''
+            ).trim();
             return {
               id: rowId,
-              title: item.name,
+              title: truncateTitle((item.name ?? '').trim() || 'Producto'),
               description: truncateDescription(
-                item.description ??
-                  ('ingredients' in item ? item.ingredients : null) ??
-                  'Sin descripción'
+                descRaw.length > 0 ? descRaw : 'Sin descripción'
               ),
             };
           }),

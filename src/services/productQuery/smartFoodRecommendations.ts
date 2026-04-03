@@ -33,6 +33,8 @@ export type GetSmartRecommendationsResult = {
 
 const MAX_CANDIDATES_FOR_LLM = 10;
 const MAX_LLM_PICKS = 3;
+/** WhatsApp interactive list: max rows per section (API limit). */
+export const MAX_WHATSAPP_LIST_ROWS = 10;
 const TOP_FALLBACK_DISPLAY = 3;
 const MAX_NOTE_LENGTH = 500;
 const MAX_PROGRESS_LENGTH = 400;
@@ -69,21 +71,23 @@ function tryParseSmartRecommenderJson(raw: string): ParsedLlmRecommender | null 
     const recs = (obj as { recommendations?: unknown }).recommendations;
     if (!Array.isArray(recs)) return null;
     const out: ParsedLlmRecommender['recommendations'] = [];
+    const seenIds = new Set<string>();
     for (const r of recs) {
       if (!r || typeof r !== 'object') continue;
       const id = (r as { id?: unknown }).id;
       const reason = (r as { reason?: unknown }).reason;
-      if (typeof id === 'string' && typeof reason === 'string' && id.length > 0) {
-        const reasonTrim = reason.trim();
-        if (reasonTrim.length > 0) {
-          const sq = clampSuggestedQuantity((r as { suggestedQuantity?: unknown }).suggestedQuantity);
-          out.push({
-            id,
-            reason: reasonTrim,
-            ...(sq != null && sq > 1 ? { suggestedQuantity: sq } : {}),
-          });
-        }
-      }
+      if (typeof id !== 'string' || typeof reason !== 'string') continue;
+      const idTrim = id.trim();
+      if (idTrim.length === 0 || seenIds.has(idTrim)) continue;
+      const reasonTrim = reason.trim();
+      if (reasonTrim.length === 0) continue;
+      seenIds.add(idTrim);
+      const sq = clampSuggestedQuantity((r as { suggestedQuantity?: unknown }).suggestedQuantity);
+      out.push({
+        id: idTrim,
+        reason: reasonTrim,
+        ...(sq != null && sq > 1 ? { suggestedQuantity: sq } : {}),
+      });
     }
     if (out.length === 0) return null;
 
@@ -120,9 +124,71 @@ function dedupeById(items: MenuItemSearchResult[]): MenuItemSearchResult[] {
   const seen = new Set<string>();
   const out: MenuItemSearchResult[] = [];
   for (const item of items) {
-    if (seen.has(item.id)) continue;
-    seen.add(item.id);
+    const id = String(item.id ?? '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
     out.push(item);
+  }
+  return out;
+}
+
+export function dedupeMenuItemSearchResultsById(
+  items: MenuItemSearchResult[]
+): MenuItemSearchResult[] {
+  return dedupeById(items);
+}
+
+function dedupeSmartRecommendationsById(
+  recs: SmartFoodRecommendation[]
+): SmartFoodRecommendation[] {
+  const seen = new Set<string>();
+  const out: SmartFoodRecommendation[] = [];
+  for (const r of recs) {
+    const id = (r.id ?? '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(r);
+  }
+  return out;
+}
+
+/**
+ * Nombres/description desde el vector; descarta entradas sin id válido.
+ * Máximo MAX_WHATSAPP_LIST_ROWS ítems (límite WhatsApp).
+ */
+function finalizeRecommendationsForWhatsAppList(
+  recs: SmartFoodRecommendation[],
+  byIdVector: Map<string, MenuItemSearchResult>
+): SmartFoodRecommendation[] {
+  const deduped = dedupeSmartRecommendationsById(recs);
+  const out: SmartFoodRecommendation[] = [];
+  for (const r of deduped) {
+    if (out.length >= MAX_WHATSAPP_LIST_ROWS) break;
+    const id = (r.id ?? '').trim();
+    if (!id) continue;
+    const src = byIdVector.get(id);
+    const name = (src?.name ?? r.name ?? '').trim() || 'Producto';
+    out.push({
+      ...r,
+      id,
+      name,
+      description: src?.description ?? r.description ?? null,
+    });
+  }
+  return out;
+}
+
+function finalizeVectorItemsForWhatsAppList(
+  items: MenuItemSearchResult[]
+): MenuItemSearchResult[] {
+  const deduped = dedupeById(items);
+  const out: MenuItemSearchResult[] = [];
+  for (const item of deduped) {
+    if (out.length >= MAX_WHATSAPP_LIST_ROWS) break;
+    const id = (item.id ?? '').trim();
+    if (!id) continue;
+    const name = (item.name ?? '').trim() || 'Producto';
+    out.push({ ...item, id, name });
   }
   return out;
 }
@@ -154,15 +220,6 @@ function menuResultsToSmart(
     description: i.description,
     reason,
   }));
-}
-
-function buildLlmFailureDisplay(
-  dedupedVector: MenuItemSearchResult[]
-): SmartFoodRecommendation[] {
-  return menuResultsToSmart(
-    dedupedVector.slice(0, TOP_FALLBACK_DISPLAY),
-    FALLBACK_REASON
-  );
 }
 
 /**
@@ -219,6 +276,11 @@ SELECTION BEHAVIOR:
 - No seas demasiado estricto: incluí alternativas "bastante bien" o relacionadas si el listado las trajo por similitud.
 - Equilibrá relevancia y diversidad.
 - Devolvé una sola recomendación solo cuando el resto de candidatos sea claramente irrelevante para el pedido.
+
+UNICIDAD Y SALIDA (obligatorio):
+- Cada "id" de producto debe aparecer como máximo UNA vez en "recommendations". Nunca repitas el mismo id ni dupliques el mismo plato con distinta redacción.
+- No incluyas razonamiento interno, cadena de pensamiento, notas para vos mismo ni texto meta fuera de los campos del JSON (reason, note, progress).
+- Los valores "reason", "note" y "progress" son texto para el cliente: frases cortas y útiles, no explicaciones de proceso.
 
 TRUTH RULES:
 - Usá únicamente lo que se desprende con certeza razonable del nombre, categoría y descripción del ítem.
@@ -288,15 +350,20 @@ export async function getSmartRecommendations(params: {
   }
 
   const deduped = dedupeById(vectorItems);
-  const topVectorFallback = deduped.slice(0, TOP_FALLBACK_DISPLAY);
 
-  const llmFailureResult = (): GetSmartRecommendationsResult => ({
-    forDisplay: buildLlmFailureDisplay(deduped),
-    forList: menuResultsToSmart(topVectorFallback, ''),
-    usedLlm: false,
-    llmNote: null,
-    llmProgress: null,
-  });
+  const llmFailureResult = (): GetSmartRecommendationsResult => {
+    const safeRows = finalizeVectorItemsForWhatsAppList(deduped).slice(
+      0,
+      TOP_FALLBACK_DISPLAY
+    );
+    return {
+      forDisplay: menuResultsToSmart(safeRows, FALLBACK_REASON),
+      forList: menuResultsToSmart(safeRows, ''),
+      usedLlm: false,
+      llmNote: null,
+      llmProgress: null,
+    };
+  };
 
   const useAi =
     business.openai_active !== false &&
@@ -304,9 +371,13 @@ export async function getSmartRecommendations(params: {
     trimmedUtterance.length > 0;
 
   if (!useAi) {
+    const safeRows = finalizeVectorItemsForWhatsAppList(deduped).slice(
+      0,
+      TOP_FALLBACK_DISPLAY
+    );
     return {
       forDisplay: [],
-      forList: menuResultsToSmart(topVectorFallback, FALLBACK_REASON),
+      forList: menuResultsToSmart(safeRows, FALLBACK_REASON),
       usedLlm: false,
       llmNote: null,
       llmProgress: null,
@@ -329,7 +400,7 @@ export async function getSmartRecommendations(params: {
 
   try {
     const system =
-      'Sos el motor de recomendación guiada del menú. Usás el carrito y las personas solo como contexto; no inventás datos de fichas. Respondés solo JSON con recommendations (cada una con reason y suggestedQuantity opcional), note y progress opcionales.';
+      'Sos el motor de recomendación guiada del menú. Usás el carrito y las personas solo como contexto; no inventás datos de fichas. Respondés solo JSON: cada id en recommendations debe ser único (sin repetir). No incluyas razonamiento interno fuera del JSON. Campos: recommendations (reason, suggestedQuantity opcional), note y progress opcionales.';
     const user = FOOD_RECOMMENDER_PROMPT(
       trimmedUtterance,
       candidates,
@@ -351,11 +422,19 @@ export async function getSmartRecommendations(params: {
       return llmFailureResult();
     }
 
+    const pickedIds = new Set<string>();
     const picked: SmartFoodRecommendation[] = [];
     for (const row of parsed.recommendations) {
-      if (!allowed.has(row.id) || picked.length >= MAX_LLM_PICKS) continue;
+      if (
+        !allowed.has(row.id) ||
+        pickedIds.has(row.id) ||
+        picked.length >= MAX_LLM_PICKS
+      ) {
+        continue;
+      }
       const src = byIdVector.get(row.id);
       if (!src) continue;
+      pickedIds.add(row.id);
       picked.push({
         id: src.id,
         name: src.name,
@@ -367,13 +446,14 @@ export async function getSmartRecommendations(params: {
       });
     }
 
-    if (picked.length === 0) {
+    const finalList = finalizeRecommendationsForWhatsAppList(picked, byIdVector);
+    if (finalList.length === 0) {
       return llmFailureResult();
     }
 
     return {
-      forDisplay: picked,
-      forList: picked,
+      forDisplay: finalList,
+      forList: finalList,
       usedLlm: true,
       llmNote: parsed.note,
       llmProgress: parsed.progress,
