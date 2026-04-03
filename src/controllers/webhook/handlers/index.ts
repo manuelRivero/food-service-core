@@ -8,6 +8,7 @@ import { CategoryPageHandler } from './categoryPageHandler';
 import { CategoryListPageHandler } from './categoryListPageHandler';
 import { CategoryHandler } from './categoryHandler';
 import { AddItemHandler } from './addItemHandler';
+import { ShowComplementSuggestionsHandler } from './showComplementSuggestionsHandler';
 import { CheckoutHandler } from './checkoutHandler';
 import { CancelOrderHandler } from './cancelOrderHandler';
 import { EndConversationHandler } from './endConversationHandler';
@@ -49,6 +50,7 @@ export const handlers = [
   new CategoryListPageHandler(),
   new CategoryHandler(),
   new AddItemHandler(),
+  new ShowComplementSuggestionsHandler(),
   new CheckoutHandler(),
   new CancelOrderHandler(),
   new EndConversationHandler(),

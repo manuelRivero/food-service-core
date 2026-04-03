@@ -30,47 +30,40 @@ const normalizeArgentinaRecipient = (to: string): string => {
   return digits;
 };
 
+/**
+ * Envía el mensaje principal del handler y, si hay {@link HandlerResult.followUps},
+ * los mensajes adicionales en orden (texto, imagen —p. ej. QR de reserva—, lista, etc.).
+ * No está acoplado al QR: el nombre antiguo `sendResponseWithQrSequence` era engañoso.
+ */
 export const sendResponse = async (
-  ctx: WebhookContext, 
+  ctx: WebhookContext,
   result: HandlerResult
 ): Promise<void> => {
   console.log('[SendResponse] Sending response:', result);
-  
+
   if (!result.isInteractive) {
-    // Texto plano
     await sender.sendTextMessage({
       phoneNumberId: ctx.phoneNumberId,
       to: ctx.to,
       message: result.content as string
     });
-    return;
-  }
-
-  const message = result.content;
-  
-  // Distinguir tipo de mensaje interactivo
-  if ((message as WhatsAppListMessage).type && (message as WhatsAppListMessage).type === 'list') {
-    await sender.sendListMessage({
-      phoneNumberId: ctx.phoneNumberId,
-      to: ctx.to,
-      listMessage: message as WhatsAppListMessage
-    });
   } else {
-    // Asumimos que es botón u otro tipo interactivo
-    await sender.sendButtonMessage({
-      phoneNumberId: ctx.phoneNumberId,
-      to: ctx.to,
-      interactiveMessage: message as WhatsAppInteractiveMessage
-    });
+    const message = result.content;
+
+    if ((message as WhatsAppListMessage).type === 'list') {
+      await sender.sendListMessage({
+        phoneNumberId: ctx.phoneNumberId,
+        to: ctx.to,
+        listMessage: message as WhatsAppListMessage
+      });
+    } else {
+      await sender.sendButtonMessage({
+        phoneNumberId: ctx.phoneNumberId,
+        to: ctx.to,
+        interactiveMessage: message as WhatsAppInteractiveMessage
+      });
+    }
   }
-
-};
-
-export const sendResponseWithQrSequence = async (
-  ctx: WebhookContext,
-  result: HandlerResult
-): Promise<void> => {
-  await sendResponse(ctx, result);
 
   if (!result.followUps?.length) {
     return;
@@ -89,9 +82,24 @@ export const sendResponseWithQrSequence = async (
         to: ctx.to,
         message: follow.message
       });
+    } else if (follow.type === 'list') {
+      await sender.sendListMessage({
+        phoneNumberId: ctx.phoneNumberId,
+        to: ctx.to,
+        listMessage: follow.listMessage
+      });
+    } else if (follow.type === 'interactive') {
+      await sender.sendButtonMessage({
+        phoneNumberId: ctx.phoneNumberId,
+        to: ctx.to,
+        interactiveMessage: follow.message
+      });
     }
   }
 };
+
+/** @deprecated Usar {@link sendResponse}: ya envía followUps (QR, texto, listas). */
+export const sendResponseWithQrSequence = sendResponse;
 
 export const sendResponseNoContext = async (
   phoneNumberId: string,

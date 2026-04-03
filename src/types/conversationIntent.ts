@@ -27,6 +27,8 @@ export enum ConversationIntent {
   CATEGORY_LIST_PAGE = 'CATEGORY_LIST_PAGE',
   CATEGORY = 'CATEGORY',
   ADD_ITEM = 'ADD_ITEM',                 // Botón "Agregar al pedido"
+  /** Ver listado de complementos guardado en metadata (tras puente con botones). */
+  COMPLEMENT_SHOW_SUGGESTIONS = 'COMPLEMENT_SHOW_SUGGESTIONS',
   CHECKOUT = 'CHECKOUT',
   CANCEL_ORDER = 'CANCEL_ORDER',
   END_CONVERSATION = 'END_CONVERSATION',

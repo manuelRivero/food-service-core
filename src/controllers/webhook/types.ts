@@ -1,4 +1,7 @@
-
+import type {
+  WhatsAppInteractiveMessage,
+  WhatsAppListMessage,
+} from '../../domain/intent/whatsappTemplates';
 import { ConversationIntent } from '../../types/conversationIntent';
 import { IntentDetectionResult } from '../../services/ai/detection.service';
 
@@ -51,19 +54,17 @@ export interface EnrichedContext extends WebhookContext {
   };
 }
 
-export type HandlerFollowUp = {
-  type: "image";
-  dataUrl: string;
-} | {
-  type: "text";
-  message: string;
-};
+export type HandlerFollowUp =
+  | { type: 'image'; dataUrl: string }
+  | { type: 'text'; message: string }
+  | { type: 'list'; listMessage: WhatsAppListMessage }
+  | { type: 'interactive'; message: WhatsAppInteractiveMessage };
 
 // Resultado de handler
 export interface HandlerResult {
   content: string | object;
   isInteractive: boolean;
-  /** Envíos extra tras el mensaje principal (ej. QR) */
+  /** Mensajes extra tras el principal, en orden: imagen (QR), texto, lista, etc. */
   followUps?: HandlerFollowUp[];
 }
 

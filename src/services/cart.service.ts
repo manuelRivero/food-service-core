@@ -8,6 +8,12 @@ import { createOrGetOpenConversation } from "../repositories/conversation.reposi
 import { WhatsAppWebhookPayload } from "../controllers/webhook/types";
 import { WhatsAppInteractiveMessage, WhatsAppListMessage } from "../domain/intent/whatsappTemplates";
 import { buildListMessageFromButtons } from '../whatsappBuilders';
+import { buildComplementarySuggestionsWithLlm } from './ai/complementarySuggestion.ai.service';
+import {
+  buildComplementBridgeInteractive,
+  persistComplementSuggestionSnapshot,
+} from './complementSuggestions.service';
+import { formatBotUserMessage } from './productQuery';
 import { extractOrderData } from "./ai/openai.service";
 import { ConversationIntent } from "../types/conversationIntent";
 import { handleDraftOrder, handleDraftOrderItem } from "./order.service";
@@ -22,6 +28,14 @@ interface RemoveItemResult {
   message: WhatsAppInteractiveMessage | null;
   errorMessage?: string;
 }
+
+/** Respuesta de agregar ítem: lista principal y opcional puente interactivo (metadata con snapshot de sugerencias). */
+export type AddItemMessageResult =
+  | string
+  | {
+      main: WhatsAppListMessage;
+      complementBridge?: WhatsAppInteractiveMessage;
+    };
 
 export const buildRemoveItemMessage = async (
   business: business,
@@ -87,7 +101,7 @@ export const buildAddItemMessage = async (
   conversation: conversation,
   menuItemId: string,
   customer: customer
-): Promise<WhatsAppInteractiveMessage | WhatsAppListMessage | string | null> => {
+): Promise<AddItemMessageResult> => {
 
   
 
@@ -161,52 +175,80 @@ export const buildAddItemMessage = async (
     `Total: $${total._sum.total_price || 0}\n\n` +
     `¿Seguís comprando o querés *finalizar*?${addressLine}`;
 
-  await createConversationMessage(conversation.id, 'ai', messageText, false);
-  await updateConversationLastMessageAt(conversation.id);
+  const complement = await buildComplementarySuggestionsWithLlm(business, {
+    businessId: business.id,
+    draftOrderId: cart.id,
+    lastAddedMenuItemId: item.id,
+    maxItems: 5,
+    poolSize: 12,
+  });
 
-  const buttons = [
+  const mainButtons = [
     {
       title: 'Seguir comprando',
       payload: 'VIEW_MENU',
       description: 'Explorar más platos',
-      sectionTitle: 'Opciones'
+      sectionTitle: 'Opciones',
     },
     {
       title: 'Finalizar pedido',
       payload: 'CHECKOUT',
       description: 'Ir al checkout',
-      sectionTitle: 'Opciones'
+      sectionTitle: 'Opciones',
     },
     {
       title: 'Modificar pedido',
       payload: 'VIEW_CART_FOR_EDITION',
       description: 'Editar items del pedido',
-      sectionTitle: 'Opciones'
-    }
-  ];
+      sectionTitle: 'Opciones',
+    },
+  ] as Array<{
+    title: string;
+    payload: string;
+    description?: string;
+    sectionTitle?: string;
+  }>;
 
   if (defaultAddress?.street_address) {
-    buttons.push({
+    mainButtons.push({
       title: 'Editar dirección',
       payload: 'EDIT_ADDRESS',
       description: 'Actualizar dirección de entrega',
-      sectionTitle: 'Opciones'
+      sectionTitle: 'Opciones',
     });
   }
 
-  return buildListMessageFromButtons(
+  const mainList = buildListMessageFromButtons(
     messageText,
-    buttons,
+    mainButtons,
     'Ver opciones',
     '',
     '*Pedido actualizado*'
   );
+
+  await createConversationMessage(conversation.id, 'ai', messageText, false);
+  await updateConversationLastMessageAt(conversation.id);
+
+  let complementBridge: WhatsAppInteractiveMessage | undefined;
+  if (complement && complement.items.length > 0) {
+    await persistComplementSuggestionSnapshot(conversation.id, complement.snapshot);
+    const bridgeBody = formatBotUserMessage(
+      complement.snapshot.title,
+      complement.snapshot.titleEmoji,
+      complement.bridgeMessagePlain
+    );
+    complementBridge = buildComplementBridgeInteractive(bridgeBody);
+    await createConversationMessage(conversation.id, 'ai', bridgeBody, false);
+    await updateConversationLastMessageAt(conversation.id);
+  }
+
+  return complementBridge ? { main: mainList, complementBridge } : { main: mainList };
 };
 
 export const handleAddItemFromWebhook = async (
   payload: WhatsAppWebhookPayload,
   menuItemId: string
-): Promise<WhatsAppInteractiveMessage | WhatsAppListMessage | null | string> => {
+): Promise<AddItemMessageResult | null> => {
 
   const entry = payload.entry?.[0];
   const change = entry?.changes?.[0];

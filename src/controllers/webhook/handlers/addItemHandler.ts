@@ -17,6 +17,11 @@ export class AddItemHandler implements IntentHandler {
     const result = await handleAddItemFromWebhook(ctx.payload, menuItemId);
     if (result === null) return noResponse();
     if (typeof result === 'string') return textResponse(result);
-    return interactiveResponse(result);
+    return interactiveResponse(
+      result.main,
+      result.complementBridge
+        ? [{ type: 'interactive' as const, message: result.complementBridge }]
+        : undefined
+    );
   }
 }

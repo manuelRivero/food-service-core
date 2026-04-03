@@ -2,7 +2,7 @@
 
 import { extractContext } from './extractor';
 import { dispatchIntent, dispatchInteractive } from './dispachers';
-import { sendResponse, sendResponseWithQrSequence } from './sender';
+import { sendResponse } from './sender';
 import { detectIntentWithConfidence, DetectionContext } from '../../services/ai/detection.service';
 import {
   findBusinessByPhoneNumberId,
@@ -152,7 +152,7 @@ export const processWebhook = async (payload: any): Promise<void> => {
       const result = await dispatchInteractive(enrichedBase);
 
       if (result) {
-        await sendResponseWithQrSequence(ctx, result);
+        await sendResponse(ctx, result);
         await createConversationMessage(
           conversation.id,
           'ai',
@@ -322,7 +322,7 @@ async function processReservationWizardIfActive(params: {
   );
   if (reservationResult) {
     const handlerResult = normalizeToHandlerResult(reservationResult);
-    await sendResponseWithQrSequence(ctx, handlerResult);
+    await sendResponse(ctx, handlerResult);
     await createConversationMessage(
       enrichedBase.conversation.id,
       'ai',
