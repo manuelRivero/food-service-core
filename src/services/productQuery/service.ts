@@ -25,6 +25,7 @@ import {
   formatBotUserMessage,
   getActivePrice,
   normalizeMetadata,
+  partySizeMetadataFields,
   resolveRequestedPartySize,
   withoutLegacyPartyQuantity,
 } from './utils';
@@ -119,7 +120,7 @@ export async function executeProductQuery(
         pendingProductSelection: true,
         pendingQuestion: userMessage,
         candidateProductIds: [...new Set(listSource.map((item) => item.id))],
-        ...(partySize != null ? { requestedPartySize: partySize } : {}),
+        ...(partySize != null ? partySizeMetadataFields(partySize) : {}),
       }),
     } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
 
@@ -127,10 +128,15 @@ export async function executeProductQuery(
       await clearLastReferencedProductId(ctx.conversation.id);
     }
 
+    const partyLine =
+      partySize != null && partySize > 0
+        ? `Para ${partySize} persona${partySize === 1 ? '' : 's'}:\n\n`
+        : '';
+
     const intro =
       smart.forDisplay.length > 0
-        ? `${formatSmartRecommendationsBlock(smart.forDisplay, smart.llmNote, smart.llmProgress)}\n\nSeleccioná en la lista 👇`
-        : 'Seleccioná un plato en la lista 👇';
+        ? `${partyLine}${formatSmartRecommendationsBlock(smart.forDisplay, smart.llmNote, smart.llmProgress)}\n\nSeleccioná en la lista 👇`
+        : `${partyLine}Seleccioná un plato en la lista 👇`;
 
     const listBody = formatBotUserMessage('Resultados a tu consulta', '📋', intro);
 
@@ -144,10 +150,18 @@ export async function executeProductQuery(
           title: 'Resultados',
           rows: listSource.map((item) => {
             const rec = smart.forList.find((r) => r.id === item.id);
-            const sq = rec?.suggestedQuantity;
+            const fromLlm = rec?.suggestedQuantity;
+            const partyForRow =
+              partySize != null && partySize >= 1 ? partySize : undefined;
+            const effectiveListQty =
+              fromLlm != null && fromLlm >= 1
+                ? fromLlm
+                : partyForRow != null
+                  ? partyForRow
+                  : undefined;
             const rowId =
-              sq != null && sq > 1
-                ? `SELECT_PRODUCT:${item.id}:${sq}`
+              effectiveListQty != null && effectiveListQty >= 2
+                ? `SELECT_PRODUCT:${item.id}:${effectiveListQty}`
                 : `SELECT_PRODUCT:${item.id}`;
             const descRaw = (
               item.description ??
@@ -211,7 +225,15 @@ export async function executeProductQuery(
     requestedPartySize: partySizeSingle,
   });
 
-  const fullText = formatBotUserMessage('Info del plato', '🍽️', aiResponse);
+  const singlePartyLine =
+    partySizeSingle != null && partySizeSingle > 0
+      ? `Para ${partySizeSingle} persona${partySizeSingle === 1 ? '' : 's'}.\n\n`
+      : '';
+  const fullText = formatBotUserMessage(
+    'Info del plato',
+    '🍽️',
+    `${singlePartyLine}${aiResponse}`
+  );
 
   await createConversationMessage(ctx.conversation.id, 'ai', fullText, true);
   await updateConversationLastMessageAt(ctx.conversation.id);
@@ -221,7 +243,9 @@ export async function executeProductQuery(
   const cleanedSingle = clearProductFilterMetadata(prevSingle);
   const nextSingleMeta = {
     ...cleanedSingle,
-    ...(partySizeSingle != null ? { requestedPartySize: partySizeSingle } : {}),
+    ...(partySizeSingle != null
+      ? partySizeMetadataFields(partySizeSingle)
+      : {}),
   };
   await updateConversationState(ctx.conversation.id, {
     mode: 'PRODUCT_FOCUS',

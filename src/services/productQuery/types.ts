@@ -12,6 +12,8 @@ export type ConversationMetadata = {
    * Reemplaza el uso temporal de solo product query.
    */
   requestedPartySize?: number;
+  /** Alias explícito de personas (mismo valor que requestedPartySize cuando aplica). */
+  peopleCount?: number;
   /** @deprecated Lectura legacy; preferir requestedPartySize. */
   pendingProductQueryQuantity?: number;
   /**

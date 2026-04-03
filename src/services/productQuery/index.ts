@@ -1,6 +1,9 @@
 export { executeProductQuery } from './service';
 export type { ProductQueryServiceResult } from './types';
-export { formatBotUserMessage } from './utils';
+export {
+  formatBotUserMessage,
+  partySizeMetadataFields,
+} from './utils';
 export {
   dedupeMenuItemSearchResultsById,
   FOOD_RECOMMENDER_PROMPT,

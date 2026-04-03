@@ -45,11 +45,14 @@ export const clearProductFilterMetadata = (
   return rest;
 };
 
-/** Valor persistido de personas (nuevo campo o legacy). */
+/** Personas en contexto: peopleCount, requestedPartySize o legacy. */
 export function getRequestedPartySize(
   meta: ConversationMetadata
 ): number | undefined {
-  const v = meta.requestedPartySize ?? meta.pendingProductQueryQuantity;
+  const v =
+    meta.peopleCount ??
+    meta.requestedPartySize ??
+    meta.pendingProductQueryQuantity;
   return v != null && v > 0 ? v : undefined;
 }
 
@@ -66,13 +69,20 @@ export function resolveRequestedPartySize(
   return getRequestedPartySize(prev);
 }
 
-/** Quita la clave legacy al persistir `requestedPartySize`. */
+/** Quita la clave legacy al persistir cantidad de personas. */
 export function withoutLegacyPartyQuantity(
   meta: ConversationMetadata
 ): ConversationMetadata {
   const { pendingProductQueryQuantity, ...rest } = meta;
   void pendingProductQueryQuantity;
   return rest;
+}
+
+/** Pares de campos a persistir cuando hay N personas detectadas. */
+export function partySizeMetadataFields(
+  n: number
+): Pick<ConversationMetadata, 'requestedPartySize' | 'peopleCount'> {
+  return { requestedPartySize: n, peopleCount: n };
 }
 
 export const buildListMessage = (params: {
@@ -96,7 +106,7 @@ export const buildListMessage = (params: {
 });
 
 /**
- * Lista WhatsApp: `SELECT_PRODUCT:<uuid>` o `SELECT_PRODUCT:<uuid>:<n>` (n = cantidad sugerida por el LLM, 2–99).
+ * Lista WhatsApp: `SELECT_PRODUCT:<uuid>` o `SELECT_PRODUCT:<uuid>:<n>` (n = 1–99, p. ej. personas o sugerido).
  */
 export function parseSelectProductListRowId(raw: string): {
   productId: string;
@@ -112,8 +122,11 @@ export function parseSelectProductListRowId(raw: string): {
     const tail = s.slice(lastColon + 1);
     if (/^\d{1,2}$/.test(tail)) {
       const n = parseInt(tail, 10);
-      if (n >= 2 && n <= 99) {
-        return { productId: s.slice(0, lastColon), listSuggestedQuantity: n };
+      if (n >= 1 && n <= 99) {
+        return {
+          productId: s.slice(0, lastColon),
+          listSuggestedQuantity: n,
+        };
       }
     }
   }

@@ -43,6 +43,7 @@ import {
   clearProductFilterMetadata,
   getRequestedPartySize,
   parseSelectProductListRowId,
+  partySizeMetadataFields,
   withoutLegacyPartyQuantity,
 } from './productQuery/utils';
 
@@ -1792,6 +1793,7 @@ type ConversationMetadata = {
   /** @deprecated Lectura legacy; preferir requestedPartySize. */
   pendingProductQueryQuantity?: number;
   requestedPartySize?: number;
+  peopleCount?: number;
   lastListSuggestedQuantity?: number;
   pendingOrderSelection?: boolean;
   pendingOrderMessage?: string;
@@ -2664,7 +2666,7 @@ const buildResponse = async ({
           pendingProductSelection: true,
           pendingQuestion: lastUserMessage,
           candidateProductIds: items.map((item) => item.id),
-          ...(partyLegacy != null ? { requestedPartySize: partyLegacy } : {})
+          ...(partyLegacy != null ? partySizeMetadataFields(partyLegacy) : {})
         })
       } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
       if (conversation.lastReferencedProductId) {
@@ -2730,7 +2732,9 @@ const buildResponse = async ({
     const cleanedSingleLegacy = clearProductFilterMetadata(rawSingleLegacy);
     const nextSingleLegacy = {
       ...withoutLegacyPartyQuantity(cleanedSingleLegacy),
-      ...(partySingleLegacy != null ? { requestedPartySize: partySingleLegacy } : {})
+      ...(partySingleLegacy != null
+        ? partySizeMetadataFields(partySingleLegacy)
+        : {})
     };
     console.debug('Conversation mode:', 'PRODUCT_FOCUS');
     await updateConversationState(conversation.id, {
@@ -3031,10 +3035,12 @@ export const processIncomingMessage = async (
     const clearedForGlobal = clearProductFilterMetadata(stateMetadata);
     const {
       requestedPartySize: _rp,
+      peopleCount: _pc,
       pendingProductQueryQuantity: _pq,
       ...globalMeta
     } = clearedForGlobal;
     void _rp;
+    void _pc;
     void _pq;
     console.debug('Conversation mode:', 'GLOBAL');
     await updateConversationState(conversation.id, {
