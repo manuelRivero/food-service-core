@@ -13,9 +13,10 @@ export class SelectProductHandler implements IntentHandler {
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
-    const productId = ctx.payloadId!.replace('SELECT_PRODUCT:', '');
-    
-    const result = await handleProductSelectionFromWebhook(ctx.payload, productId);
+    const result = await handleProductSelectionFromWebhook(
+      ctx.payload,
+      ctx.payloadId ?? ''
+    );
     
     if (result === null) return noResponse();
     if (typeof result === 'string') return textResponse(result);

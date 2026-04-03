@@ -12,3 +12,7 @@ export type {
   GetSmartRecommendationsResult,
   SmartFoodRecommendation,
 } from './smartFoodRecommendations';
+export {
+  buildRecommendationCartSummary,
+} from './recommendationCartSummary';
+export type { RecommendationCartSummary } from './recommendationCartSummary';

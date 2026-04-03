@@ -33,24 +33,47 @@ export const clearProductFilterMetadata = (
   if (
     !metadata.pendingProductSelection &&
     !metadata.pendingQuestion &&
-    !metadata.candidateProductIds &&
-    metadata.pendingProductQueryQuantity === undefined
+    !metadata.candidateProductIds
   ) {
     return metadata;
   }
-  const {
-    pendingProductSelection,
-    pendingQuestion,
-    candidateProductIds,
-    pendingProductQueryQuantity,
-    ...rest
-  } = metadata;
+  const { pendingProductSelection, pendingQuestion, candidateProductIds, ...rest } =
+    metadata;
   void pendingProductSelection;
   void pendingQuestion;
   void candidateProductIds;
-  void pendingProductQueryQuantity;
   return rest;
 };
+
+/** Valor persistido de personas (nuevo campo o legacy). */
+export function getRequestedPartySize(
+  meta: ConversationMetadata
+): number | undefined {
+  const v = meta.requestedPartySize ?? meta.pendingProductQueryQuantity;
+  return v != null && v > 0 ? v : undefined;
+}
+
+/**
+ * Prioridad: cantidad en el mensaje actual; si no, contexto de sesión previo.
+ */
+export function resolveRequestedPartySize(
+  classificationQuantity: number | null | undefined,
+  prev: ConversationMetadata
+): number | undefined {
+  if (classificationQuantity != null && classificationQuantity > 0) {
+    return classificationQuantity;
+  }
+  return getRequestedPartySize(prev);
+}
+
+/** Quita la clave legacy al persistir `requestedPartySize`. */
+export function withoutLegacyPartyQuantity(
+  meta: ConversationMetadata
+): ConversationMetadata {
+  const { pendingProductQueryQuantity, ...rest } = meta;
+  void pendingProductQueryQuantity;
+  return rest;
+}
 
 export const buildListMessage = (params: {
   headerText: string;
@@ -71,6 +94,31 @@ export const buildListMessage = (params: {
     sections: params.sections,
   },
 });
+
+/**
+ * Lista WhatsApp: `SELECT_PRODUCT:<uuid>` o `SELECT_PRODUCT:<uuid>:<n>` (n = cantidad sugerida por el LLM, 2–99).
+ */
+export function parseSelectProductListRowId(raw: string): {
+  productId: string;
+  listSuggestedQuantity?: number;
+} {
+  let s = raw.trim();
+  const prefix = 'SELECT_PRODUCT:';
+  if (s.startsWith(prefix)) {
+    s = s.slice(prefix.length);
+  }
+  const lastColon = s.lastIndexOf(':');
+  if (lastColon > 0) {
+    const tail = s.slice(lastColon + 1);
+    if (/^\d{1,2}$/.test(tail)) {
+      const n = parseInt(tail, 10);
+      if (n >= 2 && n <= 99) {
+        return { productId: s.slice(0, lastColon), listSuggestedQuantity: n };
+      }
+    }
+  }
+  return { productId: s };
+}
 
 export const getActivePrice = async (params: {
   productId: string;

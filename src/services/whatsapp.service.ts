@@ -39,6 +39,12 @@ import type {
   customer as Customer
 } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import {
+  clearProductFilterMetadata,
+  getRequestedPartySize,
+  parseSelectProductListRowId,
+  withoutLegacyPartyQuantity,
+} from './productQuery/utils';
 
 const confirmationStates = new Map<string, ConfirmationState>();
 const CONFIRMATION_TTL_MS = 5 * 60 * 1000;
@@ -391,7 +397,7 @@ export const handleAddItemFromWebhook = async (
 
 export const handleProductSelectionFromWebhook = async (
   payload: WhatsAppWebhookPayload,
-  productId: string
+  productIdOrListRowId: string
 ): Promise<WhatsAppInteractiveMessage | null> => {
   const entry = payload.entry?.[0];
   const change = entry?.changes?.[0];
@@ -401,9 +407,13 @@ export const handleProductSelectionFromWebhook = async (
   const from = message?.from;
   const phoneNumberId = value?.metadata?.phone_number_id;
 
-  if (!phoneNumberId || !from || !productId) {
+  if (!phoneNumberId || !from || !productIdOrListRowId) {
     return null;
   }
+
+  const parsedRow = parseSelectProductListRowId(productIdOrListRowId);
+  const productId = parsedRow.productId;
+  const listSuggestedQuantity = parsedRow.listSuggestedQuantity;
 
   const business = await findBusinessByPhoneNumberId(phoneNumberId);
   if (!business) {
@@ -416,7 +426,9 @@ export const handleProductSelectionFromWebhook = async (
   const conversationState = await findOrCreateConversationState(conversation.id);
   const metadata = normalizeMetadata(conversationState.metadata);
   console.log('DEBUG selection:', {
-    selectedId: productId,
+    selectedId: productIdOrListRowId,
+    cleanProductId: productId,
+    listSuggestedQuantity,
     conversationId: conversation.id,
     candidateProductIds: metadata.candidateProductIds,
     match: metadata.candidateProductIds?.includes(productId)
@@ -446,7 +458,7 @@ export const handleProductSelectionFromWebhook = async (
 
   }
 
-  if (!metadata.candidateProductIds?.includes(productId.replace('SELECT_PRODUCT:', ''))) {
+  if (!metadata.candidateProductIds?.includes(productId)) {
     return {
       type: 'interactive',
       interactive: {
@@ -570,7 +582,7 @@ export const handleProductSelectionFromWebhook = async (
   console.log('Stored pendingQuestion:', metadata.pendingQuestion);
   console.log('--------------------------------');
 
-  const requestedQty = metadata.pendingProductQueryQuantity;
+  const requestedQty = getRequestedPartySize(metadata);
   const servesMismatch = servingDoesNotMeetRequestedPeople(
     requestedQty,
     item.serves_people
@@ -603,7 +615,8 @@ export const handleProductSelectionFromWebhook = async (
     },
     userQuestion: `El usuario originalmente preguntó: "${metadata.pendingQuestion}".
 El usuario seleccionó el producto "${item.name}".
-Respondé en español con información útil sobre el plato (precio, porciones si constan, etc.).${quantityContext}`
+Respondé en español con información útil sobre el plato (precio, porciones si constan, etc.).${quantityContext}`,
+    requestedPartySize: requestedQty
   });
 
   await createConversationMessage(conversation.id, 'ai', aiResponse, true);
@@ -632,16 +645,19 @@ Respondé en español con información útil sobre el plato (precio, porciones s
     },
   ];
 
-  if (
-    servesMismatch &&
-    requestedQty != null &&
-    requestedQty >= 2
-  ) {
+  const extraAddQuantities = new Set<number>();
+  if (listSuggestedQuantity != null && listSuggestedQuantity > 1) {
+    extraAddQuantities.add(listSuggestedQuantity);
+  }
+  if (servesMismatch && requestedQty != null && requestedQty >= 2) {
+    extraAddQuantities.add(requestedQty);
+  }
+  for (const q of Array.from(extraAddQuantities).sort((a, b) => a - b)) {
     buttons.push({
       type: 'reply',
       reply: {
-        id: `ADD_ITEM:${item.id}:${requestedQty}`,
-        title: `Agregar ${requestedQty}`,
+        id: `ADD_ITEM:${item.id}:${q}`,
+        title: `Agregar ${q}`,
       },
     });
   }
@@ -1762,7 +1778,9 @@ type ConversationMetadata = {
   pendingProductSelection?: boolean;
   pendingQuestion?: string;
   candidateProductIds?: string[];
+  /** @deprecated Lectura legacy; preferir requestedPartySize. */
   pendingProductQueryQuantity?: number;
+  requestedPartySize?: number;
   pendingOrderSelection?: boolean;
   pendingOrderMessage?: string;
   pendingOrderCandidateIds?: string[];
@@ -1775,31 +1793,6 @@ const normalizeMetadata = (value: unknown): ConversationMetadata => {
     return value as ConversationMetadata;
   }
   return {};
-};
-
-const clearProductFilterMetadata = (
-  metadata: ConversationMetadata
-): ConversationMetadata => {
-  if (
-    !metadata.pendingProductSelection &&
-    !metadata.pendingQuestion &&
-    !metadata.candidateProductIds &&
-    metadata.pendingProductQueryQuantity === undefined
-  ) {
-    return metadata;
-  }
-  const {
-    pendingProductSelection,
-    pendingQuestion,
-    candidateProductIds,
-    pendingProductQueryQuantity,
-    ...rest
-  } = metadata;
-  void pendingProductSelection;
-  void pendingQuestion;
-  void candidateProductIds;
-  void pendingProductQueryQuantity;
-  return rest;
 };
 
 const handlePendingAction = async (params: {
@@ -2137,6 +2130,11 @@ const buildImplicitProductResponse = async ({
     orderBy: { valid_from: 'desc' }
   });
 
+  const convStateForParty = await findOrCreateConversationState(conversation.id);
+  const requestedPartySize = getRequestedPartySize(
+    normalizeMetadata(convStateForParty.metadata)
+  );
+
   const aiResponse = await generateProductAwareResponse({
     product: {
       name: product.name,
@@ -2151,7 +2149,8 @@ const buildImplicitProductResponse = async ({
         }
         : null
     },
-    userQuestion: lastUserMessage
+    userQuestion: lastUserMessage,
+    requestedPartySize
   });
 
   await createConversationMessage(conversation.id, 'ai', aiResponse, true);
@@ -2639,13 +2638,21 @@ const buildResponse = async ({
     }
 
     if (items.length > 1) {
+      const stateMultiLegacy = await findOrCreateConversationState(conversation.id);
+      const rawMultiLegacy = normalizeMetadata(stateMultiLegacy.metadata);
+      const partyLegacy = getRequestedPartySize(rawMultiLegacy);
+      const baseMultiLegacy = withoutLegacyPartyQuantity(
+        clearProductFilterMetadata(rawMultiLegacy)
+      );
       console.debug('Conversation mode:', 'FILTER_SET');
       await updateConversationState(conversation.id, {
         mode: 'FILTER_SET',
         metadata: buildMetadataValue({
+          ...baseMultiLegacy,
           pendingProductSelection: true,
           pendingQuestion: lastUserMessage,
-          candidateProductIds: items.map((item) => item.id)
+          candidateProductIds: items.map((item) => item.id),
+          ...(partyLegacy != null ? { requestedPartySize: partyLegacy } : {})
         })
       } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
       if (conversation.lastReferencedProductId) {
@@ -2681,6 +2688,10 @@ const buildResponse = async ({
 
     const matchedItem = items[0];
 
+    const stateSingleLegacy = await findOrCreateConversationState(conversation.id);
+    const rawSingleLegacy = normalizeMetadata(stateSingleLegacy.metadata);
+    const partySingleLegacy = getRequestedPartySize(rawSingleLegacy);
+
     const aiResponse = await generateProductAwareResponse({
       product: {
         name: matchedItem.name,
@@ -2693,7 +2704,8 @@ const buildResponse = async ({
           currency_code: matchedItem.menu_item_price[0]?.currency_code ?? 'ARS'
         }
       },
-      userQuestion: lastUserMessage
+      userQuestion: lastUserMessage,
+      requestedPartySize: partySingleLegacy
     });
 
     await createConversationMessage(conversation.id, 'ai', aiResponse, true);
@@ -2703,14 +2715,15 @@ const buildResponse = async ({
       where: { id: conversation.id },
       data: { lastReferencedProductId: matchedItem.id }
     });
-    const stateForFocus = await findOrCreateConversationState(conversation.id);
-    const cleanedMetadata = clearProductFilterMetadata(
-      normalizeMetadata(stateForFocus.metadata)
-    );
+    const cleanedSingleLegacy = clearProductFilterMetadata(rawSingleLegacy);
+    const nextSingleLegacy = {
+      ...withoutLegacyPartyQuantity(cleanedSingleLegacy),
+      ...(partySingleLegacy != null ? { requestedPartySize: partySingleLegacy } : {})
+    };
     console.debug('Conversation mode:', 'PRODUCT_FOCUS');
     await updateConversationState(conversation.id, {
       mode: 'PRODUCT_FOCUS',
-      metadata: buildMetadataValue(cleanedMetadata)
+      metadata: buildMetadataValue(nextSingleLegacy)
     } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
 
     return aiResponse;
@@ -3003,11 +3016,18 @@ export const processIncomingMessage = async (
         data: { lastReferencedProductId: null }
       });
     }
-    const cleanedMetadata = clearProductFilterMetadata(stateMetadata);
+    const clearedForGlobal = clearProductFilterMetadata(stateMetadata);
+    const {
+      requestedPartySize: _rp,
+      pendingProductQueryQuantity: _pq,
+      ...globalMeta
+    } = clearedForGlobal;
+    void _rp;
+    void _pq;
     console.debug('Conversation mode:', 'GLOBAL');
     await updateConversationState(conversation.id, {
       mode: 'GLOBAL',
-      metadata: buildMetadataValue(cleanedMetadata)
+      metadata: buildMetadataValue(globalMeta)
     } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
   }
 

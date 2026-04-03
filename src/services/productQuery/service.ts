@@ -25,7 +25,10 @@ import {
   formatBotUserMessage,
   getActivePrice,
   normalizeMetadata,
+  resolveRequestedPartySize,
+  withoutLegacyPartyQuantity,
 } from './utils';
+import { buildRecommendationCartSummary } from './recommendationCartSummary';
 import {
   formatSmartRecommendationsBlock,
   getSmartRecommendations,
@@ -83,28 +86,38 @@ export async function executeProductQuery(
   }
 
   if (items.length > 1) {
+    const stateMulti = await findOrCreateConversationState(ctx.conversation.id);
+    const rawPrevMulti = normalizeMetadata(stateMulti.metadata);
+    const partySize = resolveRequestedPartySize(
+      classification?.quantity,
+      rawPrevMulti
+    );
+    const prevMulti = withoutLegacyPartyQuantity(rawPrevMulti);
+
+    const cartSummary = await buildRecommendationCartSummary({
+      businessId: ctx.business.id,
+      customerPhone: ctx.customer.phone_number,
+    });
+
     const smart = await getSmartRecommendations({
       userQuery: userMessage.trim() || keyword,
       businessId: ctx.business.id,
       business: ctx.business,
       vectorResults: items,
+      requestedPartySize: partySize,
+      cartSummary,
     });
 
     const listSource = smart.forList.length > 0 ? smart.forList : items;
 
-    const requestedQty = classification?.quantity;
-    const qtyMeta =
-      requestedQty != null && requestedQty > 0
-        ? { pendingProductQueryQuantity: requestedQty }
-        : {};
-
     await updateConversationState(ctx.conversation.id, {
       mode: 'FILTER_SET',
       metadata: buildMetadataValue({
+        ...prevMulti,
         pendingProductSelection: true,
         pendingQuestion: userMessage,
         candidateProductIds: listSource.map((item) => item.id),
-        ...qtyMeta,
+        ...(partySize != null ? { requestedPartySize: partySize } : {}),
       }),
     } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
 
@@ -114,7 +127,7 @@ export async function executeProductQuery(
 
     const intro =
       smart.forDisplay.length > 0
-        ? `${formatSmartRecommendationsBlock(smart.forDisplay, smart.llmNote)}\n\nSeleccioná en la lista 👇`
+        ? `${formatSmartRecommendationsBlock(smart.forDisplay, smart.llmNote, smart.llmProgress)}\n\nSeleccioná en la lista 👇`
         : 'Seleccioná un plato en la lista 👇';
 
     const listBody = formatBotUserMessage('Resultados a tu consulta', '📋', intro);
@@ -127,15 +140,23 @@ export async function executeProductQuery(
       sections: [
         {
           title: 'Resultados',
-          rows: listSource.map((item) => ({
-            id: `SELECT_PRODUCT:${item.id}`,
-            title: item.name,
-            description: truncateDescription(
-              item.description ??
-                ('ingredients' in item ? item.ingredients : null) ??
-                'Sin descripción'
-            ),
-          })),
+          rows: listSource.map((item) => {
+            const rec = smart.forList.find((r) => r.id === item.id);
+            const sq = rec?.suggestedQuantity;
+            const rowId =
+              sq != null && sq > 1
+                ? `SELECT_PRODUCT:${item.id}:${sq}`
+                : `SELECT_PRODUCT:${item.id}`;
+            return {
+              id: rowId,
+              title: item.name,
+              description: truncateDescription(
+                item.description ??
+                  ('ingredients' in item ? item.ingredients : null) ??
+                  'Sin descripción'
+              ),
+            };
+          }),
         },
       ],
     });
@@ -152,6 +173,14 @@ export async function executeProductQuery(
   }
 
   const matchedItem = items[0];
+  const stateSingle = await findOrCreateConversationState(ctx.conversation.id);
+  const rawPrevSingle = normalizeMetadata(stateSingle.metadata);
+  const partySizeSingle = resolveRequestedPartySize(
+    classification?.quantity,
+    rawPrevSingle
+  );
+  const prevSingle = withoutLegacyPartyQuantity(rawPrevSingle);
+
   const currency =
     ctx.customer.preferred_currency ?? ctx.business.currency_code ?? null;
   const activePrice = await getActivePrice({
@@ -174,6 +203,7 @@ export async function executeProductQuery(
         : null,
     },
     userQuestion: userMessage,
+    requestedPartySize: partySizeSingle,
   });
 
   const fullText = formatBotUserMessage('Info del plato', '🍽️', aiResponse);
@@ -183,13 +213,14 @@ export async function executeProductQuery(
 
   await setLastReferencedProductId(ctx.conversation.id, matchedItem.id);
 
-  const stateForFocus = await findOrCreateConversationState(ctx.conversation.id);
-  const cleanedMetadata = clearProductFilterMetadata(
-    normalizeMetadata(stateForFocus.metadata)
-  );
+  const cleanedSingle = clearProductFilterMetadata(prevSingle);
+  const nextSingleMeta = {
+    ...cleanedSingle,
+    ...(partySizeSingle != null ? { requestedPartySize: partySizeSingle } : {}),
+  };
   await updateConversationState(ctx.conversation.id, {
     mode: 'PRODUCT_FOCUS',
-    metadata: buildMetadataValue(cleanedMetadata),
+    metadata: buildMetadataValue(nextSingleMeta),
   } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
 
   return fullText;

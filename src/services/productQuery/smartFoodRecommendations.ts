@@ -2,6 +2,7 @@ import type { business as Business } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { generateAIResponse } from '../ai/openai.service';
 import { MenuService, type MenuItemSearchResult } from '../menu.service';
+import type { RecommendationCartSummary } from './recommendationCartSummary';
 
 export type FoodRecommenderCandidate = {
   id: string;
@@ -15,6 +16,8 @@ export type SmartFoodRecommendation = {
   name: string;
   description: string | null;
   reason: string;
+  /** Cantidad sugerida para agregar (1 si no aplica). */
+  suggestedQuantity?: number;
 };
 
 export type GetSmartRecommendationsResult = {
@@ -24,12 +27,15 @@ export type GetSmartRecommendationsResult = {
   usedLlm: boolean;
   /** Mensaje contextual opcional del LLM (porciones, cantidad, guía). Sin plantillas en código. */
   llmNote?: string | null;
+  /** Resumen corto del estado del pedido / progreso (solo si el LLM lo devuelve). */
+  llmProgress?: string | null;
 };
 
 const MAX_CANDIDATES_FOR_LLM = 10;
 const MAX_LLM_PICKS = 3;
 const TOP_FALLBACK_DISPLAY = 3;
 const MAX_NOTE_LENGTH = 500;
+const MAX_PROGRESS_LENGTH = 400;
 
 const FALLBACK_REASON = 'Buena coincidencia con tu búsqueda.';
 
@@ -38,9 +44,22 @@ function stripCodeFences(raw: string): string {
 }
 
 type ParsedLlmRecommender = {
-  recommendations: Array<{ id: string; reason: string }>;
+  recommendations: Array<{
+    id: string;
+    reason: string;
+    suggestedQuantity?: number;
+  }>;
   note: string | null;
+  progress: string | null;
 };
+
+function clampSuggestedQuantity(n: unknown): number | undefined {
+  if (n === null || n === undefined) return undefined;
+  if (typeof n !== 'number' || !Number.isFinite(n)) return undefined;
+  const i = Math.floor(n);
+  if (i < 1) return undefined;
+  return Math.min(99, i);
+}
 
 function tryParseSmartRecommenderJson(raw: string): ParsedLlmRecommender | null {
   const trimmed = stripCodeFences(raw);
@@ -49,7 +68,7 @@ function tryParseSmartRecommenderJson(raw: string): ParsedLlmRecommender | null 
     if (!obj || typeof obj !== 'object') return null;
     const recs = (obj as { recommendations?: unknown }).recommendations;
     if (!Array.isArray(recs)) return null;
-    const out: Array<{ id: string; reason: string }> = [];
+    const out: ParsedLlmRecommender['recommendations'] = [];
     for (const r of recs) {
       if (!r || typeof r !== 'object') continue;
       const id = (r as { id?: unknown }).id;
@@ -57,7 +76,12 @@ function tryParseSmartRecommenderJson(raw: string): ParsedLlmRecommender | null 
       if (typeof id === 'string' && typeof reason === 'string' && id.length > 0) {
         const reasonTrim = reason.trim();
         if (reasonTrim.length > 0) {
-          out.push({ id, reason: reasonTrim });
+          const sq = clampSuggestedQuantity((r as { suggestedQuantity?: unknown }).suggestedQuantity);
+          out.push({
+            id,
+            reason: reasonTrim,
+            ...(sq != null && sq > 1 ? { suggestedQuantity: sq } : {}),
+          });
         }
       }
     }
@@ -74,7 +98,18 @@ function tryParseSmartRecommenderJson(raw: string): ParsedLlmRecommender | null 
       }
     }
 
-    return { recommendations: out, note };
+    let progress: string | null = null;
+    if ('progress' in obj) {
+      const p = (obj as { progress?: unknown }).progress;
+      if (p === null || p === undefined) {
+        progress = null;
+      } else if (typeof p === 'string') {
+        const t = p.trim();
+        progress = t.length > 0 ? t.slice(0, MAX_PROGRESS_LENGTH) : null;
+      }
+    }
+
+    return { recommendations: out, note, progress };
   } catch {
     return null;
   }
@@ -131,11 +166,13 @@ function buildLlmFailureDisplay(
 }
 
 /**
- * Prompt: intención, cantidad/porciones, ranking y mensaje UX opcional — todo decidido por el LLM.
+ * Prompt: intención, carrito, personas, ranking — todo decidido por el LLM.
  */
 export function FOOD_RECOMMENDER_PROMPT(
   userQuery: string,
-  candidates: FoodRecommenderCandidate[]
+  candidates: FoodRecommenderCandidate[],
+  requestedPartySize: number | null | undefined,
+  cartSummary: RecommendationCartSummary
 ): string {
   const lines = candidates
     .map((c, i) => {
@@ -144,64 +181,91 @@ export function FOOD_RECOMMENDER_PROMPT(
     })
     .join('\n');
 
+  const partyLine =
+    requestedPartySize != null && requestedPartySize > 0
+      ? `Personas (contexto de sesión): aproximadamente ${requestedPartySize}.`
+      : 'Personas (contexto de sesión): no indicado.';
+
+  const cartJson = JSON.stringify(cartSummary);
+
   return `Sos asistente de un restaurante por WhatsApp. El mensaje del cliente es: "${userQuery}".
 
-Tu rol: interpretar la intención (incluida cantidad o personas si las mencionó, ej. "para 3", "somos cuatro"), inferir preferencias (liviano, contundente, ingredientes solo si constan en la ficha, etc.) y elegir SOLO entre los candidatos listados abajo (retrieval por similitud). Toda la explicación y guía para el usuario la generás vos; no hay otro texto automático fuera de este JSON.
+${partyLine}
 
-Evaluá mentalmente TODOS los candidatos antes de elegir. Devolvé entre 1 y 3 entradas en "recommendations": el número exacto lo decidís vos según el caso; no hay un mínimo obligatorio ni un máximo forzado.
+Estado actual del carrito (suma de CANTIDADES por tipo de categoría, no cantidad de líneas):
+${cartJson}
+- starters = entradas (STARTER), mains = platos principales (MAIN), drinks = bebidas (DRINK), desserts = postres (DESSERT).
+- Valores 0 significan que aún no hay nada de ese tipo en el pedido.
+
+Tu rol: actuar como un mozo inteligente que ayuda a armar el pedido. Elegís SOLO entre los candidatos listados abajo (retrieval por similitud). Toda la explicación la generás vos; no hay otro texto automático fuera del JSON.
+
+INTENT:
+- Entendé el pedido del cliente y sus preferencias si se infieren del texto (ingredientes solo si constan en la ficha, etc.).
+- Si hay personas en contexto, tenelas en cuenta para sugerir cantidades de forma prudente (ver abajo).
+
+CART AWARENESS:
+- Analizá el resumen del carrito: qué tipos faltan, cuáles están incompletos respecto a las personas si aplica, y cuáles ya están razonablemente cubiertos.
+- Si falta un tipo relevante para un pedido completo, priorizá sugerir candidatos de ese tipo cuando el listado lo permita.
+- Si hay pocos platos principales respecto a las personas, podés orientar a "completar" sin afirmar porciones exactas.
+- Si el carrito ya tiene bastante de un tipo, podés pasar al siguiente hueco útil o diversificar según el pedido.
+
+DECISION LOGIC (flexible, sin reglas rígidas en código):
+- Si falta una categoría importante → sugerí ítems que la cubran.
+- Si está parcialmente cubierta (ej. pocos mains para varias personas) → sugerí completar con cautela.
+- Si ya hay bastante → podés sugerir exploración, variedad o siguiente paso lógico (bebida/postre) según el listado.
 
 SELECTION BEHAVIOR:
-- Preferí ofrecer 2 o 3 recomendaciones cuando haya al menos dos ítems que sean razonablemente útiles para explorar (aunque ninguno sea un match perfecto).
-- No seas demasiado estricto: incluí alternativas "bastante bien" o relacionadas de algún modo con lo pedido, si el listado las trajo por similitud y tienen sentido para el cliente.
-- Incluí opciones "good enough": si algo es solo parcialmente alineado pero puede servir, ofrecela y ordenala por utilidad.
-- Equilibrá relevancia y diversidad (evitá tres platos casi idénticos si el listado permite perfiles distintos).
-- Devolvé una sola recomendación solo cuando todos los demás candidatos del listado sean claramente irrelevantes o fuera de lugar para el pedido (no por perfeccionismo).
+- Preferí ofrecer 2 o 3 recomendaciones cuando haya al menos dos ítems razonablemente útiles.
+- No seas demasiado estricto: incluí alternativas "bastante bien" o relacionadas si el listado las trajo por similitud.
+- Equilibrá relevancia y diversidad.
+- Devolvé una sola recomendación solo cuando el resto de candidatos sea claramente irrelevante para el pedido.
 
 TRUTH RULES:
-- Usá únicamente lo que se desprende con certeza razonable del nombre, categoría y descripción del ítem; no completes huecos con suposiciones.
-- NO asumas tamaño de porción, cantidad de comensales que "alcanza" un plato ni si es para compartir, salvo que el texto de la ficha lo diga de forma explícita (ej. "sirve 2", "para compartir").
-- NO digas que un plato es "ideal para X personas" ni equivalente, a menos que la ficha lo indique con claridad.
-- Si no hay dato de porciones o personas, usá lenguaje cauteloso: "puede servir", "depende del tamaño de la porción", "revisá el detalle al pedirlo", etc.
+- Usá únicamente lo que se desprende con certeza razonable del nombre, categoría y descripción del ítem.
+- NO asumas tamaño de porción, cuántas personas alcanza un plato ni si es para compartir, salvo que la ficha lo diga explícitamente.
+- NO digas que un plato es "ideal para X personas" salvo que la ficha lo indique con claridad.
+- Si no hay dato de porciones, usá lenguaje cauteloso: "puede servir", "depende del tamaño de la porción", etc.
 
 ANTI-HALLUCINATION:
-- No inventes ni afirmes hechos sobre: tamaño de porciones, cuántas personas alcanza, si conviene compartir, ingredientes no mencionados, alérgenos, calorías, tiempo de cocción, ni nada que no esté en nombre o descripción.
-- Si el cliente pidió cantidad o personas y la ficha no aclara porciones: no asumas idoneidad para compartir; podés sugerir con cautela que *quizá* hagan falta más de una unidad, sin afirmar cuántas.
+- No inventes: tamaños de porción, ingredientes no mencionados, idoneidad para N personas, alérgenos, tiempos, etc.
 
-HONESTY (sin contradicciones):
-- Si una opción no encaja del todo con lo pedido, decilo en una sola idea clara en "reason" (ej. "más contundente de lo que buscabas").
-- No incluyas ítems totalmente ajenos al pedido.
+suggestedQuantity (por ítem, opcional, 1–99):
+- Indicá cuántas unidades de ESE ítem podrían tener sentido pedir en el siguiente paso, considerando personas y carrito, sin asumir porciones no dichas en la ficha.
+- Si no tiene sentido sugerir más de una unidad, omití el campo o usá 1.
+- Preferí sugerencias seguras (ej. 2 o 3) cuando haya incertidumbre; no busques el número exacto para "cerrar" matemáticamente el pedido.
+
+Campo "progress" (opcional, string corto):
+- Un resumen en español del estado del pedido y qué estás priorizando con estas recomendaciones (1–3 oraciones).
+- No repitas texto de los "reason" ni de "note".
+
+Campo "note" (opcional):
+- Orientación general (cantidad/personas) sin repetir "progress" ni los "reason".
+- Una o dos oraciones máximo.
 
 REDUNDANCY:
-- Cada "reason" debe ser UNA sola oración breve y concreta; no repitas la misma idea en dos frases ni uses relleno.
-- Entre recomendaciones distintas, no repitas el mismo argumento genérico; cada ítem debe aportar un ángulo distinto cuando sea posible.
-
-Cantidad / personas en el mensaje del cliente:
-- NO asumas si el plato es adecuado para compartir entre N personas sin dato en la ficha.
-- Preferí orientar a sumar varias unidades si hace falta, con formulaciones prudentes.
-- Ejemplo BUENO: "Si son varios, puede que necesites más de una porción; el detalle lo ves al elegir el plato."
-- Ejemplo MALO: "Ideal para compartir entre tres" (sin que la ficha lo diga).
-
-Campo opcional "note":
-- Usalo para orientación general (p. ej. cantidad: sugerir considerar más de una unidad sin cifras inventadas). Una o dos oraciones máximo, español, tono cercano.
-- NO repitas en "note" lo mismo que ya dijiste en algún "reason"; si la idea es una sola, dejala solo en "reason" o solo en "note", no en ambos.
-- Podés omitir "note", usar null o string vacío si no suma.
+- Cada "reason" debe ser UNA sola oración breve; no repitas la misma idea entre ítems.
 
 Candidatos (usá solo estos ids):
 ${lines}
 
-Respondé SOLO JSON válido, sin markdown ni texto fuera del JSON:
-{"recommendations":[{"id":"<uuid>","reason":"<una sola oración concisa>"}],"note":null}
-o con "note" como string cuando corresponda y sin redundancia respecto a "reason".`;
+Respondé SOLO JSON válido, sin markdown ni texto fuera del JSON, con esta forma:
+{"recommendations":[{"id":"<uuid>","reason":"<una oración>","suggestedQuantity":2}],"note":null,"progress":null}
+- "suggestedQuantity" es opcional por ítem.
+- "note" y "progress" pueden ser null o string.`;
 }
 
 /**
- * Vector search (retrieval) + deduplicación por id; ranking, textos y note solo vía LLM.
+ * Vector search (retrieval) + deduplicación por id; ranking, textos y metadatos solo vía LLM.
  */
 export async function getSmartRecommendations(params: {
   userQuery: string;
   businessId: string;
   business: Business;
   vectorResults?: MenuItemSearchResult[];
+  /** Personas/comensales ya inferidos o guardados en sesión. */
+  requestedPartySize?: number | null;
+  /** Resumen de unidades en el borrador (por tipo de categoría). */
+  cartSummary: RecommendationCartSummary;
 }): Promise<GetSmartRecommendationsResult> {
   const { userQuery, businessId, business } = params;
   const trimmedUtterance = userQuery.trim();
@@ -214,7 +278,13 @@ export async function getSmartRecommendations(params: {
     }));
 
   if (vectorItems.length === 0) {
-    return { forDisplay: [], forList: [], usedLlm: false, llmNote: null };
+    return {
+      forDisplay: [],
+      forList: [],
+      usedLlm: false,
+      llmNote: null,
+      llmProgress: null,
+    };
   }
 
   const deduped = dedupeById(vectorItems);
@@ -225,6 +295,7 @@ export async function getSmartRecommendations(params: {
     forList: menuResultsToSmart(topVectorFallback, ''),
     usedLlm: false,
     llmNote: null,
+    llmProgress: null,
   });
 
   const useAi =
@@ -238,6 +309,7 @@ export async function getSmartRecommendations(params: {
       forList: menuResultsToSmart(topVectorFallback, FALLBACK_REASON),
       usedLlm: false,
       llmNote: null,
+      llmProgress: null,
     };
   }
 
@@ -257,8 +329,13 @@ export async function getSmartRecommendations(params: {
 
   try {
     const system =
-      'Sos el motor de recomendación y mensajería contextual del menú. Preferís dar 2–3 opciones útiles cuando el listado lo permite, sin ser demasiado restrictivo. Respondés solo JSON con recommendations y note opcional. No inventás datos fuera de las fichas.';
-    const user = FOOD_RECOMMENDER_PROMPT(trimmedUtterance, candidates);
+      'Sos el motor de recomendación guiada del menú. Usás el carrito y las personas solo como contexto; no inventás datos de fichas. Respondés solo JSON con recommendations (cada una con reason y suggestedQuantity opcional), note y progress opcionales.';
+    const user = FOOD_RECOMMENDER_PROMPT(
+      trimmedUtterance,
+      candidates,
+      params.requestedPartySize,
+      params.cartSummary
+    );
 
     const { content } = await generateAIResponse(business, [
       { role: 'system', content: system },
@@ -284,6 +361,9 @@ export async function getSmartRecommendations(params: {
         name: src.name,
         description: src.description,
         reason: row.reason.slice(0, 280),
+        ...(row.suggestedQuantity != null && row.suggestedQuantity > 1
+          ? { suggestedQuantity: row.suggestedQuantity }
+          : {}),
       });
     }
 
@@ -296,6 +376,7 @@ export async function getSmartRecommendations(params: {
       forList: picked,
       usedLlm: true,
       llmNote: parsed.note,
+      llmProgress: parsed.progress,
     };
   } catch {
     return llmFailureResult();
@@ -308,12 +389,17 @@ export function formatSmartRecommendationsBullets(
   return recommendations.map((r) => `• ${r.name}: ${r.reason}`).join('\n');
 }
 
-/** Bullets + nota del LLM (sin plantillas fijas para la nota). */
+/** Bullets + progreso + nota del LLM (orden: recomendaciones, progress, note). */
 export function formatSmartRecommendationsBlock(
   recommendations: SmartFoodRecommendation[],
-  llmNote?: string | null
+  llmNote?: string | null,
+  llmProgress?: string | null
 ): string {
   const bullets = formatSmartRecommendationsBullets(recommendations);
+  const parts: string[] = [bullets];
+  const prog = llmProgress?.trim();
+  if (prog) parts.push(prog);
   const n = llmNote?.trim();
-  return n ? `${bullets}\n\n${n}` : bullets;
+  if (n) parts.push(n);
+  return parts.join('\n\n');
 }

@@ -7,7 +7,12 @@ export type ConversationMetadata = {
   pendingProductSelection?: boolean;
   pendingQuestion?: string;
   candidateProductIds?: string[];
-  /** Cantidad/personas inferidas en la consulta (product query). */
+  /**
+   * Personas/comensales de contexto de sesión (persiste durante el pedido).
+   * Reemplaza el uso temporal de solo product query.
+   */
+  requestedPartySize?: number;
+  /** @deprecated Lectura legacy; preferir requestedPartySize. */
   pendingProductQueryQuantity?: number;
 };
 

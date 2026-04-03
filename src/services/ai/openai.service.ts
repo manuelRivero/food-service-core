@@ -113,8 +113,10 @@ export const generateProductAwareResponse = async (params: {
     } | null;
   };
   userQuestion: string;
+  /** Contexto de sesión: personas/comensales mencionados antes en el flujo (ej. "para 3"). */
+  requestedPartySize?: number | null;
 }): Promise<string> => {
-  const { product, userQuestion } = params;
+  const { product, userQuestion, requestedPartySize } = params;
 
   console.log('---- LLM PRODUCT CALL ----');
   console.log('Product name:', product.name);
@@ -125,6 +127,11 @@ export const generateProductAwareResponse = async (params: {
     product.price?.amount != null
       ? `${String(product.price.amount)} ${product.price.currency_code}`
       : 'N/A';
+
+  const sessionPartyBlock =
+    requestedPartySize != null && requestedPartySize > 0
+      ? `\n\nSESSION CONTEXT (persistent for this chat):\n- The customer indicated they need food for about ${requestedPartySize} person(s). Use this to suggest how many units to order when relevant and when product data allows; do not invent portion sizes not stated in the product data.`
+      : '';
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -143,7 +150,7 @@ Available: ${product.is_available ? 'yes' : 'no'}
 Price: ${priceText}
 Serves people: ${product.serves_people ?? 'N/A'}
 Description: ${product.description ?? 'N/A'}
-Ingredients: ${product.ingredients ?? 'N/A'}
+Ingredients: ${product.ingredients ?? 'N/A'}${sessionPartyBlock}
 
 USER QUESTION:
 ${userQuestion}`

@@ -23,11 +23,14 @@ import {
 import type { WhatsAppListMessage } from '../../../domain/intent/whatsappTemplates';
 import { truncateDescription } from '../../../whatsappBuilders';
 import { sendResponse } from '../sender';
+import { getRequestedPartySize } from '../../../services/productQuery/utils';
 
 type ConversationMetadata = {
   pendingProductSelection?: boolean;
   pendingQuestion?: string;
   candidateProductIds?: string[];
+  pendingProductQueryQuantity?: number;
+  requestedPartySize?: number;
 };
 
 type ConversationMode = 'GLOBAL' | 'FILTER_SET' | 'PRODUCT_FOCUS';
@@ -111,6 +114,7 @@ const buildImplicitProductResponse = async (params: {
   conversationId: string;
   lastReferencedProductId: string;
   userMessage: string;
+  requestedPartySize?: number;
 }): Promise<string | null> => {
   const product = await prisma.menu_item.findUnique({
     where: { id: params.lastReferencedProductId },
@@ -149,7 +153,8 @@ const buildImplicitProductResponse = async (params: {
         }
         : null
     },
-    userQuestion: params.userMessage
+    userQuestion: params.userMessage,
+    requestedPartySize: params.requestedPartySize
   });
 
   await createConversationMessage(params.conversationId, 'ai', aiResponse, true);
@@ -180,7 +185,8 @@ export class ProductAttributeQuestionHandler implements IntentHandler {
         customer: ctx.customer,
         conversationId: ctx.conversation.id,
         lastReferencedProductId: ctx.conversation.lastReferencedProductId,
-        userMessage
+        userMessage,
+        requestedPartySize: getRequestedPartySize(metadata)
       });
 
       if (implicit) {
