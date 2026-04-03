@@ -1,6 +1,7 @@
 // services/cartService.ts
 
 import { Prisma, business, conversation, customer, draft_order_item, menu_item } from "@prisma/client";
+import type { ConversationMetadata } from "./productQuery/types";
 import { prisma } from "../lib/prisma";
 import { createConversationMessage, findBusinessByPhoneNumberId, findOrCreateConversationState, updateConversationLastMessageAt, updateConversationState } from "../repositories";
 import { findOrCreateCustomer } from "../repositories/customer.repository";
@@ -14,7 +15,10 @@ import {
   persistComplementSuggestionSnapshot,
 } from './complementSuggestions.service';
 import { formatBotUserMessage } from './productQuery';
-import { extractOrderData } from "./ai/openai.service";
+import {
+  buildMetadataValue,
+  normalizeMetadata,
+} from './productQuery/utils';
 import { ConversationIntent } from "../types/conversationIntent";
 import { handleDraftOrder, handleDraftOrderItem } from "./order.service";
 import { refreshDraftOrderTimeout } from "./draftOrderTimeout.service";
@@ -27,6 +31,19 @@ interface ConfirmRemoveItemResult {
 interface RemoveItemResult {
   message: WhatsAppInteractiveMessage | null;
   errorMessage?: string;
+}
+
+async function clearLastListSuggestedQuantityFromConversation(
+  conversationId: string
+): Promise<void> {
+  const state = await findOrCreateConversationState(conversationId);
+  const meta = normalizeMetadata(state.metadata) as ConversationMetadata;
+  if (meta.lastListSuggestedQuantity == null) return;
+  const { lastListSuggestedQuantity: _r, ...rest } = meta;
+  void _r;
+  await updateConversationState(conversationId, {
+    metadata: buildMetadataValue(rest),
+  });
 }
 
 /** Respuesta de agregar ítem: lista principal y opcional puente interactivo (metadata con snapshot de sugerencias). */
@@ -282,16 +299,27 @@ export const handleAddItemFromWebhook = async (
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
   await findOrCreateConversationState(conversation.id);
 
-  const AIResponse = await extractOrderData(message?.text?.body ?? '');
-  console.log('AIResponse', AIResponse);
-
   const draftOrder = await handleDraftOrder(business, customer);
 
   if (draftOrder) {
     console.log('debug: refreshing draftOrder timeout', draftOrder.id);
     await refreshDraftOrderTimeout(draftOrder.id);
   }
-  return buildAddItemMessage(business, conversation, menuItemId, customer, addQuantity);
+  const result = await buildAddItemMessage(
+    business,
+    conversation,
+    menuItemId,
+    customer,
+    addQuantity
+  );
+  if (
+    typeof result === 'object' &&
+    result !== null &&
+    'main' in result
+  ) {
+    await clearLastListSuggestedQuantityFromConversation(conversation.id);
+  }
+  return result;
 };
 
 export const buildConfirmRemoveItemMessage = async (

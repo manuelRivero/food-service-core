@@ -1,6 +1,6 @@
 // src/webhooks/orchestrator.ts
 
-import { extractContext } from './extractor';
+import { extractContext, isWhatsAppStatusOnlyEvent } from './extractor';
 import { dispatchIntent, dispatchInteractive } from './dispachers';
 import { sendResponse } from './sender';
 import { detectIntentWithConfidence, DetectionContext } from '../../services/ai/detection.service';
@@ -34,9 +34,17 @@ export const processWebhook = async (payload: any): Promise<void> => {
 
   try {
     const ctx = extractContext(payload);
-    console.log('[Orchestrator] Extracted context:', ctx);
+    if (ctx) {
+      console.log('[Orchestrator] Extracted context:', ctx);
+    }
 
     if (!ctx) {
+      if (isWhatsAppStatusOnlyEvent(payload)) {
+        console.debug(
+          '[Orchestrator] Ignoring WhatsApp status/delivery event (no message)'
+        );
+        return;
+      }
       console.error('[Orchestrator] Invalid payload structure');
       await logFailedProcessing(payload, 'invalid_payload');
       return;

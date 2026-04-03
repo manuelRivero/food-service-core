@@ -626,10 +626,21 @@ Respondé en español con información útil sobre el plato (precio, porciones s
     data: { lastReferencedProductId: item.id }
   });
   const cleanedMetadata = clearProductFilterMetadata(metadata);
+  const {
+    lastListSuggestedQuantity: _dropPrevSuggested,
+    ...metaWithoutPrevSuggested
+  } = cleanedMetadata as ConversationMetadata;
+  void _dropPrevSuggested;
+  const nextProductFocusMeta: ConversationMetadata = {
+    ...metaWithoutPrevSuggested,
+    ...(listSuggestedQuantity != null
+      ? { lastListSuggestedQuantity: listSuggestedQuantity }
+      : {}),
+  };
   console.debug('Conversation mode:', 'PRODUCT_FOCUS');
   await updateConversationState(conversation.id, {
     mode: 'PRODUCT_FOCUS',
-    metadata: buildMetadataValue(cleanedMetadata)
+    metadata: buildMetadataValue(nextProductFocusMeta)
   } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
   const header = item.image
     ? ({ type: 'image', image: { link: item.image } } as const)
@@ -1781,6 +1792,7 @@ type ConversationMetadata = {
   /** @deprecated Lectura legacy; preferir requestedPartySize. */
   pendingProductQueryQuantity?: number;
   requestedPartySize?: number;
+  lastListSuggestedQuantity?: number;
   pendingOrderSelection?: boolean;
   pendingOrderMessage?: string;
   pendingOrderCandidateIds?: string[];

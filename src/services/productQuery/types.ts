@@ -14,6 +14,10 @@ export type ConversationMetadata = {
   requestedPartySize?: number;
   /** @deprecated Lectura legacy; preferir requestedPartySize. */
   pendingProductQueryQuantity?: number;
+  /**
+   * Última cantidad sugerida al elegir desde lista (recomendador); respaldo si el botón es ADD_ITEM sin :N.
+   */
+  lastListSuggestedQuantity?: number;
 };
 
 export type ConversationMode = 'GLOBAL' | 'FILTER_SET' | 'PRODUCT_FOCUS';

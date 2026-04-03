@@ -2,14 +2,7 @@
 
 import { IntentDetectionResult } from '../../services/ai/detection.service';
 import { ConversationIntent } from '../../types/conversationIntent';
-
-function parseAddItemQuantityFromPayload(payloadId: string): number {
-  const parts = payloadId.split(':');
-  if (parts.length < 3) return 1;
-  const n = Number(parts[2]);
-  if (!Number.isFinite(n)) return 1;
-  return Math.min(99, Math.max(1, Math.floor(n)));
-}
+import { parseAddItemButtonPayload } from './utils';
 
 export const detectIntentFromPayload = (
   payloadId: string
@@ -31,10 +24,11 @@ export const detectIntentFromPayload = (
   }
 
   if (payloadId.startsWith('ADD_ITEM:')) {
+    const q = parseAddItemButtonPayload(payloadId).quantityFromPayload;
     return buildInteractiveResult(
       ConversationIntent.ADD_ITEM,
       payloadId,
-      parseAddItemQuantityFromPayload(payloadId)
+      q
     );
   }
   if (payloadId.startsWith('CONFIRM_REMOVE:')) {

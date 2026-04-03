@@ -3,6 +3,36 @@ import { HandlerFollowUp, HandlerResult } from '../types';
 export const parseProductId = (payloadId: string): string => {
     return payloadId.split(':')[1] ?? '';
 };
+
+/**
+ * `ADD_ITEM:<productId>` o `ADD_ITEM:<productId>:<qty>` (qty 1–99).
+ * El id del producto puede ser UUID; la cantidad es el último segmento numérico.
+ */
+export function parseAddItemButtonPayload(payloadId: string): {
+  productId: string;
+  quantityFromPayload: number | null;
+} {
+  if (!payloadId.startsWith('ADD_ITEM:')) {
+    return { productId: '', quantityFromPayload: null };
+  }
+  const rest = payloadId.slice('ADD_ITEM:'.length);
+  const lastColon = rest.lastIndexOf(':');
+  if (lastColon <= 0) {
+    return { productId: rest.trim(), quantityFromPayload: null };
+  }
+  const tail = rest.slice(lastColon + 1).trim();
+  if (/^\d{1,2}$/.test(tail)) {
+    const n = parseInt(tail, 10);
+    if (n >= 1 && n <= 99) {
+      return {
+        productId: rest.slice(0, lastColon).trim(),
+        quantityFromPayload: n,
+      };
+    }
+  }
+  return { productId: rest.trim(), quantityFromPayload: null };
+}
+
 export const parseQuantity = (payload: string): number | null => {
     const parts = payload.split(":");
     const last = parts[2];
