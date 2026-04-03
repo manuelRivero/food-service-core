@@ -117,7 +117,7 @@ export async function executeProductQuery(
         ? `${formatSmartRecommendationsBlock(smart.forDisplay, smart.llmNote)}\n\nSeleccioná en la lista 👇`
         : 'Seleccioná un plato en la lista 👇';
 
-    const listBody = formatBotUserMessage('Varios resultados', '📋', intro);
+    const listBody = formatBotUserMessage('Resultados a tu consulta', '📋', intro);
 
     const listMessage = buildListMessage({
       headerText: '',
