@@ -27,7 +27,7 @@ import {
   normalizeMetadata,
 } from './utils';
 import {
-  formatSmartRecommendationsBullets,
+  formatSmartRecommendationsBlock,
   getSmartRecommendations,
 } from './smartFoodRecommendations';
 
@@ -87,7 +87,6 @@ export async function executeProductQuery(
       userQuery: userMessage.trim() || keyword,
       businessId: ctx.business.id,
       business: ctx.business,
-      quantity: classification?.quantity ?? null,
       vectorResults: items,
     });
 
@@ -113,17 +112,10 @@ export async function executeProductQuery(
       await clearLastReferencedProductId(ctx.conversation.id);
     }
 
-    const qtyNote =
-      requestedQty != null && requestedQty > 0
-        ? `\n\nPediste algo pensado para unas *${requestedQty}* persona(s). Si en el menú no hay un plato que indique claramente esa porción, las sugerencias pueden ser aproximadas: *tocá un ítem de la lista* para ver porciones, precio y si conviene sumar más de una unidad.`
-        : '';
-
-    const listHint = `Tocá la lista para *ver más detalle* de cada opción (descripción, precio, porciones) antes de agregarla al pedido.${qtyNote}`;
-
     const intro =
       smart.forDisplay.length > 0
-        ? `${formatSmartRecommendationsBullets(smart.forDisplay)}\n\n${listHint}\n\nSeleccioná abajo 👇`
-        : `${listHint}\n\nSeleccioná un plato en la lista 👇`;
+        ? `${formatSmartRecommendationsBlock(smart.forDisplay, smart.llmNote)}\n\nSeleccioná en la lista 👇`
+        : 'Seleccioná un plato en la lista 👇';
 
     const listBody = formatBotUserMessage('Varios resultados', '📋', intro);
 

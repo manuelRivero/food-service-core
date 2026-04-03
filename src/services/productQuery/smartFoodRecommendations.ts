@@ -18,16 +18,17 @@ export type SmartFoodRecommendation = {
 };
 
 export type GetSmartRecommendationsResult = {
-  /** 2–3 ítems con razón del LLM, o hasta 3 en fallback. */
   forDisplay: SmartFoodRecommendation[];
-  /** Filas para la lista interactiva y metadata (orden del vector, sin filtrado semántico). */
   forList: SmartFoodRecommendation[];
   usedLlm: boolean;
+  /** Mensaje contextual opcional del LLM (porciones, cantidad, guía). Sin plantillas en código. */
+  llmNote?: string | null;
 };
 
 const MAX_CANDIDATES_FOR_LLM = 10;
 const MAX_LLM_PICKS = 3;
 const TOP_FALLBACK_DISPLAY = 3;
+const MAX_NOTE_LENGTH = 500;
 
 const FALLBACK_REASON = 'Buena coincidencia con tu búsqueda.';
 
@@ -35,9 +36,12 @@ function stripCodeFences(raw: string): string {
   return raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
 }
 
-function tryParseRecommendationsJson(
-  raw: string
-): Array<{ id: string; reason: string }> | null {
+type ParsedLlmRecommender = {
+  recommendations: Array<{ id: string; reason: string }>;
+  note: string | null;
+};
+
+function tryParseSmartRecommenderJson(raw: string): ParsedLlmRecommender | null {
   const trimmed = stripCodeFences(raw);
   try {
     const obj = JSON.parse(trimmed) as unknown;
@@ -56,7 +60,20 @@ function tryParseRecommendationsJson(
         }
       }
     }
-    return out.length > 0 ? out : null;
+    if (out.length === 0) return null;
+
+    let note: string | null = null;
+    if ('note' in obj) {
+      const n = (obj as { note?: unknown }).note;
+      if (n === null || n === undefined) {
+        note = null;
+      } else if (typeof n === 'string') {
+        const t = n.trim();
+        note = t.length > 0 ? t.slice(0, MAX_NOTE_LENGTH) : null;
+      }
+    }
+
+    return { recommendations: out, note };
   } catch {
     return null;
   }
@@ -112,17 +129,12 @@ function buildLlmFailureDisplay(
   );
 }
 
-type PromptOptions = {
-  quantity?: number | null;
-};
-
 /**
- * Prompt: el LLM interpreta intención, preferencias y elige entre todos los candidatos del retrieval.
+ * Prompt: intención, cantidad/porciones, ranking y mensaje UX opcional — todo decidido por el LLM.
  */
 export function FOOD_RECOMMENDER_PROMPT(
   userQuery: string,
-  candidates: FoodRecommenderCandidate[],
-  options?: PromptOptions
+  candidates: FoodRecommenderCandidate[]
 ): string {
   const lines = candidates
     .map((c, i) => {
@@ -131,39 +143,38 @@ export function FOOD_RECOMMENDER_PROMPT(
     })
     .join('\n');
 
-  const qty = options?.quantity;
-  const qtyBlock =
-    qty != null && qty > 0
-      ? `\nEl cliente mencionó aproximadamente ${qty} persona(s) (o porciones equivalentes). Revisá nombre y descripción de cada candidato: si no aclara cuántas personas alcanza, tratá como dato ausente. Si un plato parece individual o para menos personas que ${qty}, en el campo reason aclarálo (ej. que para ${qty} personas podrían hacer falta varias unidades) sin inventar cifras que no estén en el texto.`
-      : '';
+  return `Sos asistente de un restaurante por WhatsApp. El mensaje del cliente es: "${userQuery}".
 
-  return `Sos asistente de un restaurante por WhatsApp. El cliente escribió: "${userQuery}".${qtyBlock}
-
-Tu rol: interpretar la intención del mensaje, inferir preferencias (por ejemplo más liviano o más contundente, estilo, ingredientes que el cliente podría querer o evitar) y elegir las mejores opciones SOLO entre los candidatos listados abajo (resultado de búsqueda por similitud en el menú). Todas las decisiones semánticas son tuyas; no hay otro filtro previo.
+Tu rol: interpretar la intención (incluida la cantidad o personas si las mencionó, ej. "para 3", "somos cuatro"), inferir preferencias (liviano, contundente, ingredientes, etc.) y elegir SOLO entre los candidatos listados abajo (retrieval por similitud). Toda la explicación y guía para el usuario la generás vos; no hay otro texto automático fuera de este JSON.
 
 Reglas obligatorias:
-- Debés evaluar mentalmente TODOS los candidatos del listado antes de elegir.
-- Devolvé **2 o 3 recomendaciones** si hay al menos 2 candidatos distintos; si solo hay 1 candidato, devolvé 1. Si hay 2 o más, no devuelvas solo 1 salvo que el resto sea claramente irrelevante para la consulta (y en ese caso explicá el trade-off en la razón).
-- Equilibrá **relevancia** respecto al pedido con **variedad** (no tres platos casi iguales si el listado ofrece alternativas razonables).
-- Si ningún plato encaja perfecto, elegí las mejores opciones posibles y explicá en cada **reason** el trade-off o la limitación (ej. "no hay opción sin X en la lista; esta es la más cercana").${qty != null && qty > 0 ? ` Si el pedido era para ~${qty} persona(s) y el candidato no alcanza según la ficha, decilo explícitamente en la razón.` : ''}
-- NO inventes ingredientes, alérgenos ni datos que NO aparezcan en nombre o descripción del ítem. Podés inferir tono general (liviano/pesado) solo si es razonable a partir del texto de la ficha; si no, usá formulaciones cautelosas ("puede ser una opción más liviana según la descripción").
-- Cada "reason": breve en español (máx. ~22 palabras), útil para el cliente.
+- Evaluá mentalmente TODOS los candidatos antes de elegir.
+- Devolvé entre 1 y 3 entradas en "recommendations": preferí 2 u 3 opciones cuando el listado lo permita y aporten diversidad; devolvé solo 1 si ningún otro ítem es razonablemente relevante.
+- Preferí variedad (no tres platos casi iguales si hay alternativas útiles).
+- Si el cliente habló de cantidad o personas, considerá si cada plato parece individual, para compartir o adecuado según nombre y descripción; no inventes datos que no figuren en la ficha. Podés mencionar en "reason" o en "note" si convendrían varias unidades, siempre sin afirmar hechos no escritos.
+- Si nada encaja del todo, elegí lo mejor disponible y explicá trade-offs en "reason" o en "note".
+- NO inventes ingredientes ni datos que no estén en nombre o descripción del ítem.
 
-Candidatos (ids exactos; usá solo estos):
+Campo opcional "note":
+- Podés omitirlo, ponerlo null, o dejarlo vacío si no aporta.
+- Usalo solo si es útil: porciones, sugerir varias unidades, orientación breve según el pedido, aclaraciones generales (no repitas toda la lista de recomendaciones).
+- Máximo ~2 oraciones, español, tono cercano.
+
+Candidatos (usá solo estos ids):
 ${lines}
 
-Respondé SOLO JSON válido, sin markdown ni texto extra:
-{"recommendations":[{"id":"<uuid>","reason":"<texto>"}]}`;
+Respondé SOLO JSON válido, sin markdown ni texto fuera del JSON:
+{"recommendations":[{"id":"<uuid>","reason":"<texto corto>"}],"note":null}
+o con "note" como string cuando corresponda.`;
 }
 
 /**
- * Vector search (retrieval) + deduplicación por id + re-ranking y selección solo vía LLM.
+ * Vector search (retrieval) + deduplicación por id; ranking, textos y note solo vía LLM.
  */
 export async function getSmartRecommendations(params: {
   userQuery: string;
   businessId: string;
   business: Business;
-  quantity?: number | null;
   vectorResults?: MenuItemSearchResult[];
 }): Promise<GetSmartRecommendationsResult> {
   const { userQuery, businessId, business } = params;
@@ -177,7 +188,7 @@ export async function getSmartRecommendations(params: {
     }));
 
   if (vectorItems.length === 0) {
-    return { forDisplay: [], forList: [], usedLlm: false };
+    return { forDisplay: [], forList: [], usedLlm: false, llmNote: null };
   }
 
   const deduped = dedupeById(vectorItems);
@@ -187,6 +198,7 @@ export async function getSmartRecommendations(params: {
     forDisplay: buildLlmFailureDisplay(deduped),
     forList: menuResultsToSmart(deduped, ''),
     usedLlm: false,
+    llmNote: null,
   });
 
   const useAi =
@@ -199,6 +211,7 @@ export async function getSmartRecommendations(params: {
       forDisplay: [],
       forList: fallbackListFull,
       usedLlm: false,
+      llmNote: null,
     };
   }
 
@@ -218,10 +231,8 @@ export async function getSmartRecommendations(params: {
 
   try {
     const system =
-      'Sos el único motor semántico de recomendación: interpretás al cliente y elegís entre los candidatos del menú. Respondés solo JSON válido. No inventás ingredientes ni datos fuera de las fichas.';
-    const user = FOOD_RECOMMENDER_PROMPT(trimmedUtterance, candidates, {
-      quantity: params.quantity,
-    });
+      'Sos el motor de recomendación y mensajería contextual del menú. Respondés solo JSON con recommendations y note opcional. No inventás datos fuera de las fichas.';
+    const user = FOOD_RECOMMENDER_PROMPT(trimmedUtterance, candidates);
 
     const { content } = await generateAIResponse(business, [
       { role: 'system', content: system },
@@ -232,13 +243,13 @@ export async function getSmartRecommendations(params: {
       return llmFailureResult();
     }
 
-    const parsed = tryParseRecommendationsJson(content);
+    const parsed = tryParseSmartRecommenderJson(content);
     if (!parsed) {
       return llmFailureResult();
     }
 
     const picked: SmartFoodRecommendation[] = [];
-    for (const row of parsed) {
+    for (const row of parsed.recommendations) {
       if (!allowed.has(row.id) || picked.length >= MAX_LLM_PICKS) continue;
       const src = byIdVector.get(row.id);
       if (!src) continue;
@@ -260,6 +271,7 @@ export async function getSmartRecommendations(params: {
       forDisplay: picked,
       forList: fullList,
       usedLlm: true,
+      llmNote: parsed.note,
     };
   } catch {
     return llmFailureResult();
@@ -270,4 +282,14 @@ export function formatSmartRecommendationsBullets(
   recommendations: SmartFoodRecommendation[]
 ): string {
   return recommendations.map((r) => `• ${r.name}: ${r.reason}`).join('\n');
+}
+
+/** Bullets + nota del LLM (sin plantillas fijas para la nota). */
+export function formatSmartRecommendationsBlock(
+  recommendations: SmartFoodRecommendation[],
+  llmNote?: string | null
+): string {
+  const bullets = formatSmartRecommendationsBullets(recommendations);
+  const n = llmNote?.trim();
+  return n ? `${bullets}\n\n${n}` : bullets;
 }
