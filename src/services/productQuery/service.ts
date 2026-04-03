@@ -85,7 +85,6 @@ export async function executeProductQuery(
   if (items.length > 1) {
     const smart = await getSmartRecommendations({
       userQuery: userMessage.trim() || keyword,
-      termSource: `${keyword} ${userMessage}`.trim(),
       businessId: ctx.business.id,
       business: ctx.business,
       quantity: classification?.quantity ?? null,
@@ -94,12 +93,19 @@ export async function executeProductQuery(
 
     const listSource = smart.forList.length > 0 ? smart.forList : items;
 
+    const requestedQty = classification?.quantity;
+    const qtyMeta =
+      requestedQty != null && requestedQty > 0
+        ? { pendingProductQueryQuantity: requestedQty }
+        : {};
+
     await updateConversationState(ctx.conversation.id, {
       mode: 'FILTER_SET',
       metadata: buildMetadataValue({
         pendingProductSelection: true,
         pendingQuestion: userMessage,
         candidateProductIds: listSource.map((item) => item.id),
+        ...qtyMeta,
       }),
     } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
 
@@ -107,10 +113,17 @@ export async function executeProductQuery(
       await clearLastReferencedProductId(ctx.conversation.id);
     }
 
+    const qtyNote =
+      requestedQty != null && requestedQty > 0
+        ? `\n\nPediste algo pensado para unas *${requestedQty}* persona(s). Si en el menú no hay un plato que indique claramente esa porción, las sugerencias pueden ser aproximadas: *tocá un ítem de la lista* para ver porciones, precio y si conviene sumar más de una unidad.`
+        : '';
+
+    const listHint = `Tocá la lista para *ver más detalle* de cada opción (descripción, precio, porciones) antes de agregarla al pedido.${qtyNote}`;
+
     const intro =
       smart.forDisplay.length > 0
-        ? `${formatSmartRecommendationsBullets(smart.forDisplay)}\n\nSeleccioná un plato en la lista 👇`
-        : 'Seleccioná un plato de la lista 👇';
+        ? `${formatSmartRecommendationsBullets(smart.forDisplay)}\n\n${listHint}\n\nSeleccioná abajo 👇`
+        : `${listHint}\n\nSeleccioná un plato en la lista 👇`;
 
     const listBody = formatBotUserMessage('Varios resultados', '📋', intro);
 

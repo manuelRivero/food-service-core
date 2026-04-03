@@ -18,78 +18,18 @@ export type SmartFoodRecommendation = {
 };
 
 export type GetSmartRecommendationsResult = {
-  /** Hasta 3 ítems con razón del LLM o fallback (vacío si IA desactivada sin bullets). */
+  /** 2–3 ítems con razón del LLM, o hasta 3 en fallback. */
   forDisplay: SmartFoodRecommendation[];
-  /** Filas para la lista interactiva y metadata. */
+  /** Filas para la lista interactiva y metadata (orden del vector, sin filtrado semántico). */
   forList: SmartFoodRecommendation[];
   usedLlm: boolean;
 };
 
-const TOP_FOR_LLM = 5;
-const TOP_PICKS = 3;
+const MAX_CANDIDATES_FOR_LLM = 10;
+const MAX_LLM_PICKS = 3;
 const TOP_FALLBACK_DISPLAY = 3;
 
 const FALLBACK_REASON = 'Buena coincidencia con tu búsqueda.';
-
-/** Palabras que no sirven para filtrar por coincidencia léxica. */
-const SPANISH_STOPWORDS = new Set([
-  'algo',
-  'como',
-  'con',
-  'cual',
-  'cuando',
-  'cuatro',
-  'cinco',
-  'de',
-  'del',
-  'diez',
-  'doce',
-  'dos',
-  'el',
-  'en',
-  'esa',
-  'ese',
-  'eso',
-  'esta',
-  'este',
-  'favor',
-  'hay',
-  'las',
-  'los',
-  'mas',
-  'me',
-  'mi',
-  'muy',
-  'nueve',
-  'nos',
-  'ocho',
-  'once',
-  'por',
-  'para',
-  'pedido',
-  'que',
-  'quiero',
-  'se',
-  'seis',
-  'siete',
-  'sin',
-  'son',
-  'su',
-  'sus',
-  'tengo',
-  'traer',
-  'tu',
-  'tres',
-  'una',
-  'uno',
-  'unos',
-  'unas',
-  'ver',
-  'vos',
-  'y',
-  'ya',
-  'yo',
-]);
 
 function stripCodeFences(raw: string): string {
   return raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
@@ -122,77 +62,16 @@ function tryParseRecommendationsJson(
   }
 }
 
-function normalizeForMatch(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '');
-}
-
-/**
- * Términos significativos para filtrar nombre/descripción (evita pulpo cuando buscás pollo).
- */
-export function extractSearchTerms(termSource: string): string[] {
-  const raw = normalizeForMatch(termSource.trim());
-  if (!raw) return [];
-  const parts = raw.split(/[^a-z0-9ñ]+/i).filter(Boolean);
-  const terms = new Set<string>();
-  for (const w of parts) {
-    if (w.length < 3 || /^\d+$/.test(w) || SPANISH_STOPWORDS.has(w)) continue;
-    terms.add(w);
-  }
-  return [...terms];
-}
-
-function itemMatchesAnyTerm(item: MenuItemSearchResult, terms: string[]): boolean {
-  if (terms.length === 0) return true;
-  const hay = normalizeForMatch(`${item.name} ${item.description ?? ''}`);
-  return terms.some((t) => hay.includes(t));
-}
-
-function keywordPrefilter(
-  items: MenuItemSearchResult[],
-  terms: string[]
-): MenuItemSearchResult[] {
-  if (terms.length === 0) return items;
-  const matched = items.filter((i) => itemMatchesAnyTerm(i, terms));
-  return matched.length > 0 ? matched : items;
-}
-
-function dedupeMenuResults(items: MenuItemSearchResult[]): MenuItemSearchResult[] {
-  const seenId = new Set<string>();
-  const seenName = new Set<string>();
+/** Solo deduplicación técnica por id (preserva orden del vector). */
+function dedupeById(items: MenuItemSearchResult[]): MenuItemSearchResult[] {
+  const seen = new Set<string>();
   const out: MenuItemSearchResult[] = [];
   for (const item of items) {
-    const nameKey = normalizeForMatch(item.name.trim());
-    if (seenId.has(item.id) || seenName.has(nameKey)) continue;
-    seenId.add(item.id);
-    seenName.add(nameKey);
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
     out.push(item);
   }
   return out;
-}
-
-function keywordRelevanceScore(item: MenuItemSearchResult, terms: string[]): number {
-  if (terms.length === 0) return 0;
-  const name = normalizeForMatch(item.name);
-  const desc = normalizeForMatch(item.description ?? '');
-  let s = 0;
-  for (const t of terms) {
-    if (name.includes(t)) s += 4;
-    else if (desc.includes(t)) s += 1;
-  }
-  return s;
-}
-
-function sortByKeywordRelevance(
-  items: MenuItemSearchResult[],
-  terms: string[]
-): MenuItemSearchResult[] {
-  if (terms.length === 0) return items;
-  return [...items].sort(
-    (a, b) => keywordRelevanceScore(b, terms) - keywordRelevanceScore(a, terms)
-  );
 }
 
 async function loadCategoryNamesByItemId(
@@ -225,10 +104,10 @@ function menuResultsToSmart(
 }
 
 function buildLlmFailureDisplay(
-  sortedFiltered: MenuItemSearchResult[]
+  dedupedVector: MenuItemSearchResult[]
 ): SmartFoodRecommendation[] {
   return menuResultsToSmart(
-    sortedFiltered.slice(0, TOP_FALLBACK_DISPLAY),
+    dedupedVector.slice(0, TOP_FALLBACK_DISPLAY),
     FALLBACK_REASON
   );
 }
@@ -238,7 +117,7 @@ type PromptOptions = {
 };
 
 /**
- * Arma el prompt para reordenar y explicar hasta 3 platos a partir de candidatos filtrados.
+ * Prompt: el LLM interpreta intención, preferencias y elige entre todos los candidatos del retrieval.
  */
 export function FOOD_RECOMMENDER_PROMPT(
   userQuery: string,
@@ -255,48 +134,33 @@ export function FOOD_RECOMMENDER_PROMPT(
   const qty = options?.quantity;
   const qtyBlock =
     qty != null && qty > 0
-      ? `\nCantidad pedida (porciones / personas, según interprete el mensaje): ${qty}. Tené en cuenta si el plato parece individual, para compartir o adecuado para varias personas según nombre y descripción; no inventes porciones que no figuren en el texto.`
+      ? `\nEl cliente mencionó aproximadamente ${qty} persona(s) (o porciones equivalentes). Revisá nombre y descripción de cada candidato: si no aclara cuántas personas alcanza, tratá como dato ausente. Si un plato parece individual o para menos personas que ${qty}, en el campo reason aclarálo (ej. que para ${qty} personas podrían hacer falta varias unidades) sin inventar cifras que no estén en el texto.`
       : '';
 
   return `Sos asistente de un restaurante por WhatsApp. El cliente escribió: "${userQuery}".${qtyBlock}
 
-Reglas estrictas (incumplir invalida la respuesta):
-- NO inventes ingredientes, alérgenos, calorías ni datos que NO aparezcan literalmente en nombre o descripción de cada ítem.
-- Solo podés basar la razón en categoría, nombre y descripción provistos. Si no estás seguro de un detalle culinario, usá formulaciones como "puede ser una opción liviana" o "podría encajar si buscás algo así", sin afirmar hechos no escritos.
+Tu rol: interpretar la intención del mensaje, inferir preferencias (por ejemplo más liviano o más contundente, estilo, ingredientes que el cliente podría querer o evitar) y elegir las mejores opciones SOLO entre los candidatos listados abajo (resultado de búsqueda por similitud en el menú). Todas las decisiones semánticas son tuyas; no hay otro filtro previo.
 
-Inferí preferencias implícitas solo a partir del mensaje del cliente y de las fichas (sin suposiciones externas).
+Reglas obligatorias:
+- Debés evaluar mentalmente TODOS los candidatos del listado antes de elegir.
+- Devolvé **2 o 3 recomendaciones** si hay al menos 2 candidatos distintos; si solo hay 1 candidato, devolvé 1. Si hay 2 o más, no devuelvas solo 1 salvo que el resto sea claramente irrelevante para la consulta (y en ese caso explicá el trade-off en la razón).
+- Equilibrá **relevancia** respecto al pedido con **variedad** (no tres platos casi iguales si el listado ofrece alternativas razonables).
+- Si ningún plato encaja perfecto, elegí las mejores opciones posibles y explicá en cada **reason** el trade-off o la limitación (ej. "no hay opción sin X en la lista; esta es la más cercana").${qty != null && qty > 0 ? ` Si el pedido era para ~${qty} persona(s) y el candidato no alcanza según la ficha, decilo explícitamente en la razón.` : ''}
+- NO inventes ingredientes, alérgenos ni datos que NO aparezcan en nombre o descripción del ítem. Podés inferir tono general (liviano/pesado) solo si es razonable a partir del texto de la ficha; si no, usá formulaciones cautelosas ("puede ser una opción más liviana según la descripción").
+- Cada "reason": breve en español (máx. ~22 palabras), útil para el cliente.
 
-Candidatos (ya filtrados por relevancia). Elegí SOLO ítems cuyo id esté exactamente en esta lista:
+Candidatos (ids exactos; usá solo estos):
 ${lines}
-
-Tareas:
-1) Elegí hasta ${TOP_PICKS} ítems que mejor respondan a la intención del cliente.
-2) Ordenalos del más al menos adecuado.
-3) Para cada uno, una razón breve en español (máximo ~18 palabras), cumpliendo las reglas de arriba.
 
 Respondé SOLO JSON válido, sin markdown ni texto extra:
 {"recommendations":[{"id":"<uuid>","reason":"<texto>"}]}`;
 }
 
-function buildFilteredPipeline(
-  vectorItems: MenuItemSearchResult[],
-  termSource: string
-): MenuItemSearchResult[] {
-  const deduped = dedupeMenuResults(vectorItems);
-  const terms = extractSearchTerms(termSource);
-  const filtered = keywordPrefilter(deduped, terms);
-  return sortByKeywordRelevance(filtered, terms);
-}
-
 /**
- * Búsqueda vectorial existente + pre-filtro léxico, deduplicación, re-ranking LLM.
- * Si `vectorResults` se omite, se llama a {@link MenuService.searchMenuItemsByKeyword}.
+ * Vector search (retrieval) + deduplicación por id + re-ranking y selección solo vía LLM.
  */
 export async function getSmartRecommendations(params: {
-  /** Texto mostrado al modelo como mensaje del cliente. */
   userQuery: string;
-  /** Texto para extraer términos de filtro (p. ej. nombre detectado + mensaje completo). */
-  termSource?: string;
   businessId: string;
   business: Business;
   quantity?: number | null;
@@ -304,7 +168,6 @@ export async function getSmartRecommendations(params: {
 }): Promise<GetSmartRecommendationsResult> {
   const { userQuery, businessId, business } = params;
   const trimmedUtterance = userQuery.trim();
-  const termSource = (params.termSource ?? userQuery).trim();
 
   const vectorItems =
     params.vectorResults ??
@@ -317,11 +180,12 @@ export async function getSmartRecommendations(params: {
     return { forDisplay: [], forList: [], usedLlm: false };
   }
 
-  const sortedFiltered = buildFilteredPipeline(vectorItems, termSource);
-  const fallbackListFull = menuResultsToSmart(sortedFiltered, FALLBACK_REASON);
+  const deduped = dedupeById(vectorItems);
+  const fallbackListFull = menuResultsToSmart(deduped, FALLBACK_REASON);
+
   const llmFailureResult = (): GetSmartRecommendationsResult => ({
-    forDisplay: buildLlmFailureDisplay(sortedFiltered),
-    forList: menuResultsToSmart(sortedFiltered, ''),
+    forDisplay: buildLlmFailureDisplay(deduped),
+    forList: menuResultsToSmart(deduped, ''),
     usedLlm: false,
   });
 
@@ -338,7 +202,7 @@ export async function getSmartRecommendations(params: {
     };
   }
 
-  const topForLlm = sortedFiltered.slice(0, TOP_FOR_LLM);
+  const topForLlm = deduped.slice(0, MAX_CANDIDATES_FOR_LLM);
   const ids = topForLlm.map((i) => i.id);
   const categoryById = await loadCategoryNamesByItemId(businessId, ids);
 
@@ -354,7 +218,7 @@ export async function getSmartRecommendations(params: {
 
   try {
     const system =
-      'Sos un motor de recomendación de menú. Respondés únicamente JSON con el formato pedido. No inventás datos que no estén en las fichas.';
+      'Sos el único motor semántico de recomendación: interpretás al cliente y elegís entre los candidatos del menú. Respondés solo JSON válido. No inventás ingredientes ni datos fuera de las fichas.';
     const user = FOOD_RECOMMENDER_PROMPT(trimmedUtterance, candidates, {
       quantity: params.quantity,
     });
@@ -375,7 +239,7 @@ export async function getSmartRecommendations(params: {
 
     const picked: SmartFoodRecommendation[] = [];
     for (const row of parsed) {
-      if (!allowed.has(row.id) || picked.length >= TOP_PICKS) continue;
+      if (!allowed.has(row.id) || picked.length >= MAX_LLM_PICKS) continue;
       const src = byIdVector.get(row.id);
       if (!src) continue;
       picked.push({
@@ -390,7 +254,7 @@ export async function getSmartRecommendations(params: {
       return llmFailureResult();
     }
 
-    const fullList = menuResultsToSmart(sortedFiltered, '');
+    const fullList = menuResultsToSmart(deduped, '');
 
     return {
       forDisplay: picked,

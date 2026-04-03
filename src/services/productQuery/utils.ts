@@ -33,15 +33,22 @@ export const clearProductFilterMetadata = (
   if (
     !metadata.pendingProductSelection &&
     !metadata.pendingQuestion &&
-    !metadata.candidateProductIds
+    !metadata.candidateProductIds &&
+    metadata.pendingProductQueryQuantity === undefined
   ) {
     return metadata;
   }
-  const { pendingProductSelection, pendingQuestion, candidateProductIds, ...rest } =
-    metadata;
+  const {
+    pendingProductSelection,
+    pendingQuestion,
+    candidateProductIds,
+    pendingProductQueryQuantity,
+    ...rest
+  } = metadata;
   void pendingProductSelection;
   void pendingQuestion;
   void candidateProductIds;
+  void pendingProductQueryQuantity;
   return rest;
 };
 

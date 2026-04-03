@@ -1,6 +1,6 @@
 // services/cartService.ts
 
-import { business, conversation, customer, draft_order_item, menu_item } from "@prisma/client";
+import { Prisma, business, conversation, customer, draft_order_item, menu_item } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { createConversationMessage, findBusinessByPhoneNumberId, findOrCreateConversationState, updateConversationLastMessageAt, updateConversationState } from "../repositories";
 import { findOrCreateCustomer } from "../repositories/customer.repository";
@@ -100,10 +100,10 @@ export const buildAddItemMessage = async (
   business: business,
   conversation: conversation,
   menuItemId: string,
-  customer: customer
+  customer: customer,
+  addQuantity: number = 1
 ): Promise<AddItemMessageResult> => {
-
-  
+  const qty = Math.min(99, Math.max(1, Math.floor(addQuantity)));
 
     const cart = await handleDraftOrder(business, customer);
     if (!cart) return 'Error al crear el pedido.';
@@ -137,18 +137,31 @@ export const buildAddItemMessage = async (
     where: { draft_order_id: cart.id, product_id: item.id }
   });
 
+  const unitDec =
+    item.menu_item_price[0]?.amount ?? new Prisma.Decimal(0);
+
   console.log('debug: existingItem', existingItem);
 
   if (existingItem) {
+    const newQ = existingItem.quantity + qty;
     console.log('debug: existingItem found, updating quantity and total price');
-    await prisma.draft_order_item.update({  
+    await prisma.draft_order_item.update({
       where: { draft_order_id: cart.id, id: existingItem.id },
-      data: { quantity: existingItem.quantity + 1, total_price: existingItem.total_price.add(item.menu_item_price[0]?.amount.toNumber() || 0 * existingItem.quantity) }
+      data: {
+        quantity: newQ,
+        total_price: unitDec.mul(newQ),
+      },
     });
   } else {
     console.log('debug: existingItem not found, creating new item');
     await prisma.draft_order_item.create({
-      data: { draft_order_id: cart.id, product_id: item.id, quantity: 1, unit_price: item.menu_item_price[0]?.amount.toNumber() || 0, total_price: item.menu_item_price[0]?.amount.toNumber() || 0 * 1 }
+      data: {
+        draft_order_id: cart.id,
+        product_id: item.id,
+        quantity: qty,
+        unit_price: unitDec,
+        total_price: unitDec.mul(qty),
+      },
     });
   }
 
@@ -170,7 +183,9 @@ export const buildAddItemMessage = async (
     ? `\n\n📍 Dirección de entrega: ${defaultAddress.street_address}\nSi querés cambiarla, elegí "Editar dirección".`
     : '';
 
-  const messageText = `🤖\n\n*${item.name}* agregado 🛒\n\n` +
+  const qtyLine =
+    qty > 1 ? `*${qty}* × ` : '';
+  const messageText = `🤖\n\n${qtyLine}*${item.name}* agregado 🛒\n\n` +
     `Items en carrito: ${itemCount}\n` +
     `Total: $${total._sum.total_price || 0}\n\n` +
     `¿Seguís comprando o querés *finalizar*?${addressLine}`;
@@ -247,7 +262,8 @@ export const buildAddItemMessage = async (
 
 export const handleAddItemFromWebhook = async (
   payload: WhatsAppWebhookPayload,
-  menuItemId: string
+  menuItemId: string,
+  addQuantity: number = 1
 ): Promise<AddItemMessageResult | null> => {
 
   const entry = payload.entry?.[0];
@@ -275,7 +291,7 @@ export const handleAddItemFromWebhook = async (
     console.log('debug: refreshing draftOrder timeout', draftOrder.id);
     await refreshDraftOrderTimeout(draftOrder.id);
   }
-  return buildAddItemMessage(business, conversation, menuItemId, customer);
+  return buildAddItemMessage(business, conversation, menuItemId, customer, addQuantity);
 };
 
 export const buildConfirmRemoveItemMessage = async (

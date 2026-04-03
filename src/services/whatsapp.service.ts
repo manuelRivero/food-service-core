@@ -351,6 +351,16 @@ export const handleCategorySelectionFromWebhook = async (
   await handleCategorySelection(business, conversation, categoryId, from, phoneNumberId, page);
 };
 
+/** True si el cliente pidió ≥2 personas y la ficha no indica que alcanza con una unidad. */
+function servingDoesNotMeetRequestedPeople(
+  requested: number | null | undefined,
+  servesPeople: number | null
+): boolean {
+  if (requested == null || requested < 2) return false;
+  if (servesPeople == null || servesPeople < 1) return true;
+  return servesPeople < requested;
+}
+
 export const handleAddItemFromWebhook = async (
   payload: WhatsAppWebhookPayload,
   menuItemId: string
@@ -545,7 +555,7 @@ export const handleProductSelectionFromWebhook = async (
               type: 'reply',
               reply: {
                 id: 'VIEW_MENU',
-                title: 'Ver manù',
+                title: 'Ver menú',
               }
             }
           ]
@@ -560,6 +570,25 @@ export const handleProductSelectionFromWebhook = async (
   console.log('Stored pendingQuestion:', metadata.pendingQuestion);
   console.log('--------------------------------');
 
+  const requestedQty = metadata.pendingProductQueryQuantity;
+  const servesMismatch = servingDoesNotMeetRequestedPeople(
+    requestedQty,
+    item.serves_people
+  );
+
+  let quantityContext = '';
+  if (requestedQty != null && requestedQty > 0) {
+    const servesLabel =
+      item.serves_people != null && item.serves_people > 0
+        ? `${item.serves_people} persona(s) por porción según la ficha`
+        : 'no indicado en la ficha cuántas personas alcanza una porción';
+    quantityContext = `\n\nCONTEXTO DE PORCIONES:\n- El cliente buscaba algo para aproximadamente ${requestedQty} persona(s).\n- En los datos del plato: sirve a = ${servesLabel}.\n${
+      servesMismatch
+        ? '- Es importante: aclarar en tu respuesta que una sola unidad puede no alcanzar para todos y que puede sumar varias unidades con los botones (hay uno para agregar varias de una vez). Sé concreto y no inventes números que no estén en la ficha.'
+        : '- Si la ficha alcanza para lo pedido, podés confirmarlo brevemente.'
+    }`;
+  }
+
   const aiResponse = await generateProductAwareResponse({
     product: {
       name: item.name,
@@ -572,11 +601,9 @@ export const handleProductSelectionFromWebhook = async (
         currency_code: activePrice.currency_code
       }
     },
-    userQuestion: `
-    El usuario originalmente preguntó: "${metadata.pendingQuestion}".
-    El usuario seleccionó el producto "${item.name}".
-    Responde proporcionando información sobre el producto seleccionado.
-    `
+    userQuestion: `El usuario originalmente preguntó: "${metadata.pendingQuestion}".
+El usuario seleccionó el producto "${item.name}".
+Respondé en español con información útil sobre el plato (precio, porciones si constan, etc.).${quantityContext}`
   });
 
   await createConversationMessage(conversation.id, 'ai', aiResponse, true);
@@ -595,15 +622,44 @@ export const handleProductSelectionFromWebhook = async (
     ? ({ type: 'image', image: { link: item.image } } as const)
     : ({ type: 'text', text: 'Tenemos un match para tu consulta' } as const);
 
+  const buttons: Array<{
+    type: 'reply';
+    reply: { id: string; title: string };
+  }> = [
+    {
+      type: 'reply',
+      reply: { id: `ADD_ITEM:${item.id}`, title: 'Agregar 1' },
+    },
+  ];
+
+  if (
+    servesMismatch &&
+    requestedQty != null &&
+    requestedQty >= 2
+  ) {
+    buttons.push({
+      type: 'reply',
+      reply: {
+        id: `ADD_ITEM:${item.id}:${requestedQty}`,
+        title: `Agregar ${requestedQty}`,
+      },
+    });
+  }
+
+  buttons.push({
+    type: 'reply',
+    reply: { id: 'VIEW_MENU', title: 'Ver menú' },
+  });
+
   return {
     type: 'interactive',
     interactive: {
-    type: 'button',
-    header,
-    body: { text: `🤖\n\n${aiResponse}` },
-    footer: { text: 'Elige una opción' },
-    action: { buttons: [{ type: 'reply', reply: { id: `ADD_ITEM:${item.id}`, title: 'Agregar' } }] }
-  }
+      type: 'button',
+      header,
+      body: { text: `🤖\n\n${aiResponse}` },
+      footer: { text: 'Elegí una opción' },
+      action: { buttons },
+    },
   };
 };
 
@@ -1706,6 +1762,7 @@ type ConversationMetadata = {
   pendingProductSelection?: boolean;
   pendingQuestion?: string;
   candidateProductIds?: string[];
+  pendingProductQueryQuantity?: number;
   pendingOrderSelection?: boolean;
   pendingOrderMessage?: string;
   pendingOrderCandidateIds?: string[];
@@ -1726,14 +1783,22 @@ const clearProductFilterMetadata = (
   if (
     !metadata.pendingProductSelection &&
     !metadata.pendingQuestion &&
-    !metadata.candidateProductIds
+    !metadata.candidateProductIds &&
+    metadata.pendingProductQueryQuantity === undefined
   ) {
     return metadata;
   }
-  const { pendingProductSelection, pendingQuestion, candidateProductIds, ...rest } = metadata;
+  const {
+    pendingProductSelection,
+    pendingQuestion,
+    candidateProductIds,
+    pendingProductQueryQuantity,
+    ...rest
+  } = metadata;
   void pendingProductSelection;
   void pendingQuestion;
   void candidateProductIds;
+  void pendingProductQueryQuantity;
   return rest;
 };
 
