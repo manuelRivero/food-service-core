@@ -145,15 +145,24 @@ export function FOOD_RECOMMENDER_PROMPT(
 
   return `Sos asistente de un restaurante por WhatsApp. El mensaje del cliente es: "${userQuery}".
 
-Tu rol: interpretar la intención (incluida la cantidad o personas si las mencionó, ej. "para 3", "somos cuatro"), inferir preferencias (liviano, contundente, ingredientes, etc.) y elegir SOLO entre los candidatos listados abajo (retrieval por similitud). Toda la explicación y guía para el usuario la generás vos; no hay otro texto automático fuera de este JSON.
+Tu rol: interpretar la intención (incluida cantidad o personas si las mencionó, ej. "para 3", "somos cuatro"), inferir preferencias (liviano, contundente, ingredientes, etc.) y elegir SOLO entre los candidatos listados abajo (retrieval por similitud). Toda la explicación y guía para el usuario la generás vos; no hay otro texto automático fuera de este JSON.
 
-Reglas obligatorias:
-- Evaluá mentalmente TODOS los candidatos antes de elegir.
-- Devolvé entre 1 y 3 entradas en "recommendations": preferí 2 u 3 opciones cuando el listado lo permita y aporten diversidad; devolvé solo 1 si ningún otro ítem es razonablemente relevante.
-- Preferí variedad (no tres platos casi iguales si hay alternativas útiles).
-- Si el cliente habló de cantidad o personas, considerá si cada plato parece individual, para compartir o adecuado según nombre y descripción; no inventes datos que no figuren en la ficha. Podés mencionar en "reason" o en "note" si convendrían varias unidades, siempre sin afirmar hechos no escritos.
-- Si nada encaja del todo, elegí lo mejor disponible y explicá trade-offs en "reason" o en "note".
-- NO inventes ingredientes ni datos que no estén en nombre o descripción del ítem.
+Evaluá mentalmente TODOS los candidatos antes de elegir. Devolvé entre 1 y 3 entradas en "recommendations": el número exacto lo decidís vos según el caso; no hay un mínimo obligatorio ni un máximo forzado.
+
+SELECTION BEHAVIOR:
+- Preferí ofrecer 2 o 3 recomendaciones cuando haya al menos dos ítems que sean razonablemente útiles para explorar (aunque ninguno sea un match perfecto).
+- No seas demasiado estricto: incluí alternativas "bastante bien" o relacionadas de algún modo con lo pedido, si el listado las trajo por similitud y tienen sentido para el cliente.
+- Incluí opciones "good enough": si algo es solo parcialmente alineado pero puede servir, ofrecela y ordenala por utilidad.
+- Equilibrá relevancia y diversidad (evitá tres platos casi idénticos si el listado permite perfiles distintos).
+- Devolvé una sola recomendación solo cuando todos los demás candidatos del listado sean claramente irrelevantes o fuera de lugar para el pedido (no por perfeccionismo).
+
+HONESTY:
+- Si una opción no es ideal para lo que pidió, decilo con claridad en "reason" (ej. "más contundente de lo que pediste", "no es lo más liviano pero combina bien").
+- No incluyas ítems totalmente ajenos al pedido o sin ninguna conexión razonable con la consulta.
+- No inventes ingredientes ni datos que no estén en nombre o descripción del ítem.
+
+Cantidad / porciones:
+- Si el cliente mencionó cantidad o personas, considerá en cada "reason" o en "note" si aplica (porciones, varias unidades, compartir); no inventes cifras que no figuren en la ficha.
 
 Campo opcional "note":
 - Podés omitirlo, ponerlo null, o dejarlo vacío si no aporta.
@@ -231,7 +240,7 @@ export async function getSmartRecommendations(params: {
 
   try {
     const system =
-      'Sos el motor de recomendación y mensajería contextual del menú. Respondés solo JSON con recommendations y note opcional. No inventás datos fuera de las fichas.';
+      'Sos el motor de recomendación y mensajería contextual del menú. Preferís dar 2–3 opciones útiles cuando el listado lo permite, sin ser demasiado restrictivo. Respondés solo JSON con recommendations y note opcional. No inventás datos fuera de las fichas.';
     const user = FOOD_RECOMMENDER_PROMPT(trimmedUtterance, candidates);
 
     const { content } = await generateAIResponse(business, [
