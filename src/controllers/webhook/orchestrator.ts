@@ -30,7 +30,7 @@ import {
   formatClosedBusinessCustomerNotice,
   getBusinessOpenInfo
 } from '../../services/businessHours.service';
-import { extractDeterministicPeopleCount } from '../../helpers/peopleCountExtraction';
+import { extractStrictNumericPeopleCount } from '../../helpers/peopleCountExtraction';
 import {
   parsePeopleCountResume,
   PEOPLE_COUNT_INVALID_REPLY_MESSAGE,
@@ -194,7 +194,7 @@ export const processWebhook = async (payload: any): Promise<void> => {
     if (metaPre.awaitingPeopleCount) {
       const resume = parsePeopleCountResume(metaPre);
       if (resume) {
-        const extractedPeople = extractDeterministicPeopleCount(userMessage);
+        const extractedPeople = extractStrictNumericPeopleCount(userMessage);
         if (extractedPeople != null && extractedPeople > 0) {
           await patchConversationMetadata(conversation.id, {
             ...partySizeMetadataFields(extractedPeople),

@@ -1,13 +1,25 @@
 import type { IntentDetectionResult } from './ai/detection.service';
 import type { ConversationMetadata } from './productQuery/types';
-import { resolveRequestedPartySize } from './productQuery/utils';
+import {
+  formatBotUserMessage,
+  resolveRequestedPartySize,
+} from './productQuery/utils';
 import { ConversationIntent } from '../types/conversationIntent';
 
-export const PEOPLE_COUNT_PROMPT_MESSAGE =
-  '¿Para cuántas personas es el pedido? 👥';
+/** Formato estándar del bot: 🤖, título en negrita, cuerpo con guía clara. */
+export const PEOPLE_COUNT_PROMPT_MESSAGE = formatBotUserMessage(
+  '¿Para cuántas personas',
+  '👥',
+  'Así ajustamos recomendaciones y porciones.\n\n' +
+    'Escribí *solo el número* con dígitos, sin letras ni texto extra (del *1* al *99*). Ejemplos: *3* o *12*.'
+);
 
-export const PEOPLE_COUNT_INVALID_REPLY_MESSAGE =
-  'Pasame un número (ej. 2 o 4). ¿Para cuántas personas es el pedido? 👥';
+export const PEOPLE_COUNT_INVALID_REPLY_MESSAGE = formatBotUserMessage(
+  'Escribí solo el número',
+  '🔢',
+  'Necesito *únicamente dígitos*: un número del *1* al *99*, en un solo mensaje.\n\n' +
+    'Ej.: *5* — sin palabras, sin "personas" ni otros signos.'
+);
 
 export type PeopleCountResumePayload = {
   userMessage: string;
