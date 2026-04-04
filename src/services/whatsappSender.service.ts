@@ -138,7 +138,7 @@ export class WhatsAppSenderService {
 
     const interactive = isButton
       ? {
-        type: 'button',
+        type: 'button' as const,
         body: { text: bodyText },
         action: {
           buttons: sanitizedForButtons.map((button) => ({
@@ -151,7 +151,7 @@ export class WhatsAppSenderService {
         }
       }
       : {
-        type: 'list',
+        type: 'list' as const,
         body: { text: bodyText },
         action: {
           button: this.truncateLabel(actionButtonLabel ?? 'Ver categorias'),
@@ -170,9 +170,11 @@ export class WhatsAppSenderService {
       const fullMsg: WhatsAppInteractiveMessage = {
         type: 'interactive',
         interactive: {
-          ...interactive,
+          type: 'button',
           header: { type: 'text', text: '' },
-          footer: { text: '' }
+          body: interactive.body,
+          footer: { text: '' },
+          action: interactive.action
         }
       };
       const norm = normalizeWhatsAppButtonInteractiveMessage(fullMsg);
