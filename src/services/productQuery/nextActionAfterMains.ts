@@ -54,16 +54,10 @@ export function forcedCategoryTagForFlowPhase(
   }
 }
 
-const BANNER: Record<NextActionHintKey, string> = {
-  DRINK: 'Ya tenés los platos principales 👌 ¿Querés algo para tomar?',
-  STARTER: 'Podés sumar una entrada para compartir 👌',
-  DESSERT: '¿Querés agregar algo dulce para cerrar?',
-  CHECKOUT:
-    'Tenés entrada, principales, bebida y postre en el pedido 👌 Si querés, podemos cerrarlo.',
-};
-
 /**
- * Mensaje determinístico solo la primera vez por fase (hints en metadata).
+ * Banners de texto antes de la lista de resultados: desactivados (UX: solo listado, sin frases de
+ * seguimiento). El filtrado por categoría sigue vía {@link resolveNextActionFlowPhase} y
+ * {@link forcedCategoryTagForFlowPhase}.
  */
 /** Tras agregar ítem no principal con MAIN aún incompleto (post-carrito, sin bloquear). */
 export function acknowledgeNonMainAddLine(
@@ -81,21 +75,15 @@ export function acknowledgeNonMainAddLine(
   }
 }
 
+/** Tras agregar ítem (MAIN u otro) cuando aún falta cobertura de principales vs N personas. */
 export const GUIDE_CHOOSE_MAINS_AFTER_NON_MAIN =
   'Si querés, podés seguir con platos principales para el grupo 👌';
 
 export function getNextActionBannerMessage(
-  phase: NextActionFlowPhase,
-  hintsShown: NextActionHintsShown | null | undefined
+  _phase: NextActionFlowPhase,
+  _hintsShown: NextActionHintsShown | null | undefined
 ): { message: string | null; hintKey: NextActionHintKey | null } {
-  if (phase === 'MAIN_INCOMPLETE' || phase === 'BROWSE') {
-    return { message: null, hintKey: null };
-  }
-  if (phase === 'CHECKOUT') {
-    if (hintsShown?.CHECKOUT) return { message: null, hintKey: null };
-    return { message: BANNER.CHECKOUT, hintKey: 'CHECKOUT' };
-  }
-  const key = phase as NextActionHintKey;
-  if (hintsShown?.[key]) return { message: null, hintKey: null };
-  return { message: BANNER[key], hintKey: key };
+  void _phase;
+  void _hintsShown;
+  return { message: null, hintKey: null };
 }

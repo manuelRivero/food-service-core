@@ -320,7 +320,8 @@ export const buildAddItemMessage = async (
     business.id,
     customer.phone_number
   );
-  const guidanceBlock = formatCartGuidanceBlock(coverage);
+  const guidanceBlock = formatCartGuidanceBlock(coverage).trim();
+  const guidanceSuffix = guidanceBlock ? `\n\n${guidanceBlock}\n\n` : '\n\n';
 
   const mainCoverage = await computeMainPortionCoverageFromDraft({
     businessId: business.id,
@@ -339,23 +340,26 @@ export const buildAddItemMessage = async (
   const addedTag = item.menu_category?.category_tag as
     | MenuCategoryTag
     | undefined;
+  /** Cobertura MAIN aún por debajo de N personas: guiar a sumar más principales; al completar, complement LLM sugiere otras categorías. */
   let postAddMainFocus = '';
-  if (
-    mainIncomplete &&
-    addedTag != null &&
-    (addedTag === 'STARTER' ||
+  if (mainIncomplete && addedTag != null) {
+    if (
+      addedTag === 'STARTER' ||
       addedTag === 'DRINK' ||
-      addedTag === 'DESSERT')
-  ) {
-    const ack = acknowledgeNonMainAddLine(addedTag);
-    if (ack) {
-      postAddMainFocus = `\n\n${ack}\n${GUIDE_CHOOSE_MAINS_AFTER_NON_MAIN}`;
+      addedTag === 'DESSERT'
+    ) {
+      const ack = acknowledgeNonMainAddLine(addedTag);
+      if (ack) {
+        postAddMainFocus = `\n\n${ack}\n${GUIDE_CHOOSE_MAINS_AFTER_NON_MAIN}`;
+      }
+    } else if (addedTag === 'MAIN') {
+      postAddMainFocus = `\n\n${GUIDE_CHOOSE_MAINS_AFTER_NON_MAIN}`;
     }
   }
 
   const qtyLine =
     qty > 1 ? `*${qty}* × ` : '';
-  const messageText = `🤖\n\n${qtyLine}*${item.name}* agregado 🛒${postAddMainFocus}\n\n${orderSectionsBlock}\n\n${guidanceBlock}\n\n` +
+  const messageText = `🤖\n\n${qtyLine}*${item.name}* agregado 🛒${postAddMainFocus}\n\n${orderSectionsBlock}${guidanceSuffix}` +
     `Total: $${total._sum.total_price || 0}\n\n` +
     `¿Seguís comprando o querés *finalizar*?${addressLine}`;
 
@@ -700,7 +704,10 @@ export const handleShowCartForEditionFromWebhook = async (
     );
   }
 
-  const guidanceEdition = formatCartGuidanceBlock(coverageForEdition);
+  const guidanceEdition = formatCartGuidanceBlock(coverageForEdition).trim();
+  const editionIntro = guidanceEdition
+    ? `${guidanceEdition}\n\n*Este es tu pedido*`
+    : '*Este es tu pedido*';
 
   return {
     type: 'list',
@@ -709,7 +716,7 @@ export const handleShowCartForEditionFromWebhook = async (
       text: ''
     },
     body: {
-      text: `${guidanceEdition}\n\n*Este es tu pedido*\n\nSelecciona el producto que querés modificar 👇`
+      text: `${editionIntro}\n\nSelecciona el producto que querés modificar 👇`
     },
     footer: {
       text: 'Podrás cambiar cantidad o removerlo'
@@ -803,7 +810,8 @@ export const handleViewCartFromWebhook = async (
     business.id,
     customer.phone_number
   );
-  const guidanceBlock = formatCartGuidanceBlock(coverage);
+  const guidanceBlock = formatCartGuidanceBlock(coverage).trim();
+  const guidanceMid = guidanceBlock ? `\n\n${guidanceBlock}\n\n` : '\n\n';
 
   const orderSectionsBlock = formatDraftOrderSectionsForWhatsApp(
     cartItems.draft_order_item as DraftLineForSection[],
@@ -821,7 +829,7 @@ export const handleViewCartFromWebhook = async (
       text: ''
     },
     body: {
-      text: `${orderSectionsBlock}\n\n${guidanceBlock}\n\nTotal: ${total}${business.currency_code ?? 'ARS'}\n\n¿Qué deseas hacer ahora?`
+      text: `${orderSectionsBlock}${guidanceMid}Total: ${total}${business.currency_code ?? 'ARS'}\n\n¿Qué deseas hacer ahora?`
     },
     footer: {
       text: 'Selecciona una opción'

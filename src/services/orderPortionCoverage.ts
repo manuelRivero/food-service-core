@@ -1,6 +1,5 @@
 import type { MenuCategoryTag } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { MENU_SUGGESTION_ORDER } from '../helpers/complementaryMenu.helper';
 import { findOrCreateConversationState, updateConversationState } from '../repositories';
 import type { ConversationMetadata } from './productQuery/types';
 import {
@@ -19,11 +18,6 @@ const MEANINGFUL: ReadonlySet<MenuCategoryTag> = new Set([
   'SIDE',
   'DESSERT',
 ]);
-
-/** Orden de la guía: misma prioridad que el menú complementario. */
-const GUIDANCE_ORDER: MenuCategoryTag[] = MENU_SUGGESTION_ORDER.filter((t) =>
-  MEANINGFUL.has(t)
-);
 
 export type CategoryCoverageMap = Partial<Record<MenuCategoryTag, number>>;
 
@@ -102,190 +96,13 @@ function applyPeopleCount(
   };
 }
 
-function categoryLabelPlural(tag: MenuCategoryTag): string {
-  switch (tag) {
-    case 'STARTER':
-      return 'entradas';
-    case 'MAIN':
-      return 'platos principales';
-    case 'DRINK':
-      return 'bebidas';
-    case 'SIDE':
-      return 'guarniciones';
-    case 'DESSERT':
-      return 'postres';
-    default:
-      return 'productos';
-  }
-}
-
-function categoryAckComplete(tag: MenuCategoryTag): string {
-  switch (tag) {
-    case 'STARTER':
-      return 'Tenés entradas sumadas para la referencia del grupo 👌';
-    case 'MAIN':
-      return 'Tenés platos principales para la referencia del grupo 👌';
-    case 'DRINK':
-      return 'Tenés bebidas sumadas para la referencia del grupo 👌';
-    case 'SIDE':
-      return 'Tenés guarniciones sumadas para la referencia del grupo 👌';
-    case 'DESSERT':
-      return 'Tenés postres sumados para la referencia del grupo 👌';
-    default:
-      return '';
-  }
-}
-
-/** Primera categoría en orden que aún no alcanza `people` porciones (con N personas). */
-function firstIncompleteCategory(
-  r: PortionCoverageResult,
-  people: number
-): MenuCategoryTag | null {
-  for (const tag of GUIDANCE_ORDER) {
-    const c = r.categoryCoverage[tag] ?? 0;
-    if (c < people) return tag;
-  }
-  return null;
-}
-
-/** Primera categoría en orden sin ninguna porción (sin N personas en contexto). */
-function firstEmptyCategory(r: PortionCoverageResult): MenuCategoryTag | null {
-  for (const tag of GUIDANCE_ORDER) {
-    if ((r.categoryCoverage[tag] ?? 0) === 0) return tag;
-  }
-  return null;
-}
-
-function linesForCategoryVsPeople(
-  tag: MenuCategoryTag,
-  coverage: number,
-  people: number
-): string[] {
-  const label = categoryLabelPlural(tag);
-  if (coverage === 0) {
-    return [
-      `Todavía no agregaste ${label}. Si querés, podés sumar hasta ${people} porciones de referencia (según cantidad por plato).`,
-    ];
-  }
-  return [
-    `Llevás ${coverage} de ${people} porciones de referencia de ${label}.`,
-    `Si querés alinear con el grupo, podés sumar más ${label}.`,
-  ];
-}
-
-function linesGuidanceWithPeople(r: PortionCoverageResult, people: number): string[] {
-  const out: string[] = [];
-  const focus = firstIncompleteCategory(r, people);
-  if (focus == null) {
-    out.push(
-      'En las categorías guiadas (entradas, principales, bebidas, guarniciones y postres) tenés cobertura de referencia para el grupo 👌'
-    );
-    out.push('Si querés, podés revisar el total o finalizar el pedido.');
-    return out;
-  }
-
-  const idx = GUIDANCE_ORDER.indexOf(focus);
-  for (let i = 0; i < idx; i++) {
-    const tag = GUIDANCE_ORDER[i];
-    const c = r.categoryCoverage[tag] ?? 0;
-    if (c >= people) {
-      const ack = categoryAckComplete(tag);
-      if (ack) out.push(ack);
-    }
-  }
-
-  const cov = r.categoryCoverage[focus] ?? 0;
-  out.push(...linesForCategoryVsPeople(focus, cov, people));
-
-  const nextIdx = idx + 1;
-  if (nextIdx < GUIDANCE_ORDER.length) {
-    const nextTag = GUIDANCE_ORDER[nextIdx];
-    const nextLabel = categoryLabelPlural(nextTag);
-    out.push(`Más adelante, si querés, podés sumar ${nextLabel} u otras categorías.`);
-  }
-
-  return out;
-}
-
-function linesGuidanceNoPeople(r: PortionCoverageResult): string[] {
-  const empty = firstEmptyCategory(r);
-  if (empty == null) {
-    return [
-      'Tenés al menos algo en cada categoría principal.',
-      'Podés sumar bebidas o guarniciones, o finalizar el pedido.',
-    ];
-  }
-  const label = categoryLabelPlural(empty);
-  return [
-    `Si querés, podés sumar ${label} cuando te parezca.`,
-  ];
-}
-
-function pickDeterministicNextStep(r: PortionCoverageResult): string | null {
-  const people = r.peopleCount;
-
-  if (people != null && r.missingPortions != null) {
-    if (r.missingPortions >= 1 && r.missingPortions <= 2) {
-      return null;
-    }
-    if (r.missingPortions === 0) {
-      return 'Llegaste al total de referencia de porciones: si querés, podés finalizar el pedido o seguir sumando.';
-    }
-  }
-
-  if (people == null) {
-    const anyCov = Object.values(r.categoryCoverage).some(
-      (n) => n != null && n > 0
-    );
-    if (anyCov) {
-      return 'Podés seguir explorando el menú o finalizar cuando quieras.';
-    }
-  }
-
-  if (people != null && r.missingPortions != null && r.missingPortions > 2) {
-    return 'Si querés acercarte al total de referencia del grupo, podés seguir sumando porciones.';
-  }
-
-  return null;
-}
-
 /**
- * Texto guiado para carrito / post–agregar ítem (sin LLM).
+ * Texto extra de porciones/categorías en el mensaje de carrito: desactivado (la UX va por
+ * secciones del pedido + total). La cobertura sigue calculándose en
+ * {@link syncOrderCoverageToConversationState} para lógica interna / recomendaciones.
  */
-export function formatCartGuidanceBlock(result: PortionCoverageResult): string {
-  const lines: string[] = [];
-  const y = result.peopleCount;
-
-  if (y != null && y > 0) {
-    lines.push(`Porciones cubiertas: ${result.coveredPortions} de ${y}`);
-    if (result.missingPortions != null) {
-      if (result.coveredPortions < y) {
-        lines.push(
-          `Referencia: podrías sumar hasta ${result.missingPortions} porciones más para el grupo, si querés.`
-        );
-      } else {
-        lines.push(
-          'Tenés el total de referencia de porciones para la cantidad de personas del pedido 👌'
-        );
-      }
-    }
-  } else {
-    lines.push(`Porciones en carrito: ${result.coveredPortions}`);
-  }
-
-  lines.push('');
-  if (y != null && y > 0) {
-    lines.push(...linesGuidanceWithPeople(result, y));
-  } else {
-    lines.push(...linesGuidanceNoPeople(result));
-  }
-
-  const hint = pickDeterministicNextStep(result);
-  if (hint) {
-    lines.push('', hint);
-  }
-
-  return lines.join('\n');
+export function formatCartGuidanceBlock(_result: PortionCoverageResult): string {
+  return '';
 }
 
 /**
