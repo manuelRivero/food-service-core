@@ -20,6 +20,10 @@ export type ConversationMetadata = {
    * Última cantidad sugerida al elegir desde lista (recomendador); respaldo si el botón es ADD_ITEM sin :N.
    */
   lastListSuggestedQuantity?: number;
+  /** Suma de quantity × serves_people (fallback 1) en el borrador activo; sincronizado al mutar carrito. */
+  coveredPortions?: number;
+  /** peopleCount − coveredPortions (mínimo 0); solo si hay N personas en contexto. */
+  missingPortions?: number;
 };
 
 export type ConversationMode = 'GLOBAL' | 'FILTER_SET' | 'PRODUCT_FOCUS';

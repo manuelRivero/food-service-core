@@ -1795,6 +1795,8 @@ type ConversationMetadata = {
   requestedPartySize?: number;
   peopleCount?: number;
   lastListSuggestedQuantity?: number;
+  coveredPortions?: number;
+  missingPortions?: number;
   pendingOrderSelection?: boolean;
   pendingOrderMessage?: string;
   pendingOrderCandidateIds?: string[];

@@ -22,6 +22,10 @@ import {
 import { ConversationIntent } from "../types/conversationIntent";
 import { handleDraftOrder, handleDraftOrderItem } from "./order.service";
 import { refreshDraftOrderTimeout } from "./draftOrderTimeout.service";
+import {
+  formatCartGuidanceBlock,
+  syncOrderCoverageToConversationState,
+} from "./orderPortionCoverage";
 
 interface ConfirmRemoveItemResult {
   message: WhatsAppInteractiveMessage | null;
@@ -200,10 +204,18 @@ export const buildAddItemMessage = async (
     ? `\n\n📍 Dirección de entrega: ${defaultAddress.street_address}\nSi querés cambiarla, elegí "Editar dirección".`
     : '';
 
+  const coverage = await syncOrderCoverageToConversationState(
+    conversation.id,
+    business.id,
+    customer.phone_number
+  );
+  const guidanceBlock = formatCartGuidanceBlock(coverage);
+
   const qtyLine =
     qty > 1 ? `*${qty}* × ` : '';
   const messageText = `🤖\n\n${qtyLine}*${item.name}* agregado 🛒\n\n` +
-    `Items en carrito: ${itemCount}\n` +
+    `${guidanceBlock}\n\n` +
+    `Ítems distintos en el pedido: ${itemCount}\n` +
     `Total: $${total._sum.total_price || 0}\n\n` +
     `¿Seguís comprando o querés *finalizar*?${addressLine}`;
 
@@ -500,6 +512,12 @@ export const handleShowCartForEditionFromWebhook = async (
   const customer = await findOrCreateCustomer(business.id, from);
   const conversation = await createOrGetOpenConversation(business.id, customer.id);
 
+  const coverageForEdition = await syncOrderCoverageToConversationState(
+    conversation.id,
+    business.id,
+    customer.phone_number
+  );
+
   // 🔎 Obtener items del carrito
 
   const cartItems = await prisma.draft_order.findFirst({
@@ -539,6 +557,8 @@ export const handleShowCartForEditionFromWebhook = async (
     );
   }
 
+  const guidanceEdition = formatCartGuidanceBlock(coverageForEdition);
+
   return {
     type: 'list',
     header: {
@@ -546,7 +566,7 @@ export const handleShowCartForEditionFromWebhook = async (
       text: ''
     },
     body: {
-      text: '*Este es tu pedido*\n\nSelecciona el producto que querés modificar 👇'
+      text: `${guidanceEdition}\n\n*Este es tu pedido*\n\nSelecciona el producto que querés modificar 👇`
     },
     footer: {
       text: 'Podrás cambiar cantidad o removerlo'
@@ -601,6 +621,11 @@ export const handleViewCartFromWebhook = async (
 
   console.log(' handleViewCartFromWebhook debug:cartItems', cartItems?.draft_order_item.map(item => item.menu_item?.name));
   if (!cartItems?.draft_order_item.length) {
+    await syncOrderCoverageToConversationState(
+      conversation.id,
+      business.id,
+      customer.phone_number
+    );
     return buildListMessageFromButtons(
       '🤖\n\n*Tu pedido está vacío 🛒*\n\nPodés explorar el menú para empezar tu pedido.',
       [
@@ -624,6 +649,13 @@ export const handleViewCartFromWebhook = async (
   }
 
   // 🔢 Construir resumen
+  const coverage = await syncOrderCoverageToConversationState(
+    conversation.id,
+    business.id,
+    customer.phone_number
+  );
+  const guidanceBlock = formatCartGuidanceBlock(coverage);
+
   const summary = cartItems
     .draft_order_item.map((item: draft_order_item & { menu_item: menu_item | null }) => `${item.quantity}x ${item.menu_item?.name ?? ''} ${item.unit_price.toNumber()}${business.currency_code ?? 'ARS'}`)
     .join('\n');
@@ -636,7 +668,7 @@ export const handleViewCartFromWebhook = async (
       text: ''
     },
     body: {
-      text: `*Tu pedido actual*\n\n${summary}\n\nTotal: ${total}${business.currency_code ?? 'ARS'}\n\n¿Qué deseas hacer ahora?`
+      text: `*Tu pedido actual*\n\n${guidanceBlock}\n\n${summary}\n\nTotal: ${total}${business.currency_code ?? 'ARS'}\n\n¿Qué deseas hacer ahora?`
     },
     footer: {
       text: 'Selecciona una opción'
@@ -988,8 +1020,10 @@ const buildDecreaseItemQuantitySuccessMessage = async (
   draftOrderItem: draft_order_item & { menu_item: menu_item | null },
   quantity: number,
   currencyCode: string,
-  newQuantity: number
+  newQuantity: number,
+  guidanceBlock?: string
 ): Promise<WhatsAppInteractiveMessage> => {
+  const guide = guidanceBlock ? `\n\n${guidanceBlock}` : '';
   return {
     type: 'interactive',
     interactive: {
@@ -998,7 +1032,7 @@ const buildDecreaseItemQuantitySuccessMessage = async (
       body: { text: `
       Se disminuyò la cantidad de ${quantity} para el platillo ${draftOrderItem.menu_item?.name} en el pedido. 
       \nCantidad actual: ${newQuantity}
-      \nTotal: ${draftOrderItem.total_price.toNumber()} ${currencyCode}
+      \nTotal: ${draftOrderItem.total_price.toNumber()} ${currencyCode}${guide}
       \n¿Querés seguir comprando? Escribe "Ver menu" para agregar más platillos.` },
       footer: { text: '¿Querés seguir comprando o finalizar tu orden?' },
       action: {
@@ -1016,8 +1050,10 @@ const buildIncreaseItemQuantitySuccessMessage = async (
   draftOrderItem: draft_order_item & { menu_item: menu_item | null },
   quantity: number,
   newQuantity: number,
-  currencyCode: string
+  currencyCode: string,
+  guidanceBlock?: string
 ): Promise<WhatsAppInteractiveMessage> => {
+  const guide = guidanceBlock ? `\n\n${guidanceBlock}` : '';
   return {
     type: 'interactive',
     interactive: {
@@ -1025,7 +1061,7 @@ const buildIncreaseItemQuantitySuccessMessage = async (
       header: { type: 'text', text: 'Pedido actualizado' },
       body: { text: `Se aumentò la cantidad de ${quantity} para el platillo ${draftOrderItem.menu_item?.name} en el pedido. 
       \n\nCantidad actual: ${newQuantity} \n\n
-      \n\nTotal: ${draftOrderItem.total_price.toNumber()} ${currencyCode} \n\n
+      \n\nTotal: ${draftOrderItem.total_price.toNumber()} ${currencyCode} \n\n${guide}
       \n\n¿Querés seguir comprando? \n\nEscribe "Ver menu" para agregar más platillos.` },
       footer: { text: '¿Querés seguir comprando o finalizar tu orden?' },
       action: {
@@ -1073,7 +1109,20 @@ export const decreaseItemQuantityFromWebhook = async (
     data: { quantity: newQuantity }
   });
 
-  return await buildDecreaseItemQuantitySuccessMessage(draftOrderItem, quantity, draftOrder.currency ?? 'ARS', newQuantity);
+  const coverage = await syncOrderCoverageToConversationState(
+    conversation.id,
+    business.id,
+    customer.phone_number
+  );
+  const guidance = formatCartGuidanceBlock(coverage);
+
+  return await buildDecreaseItemQuantitySuccessMessage(
+    draftOrderItem,
+    quantity,
+    draftOrder.currency ?? 'ARS',
+    newQuantity,
+    guidance
+  );
 };
 
 export const increaseItemQuantityFromWebhook = async (
@@ -1111,7 +1160,20 @@ export const increaseItemQuantityFromWebhook = async (
     data: { quantity: newQuantity }
   });
 
-  return await buildIncreaseItemQuantitySuccessMessage(draftOrderItem, quantity, newQuantity, business.currency_code ?? 'ARS');
+  const coverage = await syncOrderCoverageToConversationState(
+    conversation.id,
+    business.id,
+    customer.phone_number
+  );
+  const guidance = formatCartGuidanceBlock(coverage);
+
+  return await buildIncreaseItemQuantitySuccessMessage(
+    draftOrderItem,
+    quantity,
+    newQuantity,
+    business.currency_code ?? 'ARS',
+    guidance
+  );
 };
 
 export const handleConfirmAddItemFromWebhook = async (
