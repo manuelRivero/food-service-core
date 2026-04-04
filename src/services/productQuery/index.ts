@@ -9,6 +9,7 @@ export {
   classifyPortionVsParty,
   dedupeMenuItemSearchResultsById,
   FOOD_RECOMMENDER_PROMPT,
+  formatMainCoverageGuidance,
   formatSingleProductPortionHint,
   formatSmartRecommendationsBlock,
   formatSmartRecommendationsBulletLines,
@@ -25,5 +26,16 @@ export type {
 } from './smartFoodRecommendations';
 export {
   buildRecommendationCartSummary,
+  computeMainPortionCoverageFromDraft,
 } from './recommendationCartSummary';
+export {
+  forcedCategoryTagForFlowPhase,
+  getNextActionBannerMessage,
+  resolveNextActionFlowPhase,
+} from './nextActionAfterMains';
+export type {
+  NextActionFlowPhase,
+  NextActionHintKey,
+  NextActionHintsShown,
+} from './nextActionAfterMains';
 export type { RecommendationCartSummary } from './recommendationCartSummary';

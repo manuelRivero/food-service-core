@@ -1,8 +1,17 @@
-import type { business as Business } from '@prisma/client';
+import type { business as Business, MenuCategoryTag } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { generateAIResponse } from '../ai/openai.service';
 import { MenuService, type MenuItemSearchResult } from '../menu.service';
 import type { RecommendationCartSummary } from './recommendationCartSummary';
+import { computeMainPortionCoverageFromDraft } from './recommendationCartSummary';
+import {
+  type NextActionFlowPhase,
+  type NextActionHintKey,
+  type NextActionHintsShown,
+  forcedCategoryTagForFlowPhase,
+  getNextActionBannerMessage,
+  resolveNextActionFlowPhase,
+} from './nextActionAfterMains';
 
 export type FoodRecommenderCandidate = {
   id: string;
@@ -11,6 +20,8 @@ export type FoodRecommenderCandidate = {
   category: string;
   /** Personas por porción según ficha (null = no indicado). */
   serves_people: number | null;
+  /** Etiqueta de categoría del menú (p. ej. MAIN). */
+  category_tag: MenuCategoryTag | null;
 };
 
 export type SmartFoodRecommendation = {
@@ -33,6 +44,16 @@ export type GetSmartRecommendationsResult = {
   llmNote?: string | null;
   /** Resumen corto del estado del pedido / progreso (solo si el LLM lo devuelve). */
   llmProgress?: string | null;
+  /**
+   * Texto determinístico cuando falta cobertura de platos principales vs comensales (solo MAIN).
+   */
+  mainCoverageGuidance?: string | null;
+  /** Banner de flujo post-principales (bebida → entrada → postre → cierre). */
+  nextActionMessage?: string | null;
+  /** Si se mostró un banner, persistir en metadata.nextActionHintsShown. */
+  nextActionHintKey?: NextActionHintKey | null;
+  /** Fase actual del flujo (debug / UI). */
+  nextActionFlowPhase?: NextActionFlowPhase;
 };
 
 const MAX_CANDIDATES_FOR_LLM = 10;
@@ -198,21 +219,96 @@ function finalizeVectorItemsForWhatsAppList(
   return out;
 }
 
-async function loadCategoryNamesByItemId(
+type CategoryMeta = { name: string; tag: MenuCategoryTag | null };
+
+async function loadCategoryMetadataByItemId(
   businessId: string,
   ids: string[]
-): Promise<Map<string, string>> {
+): Promise<Map<string, CategoryMeta>> {
   if (ids.length === 0) return new Map();
   const rows = await prisma.menu_item.findMany({
     where: { id: { in: ids }, business_id: businessId },
     select: {
       id: true,
-      menu_category: { select: { name: true } },
+      menu_category: { select: { name: true, category_tag: true } },
     },
   });
   return new Map(
-    rows.map((r) => [r.id, r.menu_category?.name?.trim() || 'Sin categoría'])
+    rows.map((r) => [
+      r.id,
+      {
+        name: r.menu_category?.name?.trim() || 'Sin categoría',
+        tag: r.menu_category?.category_tag ?? null,
+      },
+    ])
   );
+}
+
+/** Cobertura MAIN (suma porciones ficha) vs comensales; sin supuestos sobre líneas sin serves. */
+export function formatMainCoverageGuidance(
+  mainCoverage: number,
+  peopleCount: number
+): string {
+  const z = Math.max(0, peopleCount - mainCoverage);
+  return (
+    `Tenés ${mainCoverage} de ${peopleCount} en platos principales.\n` +
+    `Te faltan ${z} para completar.`
+  );
+}
+
+function filterVectorToCategoryTag(
+  items: MenuItemSearchResult[],
+  metaById: Map<string, CategoryMeta>,
+  tag: MenuCategoryTag | null
+): MenuItemSearchResult[] {
+  if (tag == null) return items;
+  return items.filter((i) => metaById.get(i.id)?.tag === tag);
+}
+
+async function fetchMenuItemsByCategoryTag(
+  businessId: string,
+  categoryTag: MenuCategoryTag,
+  limit: number
+): Promise<MenuItemSearchResult[]> {
+  const business = await prisma.business.findUnique({
+    where: { id: businessId },
+    select: { currency_code: true },
+  });
+  const currency = business?.currency_code ?? null;
+  const now = new Date();
+  const priceWhere = {
+    is_active: true,
+    valid_from: { lte: now },
+    OR: [{ valid_to: null }, { valid_to: { gte: now } }],
+    ...(currency ? { currency_code: currency } : {}),
+  };
+
+  const rows = await prisma.menu_item.findMany({
+    where: {
+      business_id: businessId,
+      is_available: true,
+      menu_category: { category_tag: categoryTag, is_active: true },
+      menu_item_price: { some: priceWhere },
+    },
+    orderBy: { created_at: 'asc' },
+    take: limit,
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      ingredients: true,
+      serves_people: true,
+      is_available: true,
+      menu_item_price: {
+        where: priceWhere,
+        orderBy: { valid_from: 'desc' },
+        take: 1,
+        select: { amount: true, currency_code: true },
+      },
+    },
+  });
+
+  return rows as MenuItemSearchResult[];
 }
 
 function menuResultsToSmart(
@@ -361,11 +457,44 @@ export function suggestedUnitsForListRow(
 /**
  * Prompt: intención, carrito, personas, ranking — todo decidido por el LLM.
  */
+function strictCategoryGatePromptLines(tag: MenuCategoryTag | null): string {
+  if (tag == null) return '';
+  if (tag === 'MAIN') {
+    return `\nREGLA DURA (prioridad absoluta): Falta cobertura de PLATOS PRINCIPALES respecto a los comensales. Los candidatos listados son solo tag=MAIN. NO sugieras ni menciones bebidas, postres ni entradas. Solo ayudá a elegir más platos principales.\n`;
+  }
+  const label =
+    tag === 'DRINK'
+      ? 'bebidas'
+      : tag === 'STARTER'
+        ? 'entradas'
+        : tag === 'DESSERT'
+          ? 'postres'
+          : 'esta categoría';
+  return `\nREGLA DURA: Completá primero ${label} en este paso del pedido. Los candidatos son solo tag=${tag}. No mezcles otras categorías en la elección.\n`;
+}
+
+function prioritizationBlock(strictTag: MenuCategoryTag | null): string {
+  if (strictTag === 'MAIN') {
+    return `- Solo platos principales (MAIN) hasta completar la cobertura de comensales.\n- No ofrezcas bebidas, postres, entradas ni guarniciones aunque el resumen muestre 0 en otros rubros.`;
+  }
+  if (strictTag === 'DRINK') {
+    return `- Solo bebidas (DRINK). No sugieras platos principales, entradas ni postres.`;
+  }
+  if (strictTag === 'STARTER') {
+    return `- Solo entradas (STARTER). No sugieras principales, bebidas ni postres en esta elección.`;
+  }
+  if (strictTag === 'DESSERT') {
+    return `- Solo postres (DESSERT). No sugieras principales, bebidas ni entradas en esta elección.`;
+  }
+  return `- Si falta un tipo de plato y hay candidatos, incluí ese tipo.\n- Si ya hay bastante de un tipo, ofrecé variedad o bebida/postre según candidatos.`;
+}
+
 export function FOOD_RECOMMENDER_PROMPT(
   userQuery: string,
   candidates: FoodRecommenderCandidate[],
   requestedPartySize: number | null | undefined,
-  cartSummary: RecommendationCartSummary
+  cartSummary: RecommendationCartSummary,
+  strictCategoryTag: MenuCategoryTag | null
 ): string {
   const lines = candidates
     .map((c, i) => {
@@ -374,7 +503,8 @@ export function FOOD_RECOMMENDER_PROMPT(
         c.serves_people != null && c.serves_people > 0
           ? String(c.serves_people)
           : '—';
-      return `${i + 1}. id=${c.id} | categoría=${c.category} | nombre=${c.name} | sirve_a_personas_ficha=${serves}${desc ? ` | descripción=${desc}` : ''}`;
+      const tag = c.category_tag ?? '—';
+      return `${i + 1}. id=${c.id} | categoría=${c.category} | tag=${tag} | nombre=${c.name} | sirve_a_personas_ficha=${serves}${desc ? ` | descripción=${desc}` : ''}`;
     })
     .join('\n');
 
@@ -393,6 +523,7 @@ CONTEXTO INTERNO (para elegir candidatos; NO lo repitas al cliente en reason, no
 ${cartJson}
 - starters/mains/drinks/desserts = unidades por tipo en el flujo actual; 0 = aún no sumó de ese tipo.
 - Usá esto solo para priorizar variedad o huecos; no lo describas con jerga al usuario.
+${strictCategoryGatePromptLines(strictCategoryTag)}
 
 Tu tarea: elegir SOLO entre los candidatos de abajo y devolver JSON. El cliente ve reason, note y progress.
 
@@ -415,8 +546,7 @@ CADA "reason" (una oración, corta):
 - Solo siguiente paso útil (elegir de la lista, seguir). Sin repetir platos ni porciones.
 
 PRIORIZACIÓN (resumen interno):
-- Si falta un tipo de plato y hay candidatos, incluí ese tipo.
-- Si ya hay bastante de un tipo, ofrecé variedad o bebida/postre según candidatos.
+${prioritizationBlock(strictCategoryTag)}
 
 SELECCIÓN:
 - Preferí 2 o 3 recomendaciones si hay buenos candidatos; una sola solo si el resto es irrelevante.
@@ -453,28 +583,118 @@ export async function getSmartRecommendations(params: {
   requestedPartySize?: number | null;
   /** Resumen de unidades en el borrador (por tipo de categoría). */
   cartSummary: RecommendationCartSummary;
+  /** Teléfono del cliente para calcular cobertura MAIN en el borrador. */
+  customerPhone?: string | null;
+  /** Banners de flujo ya mostrados (no repetir). */
+  nextActionHintsShown?: NextActionHintsShown | null;
 }): Promise<GetSmartRecommendationsResult> {
   const { userQuery, businessId, business } = params;
   const trimmedUtterance = userQuery.trim();
 
-  const vectorItems =
+  const peopleCount =
+    params.requestedPartySize != null && params.requestedPartySize > 0
+      ? params.requestedPartySize
+      : null;
+
+  let mainCoverage = 0;
+  const phone = params.customerPhone?.trim();
+  if (phone) {
+    mainCoverage = await computeMainPortionCoverageFromDraft({
+      businessId,
+      customerPhone: phone,
+    });
+  }
+
+  const flowPhase = resolveNextActionFlowPhase({
+    peopleCount,
+    mainCoverage,
+    cartSummary: params.cartSummary,
+  });
+
+  const mainGateActive = flowPhase === 'MAIN_INCOMPLETE';
+  const mainCoverageGuidance =
+    mainGateActive && peopleCount != null
+      ? formatMainCoverageGuidance(mainCoverage, peopleCount)
+      : null;
+
+  const strictCategoryTag = forcedCategoryTagForFlowPhase(flowPhase);
+
+  const banner = getNextActionBannerMessage(
+    flowPhase,
+    params.nextActionHintsShown ?? null
+  );
+
+  let vectorItems =
     params.vectorResults ??
     (await MenuService.searchMenuItemsByKeyword({
       businessId,
       keyword: trimmedUtterance,
     }));
 
-  if (vectorItems.length === 0) {
-    return {
-      forDisplay: [],
-      forList: [],
-      usedLlm: false,
-      llmNote: null,
-      llmProgress: null,
-    };
+  if (vectorItems.length === 0 && strictCategoryTag != null) {
+    vectorItems = await fetchMenuItemsByCategoryTag(
+      businessId,
+      strictCategoryTag,
+      25
+    );
   }
 
-  const deduped = dedupeById(vectorItems);
+  const baseResultFields = (): Pick<
+    GetSmartRecommendationsResult,
+    | 'mainCoverageGuidance'
+    | 'nextActionMessage'
+    | 'nextActionHintKey'
+    | 'nextActionFlowPhase'
+  > => ({
+    mainCoverageGuidance,
+    nextActionMessage: banner.message,
+    nextActionHintKey: banner.hintKey,
+    nextActionFlowPhase: flowPhase,
+  });
+
+  const emptyBase = (): GetSmartRecommendationsResult => ({
+    forDisplay: [],
+    forList: [],
+    usedLlm: false,
+    llmNote: null,
+    llmProgress: null,
+    ...baseResultFields(),
+  });
+
+  if (vectorItems.length === 0) {
+    return emptyBase();
+  }
+
+  let deduped = dedupeById(vectorItems);
+
+  let metaById = await loadCategoryMetadataByItemId(
+    businessId,
+    deduped.map((i) => i.id)
+  );
+  let workingSet = filterVectorToCategoryTag(
+    deduped,
+    metaById,
+    strictCategoryTag
+  );
+
+  if (strictCategoryTag != null && workingSet.length === 0) {
+    const fb = await fetchMenuItemsByCategoryTag(
+      businessId,
+      strictCategoryTag,
+      25
+    );
+    workingSet = dedupeById(fb);
+    metaById = await loadCategoryMetadataByItemId(
+      businessId,
+      workingSet.map((i) => i.id)
+    );
+  }
+
+  if (workingSet.length === 0) {
+    return emptyBase();
+  }
+
+  deduped = workingSet;
 
   const llmFailureResult = (): GetSmartRecommendationsResult => {
     const safeRows = finalizeVectorItemsForWhatsAppList(deduped).slice(
@@ -487,6 +707,7 @@ export async function getSmartRecommendations(params: {
       usedLlm: false,
       llmNote: null,
       llmProgress: null,
+      ...baseResultFields(),
     };
   };
 
@@ -506,23 +727,29 @@ export async function getSmartRecommendations(params: {
       usedLlm: false,
       llmNote: null,
       llmProgress: null,
+      ...baseResultFields(),
     };
   }
 
   const topForLlm = deduped.slice(0, MAX_CANDIDATES_FOR_LLM);
   const ids = topForLlm.map((i) => i.id);
-  const categoryById = await loadCategoryNamesByItemId(businessId, ids);
 
-  const candidates: FoodRecommenderCandidate[] = topForLlm.map((row) => ({
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    category: categoryById.get(row.id) ?? 'Sin categoría',
-    serves_people: row.serves_people ?? null,
-  }));
+  const candidates: FoodRecommenderCandidate[] = topForLlm.map((row) => {
+    const meta = metaById.get(row.id);
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      category: meta?.name ?? 'Sin categoría',
+      serves_people: row.serves_people ?? null,
+      category_tag: meta?.tag ?? null,
+    };
+  });
 
   const allowed = new Set(ids);
   const byIdVector = new Map(topForLlm.map((r) => [r.id, r]));
+
+  const suppressLlmNotes = strictCategoryTag != null;
 
   try {
     const system =
@@ -531,7 +758,8 @@ export async function getSmartRecommendations(params: {
       trimmedUtterance,
       candidates,
       params.requestedPartySize,
-      params.cartSummary
+      params.cartSummary,
+      strictCategoryTag
     );
 
     const { content } = await generateAIResponse(business, [
@@ -560,6 +788,12 @@ export async function getSmartRecommendations(params: {
       }
       const src = byIdVector.get(row.id);
       if (!src) continue;
+      if (
+        strictCategoryTag != null &&
+        metaById.get(row.id)?.tag !== strictCategoryTag
+      ) {
+        continue;
+      }
       pickedIds.add(row.id);
       const sq = resolveSuggestedQuantityFromPortion(
         src.serves_people,
@@ -585,8 +819,9 @@ export async function getSmartRecommendations(params: {
       forDisplay: finalList,
       forList: finalList,
       usedLlm: true,
-      llmNote: parsed.note,
-      llmProgress: parsed.progress,
+      llmNote: suppressLlmNotes ? null : parsed.note,
+      llmProgress: suppressLlmNotes ? null : parsed.progress,
+      ...baseResultFields(),
     };
   } catch {
     return llmFailureResult();

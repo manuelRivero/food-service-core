@@ -111,6 +111,8 @@ export async function executeProductQuery(
       vectorResults: items,
       requestedPartySize: partySize,
       cartSummary,
+      customerPhone: ctx.customer.phone_number,
+      nextActionHintsShown: prevMulti.nextActionHintsShown ?? null,
     });
 
     const listSource = smart.forList.length > 0 ? smart.forList : items;
@@ -123,6 +125,14 @@ export async function executeProductQuery(
         pendingQuestion: userMessage,
         candidateProductIds: [...new Set(listSource.map((item) => item.id))],
         ...(partySize != null ? partySizeMetadataFields(partySize) : {}),
+        ...(smart.nextActionHintKey
+          ? {
+              nextActionHintsShown: {
+                ...(prevMulti.nextActionHintsShown ?? {}),
+                [smart.nextActionHintKey]: true,
+              },
+            }
+          : {}),
       }),
     } as Prisma.conversation_stateUpdateInput & { mode?: ConversationMode });
 
@@ -140,6 +150,14 @@ export async function executeProductQuery(
           )
         : '';
 
+    const mainGuide = smart.mainCoverageGuidance?.trim()
+      ? `${smart.mainCoverageGuidance.trim()}\n\n`
+      : '';
+
+    const nextActionGuide = smart.nextActionMessage?.trim()
+      ? `${smart.nextActionMessage.trim()}\n\n`
+      : '';
+
     const fallbackNoLlmPortion =
       smart.forDisplay.length === 0 &&
       partySize != null &&
@@ -150,8 +168,8 @@ export async function executeProductQuery(
 
     const intro =
       smart.forDisplay.length > 0
-        ? `${recBlock}\n\nSeleccioná en la lista 👇`
-        : `${fallbackNoLlmPortion ? `${fallbackNoLlmPortion}\n\n` : ''}Seleccioná un plato en la lista 👇`;
+        ? `${mainGuide}${nextActionGuide}${recBlock}\n\nSeleccioná en la lista 👇`
+        : `${mainGuide}${nextActionGuide}${fallbackNoLlmPortion ? `${fallbackNoLlmPortion}\n\n` : ''}Seleccioná un plato en la lista 👇`;
 
     const listBody = formatBotUserMessage('Resultados a tu consulta', '📋', intro);
 

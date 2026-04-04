@@ -24,6 +24,13 @@ export type ConversationMetadata = {
   coveredPortions?: number;
   /** peopleCount − coveredPortions (mínimo 0); solo si hay N personas en contexto. */
   missingPortions?: number;
+  /**
+   * Banners de flujo post-principales ya mostrados (evita repetir).
+   * @see nextActionAfterMains.ts
+   */
+  nextActionHintsShown?: Partial<
+    Record<'DRINK' | 'STARTER' | 'DESSERT' | 'CHECKOUT', boolean>
+  >;
 };
 
 export type ConversationMode = 'GLOBAL' | 'FILTER_SET' | 'PRODUCT_FOCUS';
