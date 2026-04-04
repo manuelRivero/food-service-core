@@ -64,6 +64,25 @@ const BANNER: Record<NextActionHintKey, string> = {
 /**
  * Mensaje determinístico solo la primera vez por fase (hints en metadata).
  */
+/** Tras agregar ítem no principal con MAIN aún incompleto (post-carrito, sin bloquear). */
+export function acknowledgeNonMainAddLine(
+  tag: MenuCategoryTag
+): string | null {
+  switch (tag) {
+    case 'STARTER':
+      return 'Perfecto, sumamos la entrada 👌';
+    case 'DRINK':
+      return 'Perfecto, sumamos la bebida 👌';
+    case 'DESSERT':
+      return 'Perfecto, sumamos el postre 👌';
+    default:
+      return null;
+  }
+}
+
+export const GUIDE_CHOOSE_MAINS_AFTER_NON_MAIN =
+  'Ahora te conviene elegir los platos principales para completar el pedido';
+
 export function getNextActionBannerMessage(
   phase: NextActionFlowPhase,
   hintsShown: NextActionHintsShown | null | undefined

@@ -29,8 +29,10 @@ export {
   computeMainPortionCoverageFromDraft,
 } from './recommendationCartSummary';
 export {
+  acknowledgeNonMainAddLine,
   forcedCategoryTagForFlowPhase,
   getNextActionBannerMessage,
+  GUIDE_CHOOSE_MAINS_AFTER_NON_MAIN,
   resolveNextActionFlowPhase,
 } from './nextActionAfterMains';
 export type {

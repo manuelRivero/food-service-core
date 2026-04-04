@@ -1,6 +1,14 @@
 // services/cartService.ts
 
-import { Prisma, business, conversation, customer, draft_order_item, menu_item } from "@prisma/client";
+import {
+  Prisma,
+  business,
+  conversation,
+  customer,
+  draft_order_item,
+  menu_item,
+} from "@prisma/client";
+import type { MenuCategoryTag } from "@prisma/client";
 import type { ConversationMetadata } from "./productQuery/types";
 import { prisma } from "../lib/prisma";
 import { createConversationMessage, findBusinessByPhoneNumberId, findOrCreateConversationState, updateConversationLastMessageAt, updateConversationState } from "../repositories";
@@ -17,6 +25,7 @@ import {
 import { formatBotUserMessage } from './productQuery';
 import {
   buildMetadataValue,
+  getRequestedPartySize,
   normalizeMetadata,
 } from './productQuery/utils';
 import { ConversationIntent } from "../types/conversationIntent";
@@ -26,6 +35,11 @@ import {
   formatCartGuidanceBlock,
   syncOrderCoverageToConversationState,
 } from "./orderPortionCoverage";
+import { computeMainPortionCoverageFromDraft } from "./productQuery/recommendationCartSummary";
+import {
+  acknowledgeNonMainAddLine,
+  GUIDE_CHOOSE_MAINS_AFTER_NON_MAIN,
+} from "./productQuery/nextActionAfterMains";
 
 interface ConfirmRemoveItemResult {
   message: WhatsAppInteractiveMessage | null;
@@ -133,6 +147,7 @@ export const buildAddItemMessage = async (
   const item = await prisma.menu_item.findFirst({
     where: { id: menuItemId, business_id: business.id, is_available: true },
     include: {
+      menu_category: { select: { category_tag: true } },
       menu_item_price: {
         where: {
           is_active: true,
@@ -211,21 +226,55 @@ export const buildAddItemMessage = async (
   );
   const guidanceBlock = formatCartGuidanceBlock(coverage);
 
+  const mainCoverage = await computeMainPortionCoverageFromDraft({
+    businessId: business.id,
+    customerPhone: customer.phone_number,
+  });
+  const convState = await findOrCreateConversationState(conversation.id);
+  const peopleCount = getRequestedPartySize(
+    normalizeMetadata(convState.metadata) as ConversationMetadata
+  );
+
+  const mainIncomplete =
+    peopleCount != null &&
+    peopleCount > 0 &&
+    mainCoverage < peopleCount;
+
+  const addedTag = item.menu_category?.category_tag as
+    | MenuCategoryTag
+    | undefined;
+  let postAddMainFocus = '';
+  if (
+    mainIncomplete &&
+    addedTag != null &&
+    (addedTag === 'STARTER' ||
+      addedTag === 'DRINK' ||
+      addedTag === 'DESSERT')
+  ) {
+    const ack = acknowledgeNonMainAddLine(addedTag);
+    if (ack) {
+      postAddMainFocus = `\n\n${ack}\n${GUIDE_CHOOSE_MAINS_AFTER_NON_MAIN}`;
+    }
+  }
+
   const qtyLine =
     qty > 1 ? `*${qty}* × ` : '';
-  const messageText = `🤖\n\n${qtyLine}*${item.name}* agregado 🛒\n\n` +
+  const messageText = `🤖\n\n${qtyLine}*${item.name}* agregado 🛒${postAddMainFocus}\n\n` +
     `${guidanceBlock}\n\n` +
     `Ítems distintos en el pedido: ${itemCount}\n` +
     `Total: $${total._sum.total_price || 0}\n\n` +
     `¿Seguís comprando o querés *finalizar*?${addressLine}`;
 
-  const complement = await buildComplementarySuggestionsWithLlm(business, {
-    businessId: business.id,
-    draftOrderId: cart.id,
-    lastAddedMenuItemId: item.id,
-    maxItems: 5,
-    poolSize: 12,
-  });
+  const complement =
+    mainIncomplete
+      ? null
+      : await buildComplementarySuggestionsWithLlm(business, {
+          businessId: business.id,
+          draftOrderId: cart.id,
+          lastAddedMenuItemId: item.id,
+          maxItems: 5,
+          poolSize: 12,
+        });
 
   const mainButtons = [
     {
