@@ -226,7 +226,7 @@ function pickDeterministicNextStep(r: PortionCoverageResult): string | null {
 
   if (people != null && r.missingPortions != null) {
     if (r.missingPortions >= 1 && r.missingPortions <= 2) {
-      return 'Estás cerca del total de porciones: podés finalizar o seguir sumando.';
+      return null;
     }
     if (r.missingPortions === 0) {
       return 'Llegaste al total de referencia de porciones: si querés, podés finalizar el pedido o seguir sumando.';

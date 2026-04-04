@@ -44,9 +44,7 @@ export type GetSmartRecommendationsResult = {
   llmNote?: string | null;
   /** Resumen corto del estado del pedido / progreso (solo si el LLM lo devuelve). */
   llmProgress?: string | null;
-  /**
-   * Texto determinístico cuando falta cobertura de platos principales vs comensales (solo MAIN).
-   */
+  /** Reservado; ya no se antepone texto de cobertura MAIN al bloque de resultados. */
   mainCoverageGuidance?: string | null;
   /** Banner de flujo post-principales (bebida → entrada → postre → cierre). */
   nextActionMessage?: string | null;
@@ -241,17 +239,6 @@ async function loadCategoryMetadataByItemId(
         tag: r.menu_category?.category_tag ?? null,
       },
     ])
-  );
-}
-
-/** Cobertura MAIN (suma porciones ficha) vs comensales; sin supuestos sobre líneas sin serves. */
-export function formatMainCoverageGuidance(
-  mainCoverage: number,
-  peopleCount: number
-): string {
-  return (
-    `Llevás ${mainCoverage} de ${peopleCount} en platos principales (porciones según la ficha).\n` +
-    `Si querés algo para todos, podés sumar más platos principales.`
   );
 }
 
@@ -610,11 +597,7 @@ export async function getSmartRecommendations(params: {
     cartSummary: params.cartSummary,
   });
 
-  const mainGateActive = flowPhase === 'MAIN_INCOMPLETE';
-  const mainCoverageGuidance =
-    mainGateActive && peopleCount != null
-      ? formatMainCoverageGuidance(mainCoverage, peopleCount)
-      : null;
+  const mainCoverageGuidance: string | null = null;
 
   const strictCategoryTag = forcedCategoryTagForFlowPhase(flowPhase);
 

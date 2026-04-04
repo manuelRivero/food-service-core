@@ -40,6 +40,88 @@ import {
   acknowledgeNonMainAddLine,
   GUIDE_CHOOSE_MAINS_AFTER_NON_MAIN,
 } from "./productQuery/nextActionAfterMains";
+import { MENU_SUGGESTION_ORDER } from "../helpers/complementaryMenu.helper";
+
+const SECTION_TITLE: Record<MenuCategoryTag, string> = {
+  STARTER: "Entradas",
+  MAIN: "Platos principales",
+  DRINK: "Bebidas",
+  SIDE: "Guarniciones",
+  DESSERT: "Postres",
+  OTHER: "Otros",
+};
+
+/** Orden de secciones en el resumen del pedido (post–agregar ítem). */
+const ORDER_SECTION_TAGS: MenuCategoryTag[] = [
+  ...MENU_SUGGESTION_ORDER,
+  "OTHER",
+];
+
+type DraftLineForSection = {
+  quantity: number;
+  menu_item: {
+    name: string | null;
+    menu_category: {
+      category_tag: MenuCategoryTag | null;
+      name: string | null;
+    } | null;
+  } | null;
+};
+
+/**
+ * Agrupa líneas del borrador por categoría y arma texto con secciones (*título*) y cantidad × producto.
+ */
+function formatDraftOrderSectionsForWhatsApp(
+  lines: DraftLineForSection[],
+  heading: string = "*Tu pedido*"
+): string {
+  type Bucket = { title: string; lines: string[] };
+  const buckets = new Map<string, Bucket>();
+
+  for (const row of lines) {
+    const name = row.menu_item?.name?.trim() || "Producto";
+    const q = row.quantity;
+    const tag = row.menu_item?.menu_category?.category_tag;
+    const catName = row.menu_item?.menu_category?.name?.trim();
+
+    let key: string;
+    let title: string;
+    if (tag != null) {
+      key = tag;
+      title = SECTION_TITLE[tag] ?? catName ?? "Otros";
+    } else {
+      const slug = catName || "sin-categoría";
+      key = `__extra__:${slug}`;
+      title = catName || "Sin categoría";
+    }
+
+    if (!buckets.has(key)) {
+      buckets.set(key, { title, lines: [] });
+    }
+    buckets.get(key)!.lines.push(`${q}× ${name}`);
+  }
+
+  const parts: string[] = [heading];
+  const used = new Set<string>();
+
+  for (const tag of ORDER_SECTION_TAGS) {
+    const b = buckets.get(tag);
+    if (!b?.lines.length) continue;
+    parts.push("", `*${b.title}*`, b.lines.join("\n"));
+    used.add(tag);
+  }
+
+  const restKeys = [...buckets.keys()]
+    .filter((k) => !used.has(k))
+    .sort();
+  for (const k of restKeys) {
+    const b = buckets.get(k)!;
+    if (!b.lines.length) continue;
+    parts.push("", `*${b.title}*`, b.lines.join("\n"));
+  }
+
+  return parts.join("\n").trim();
+}
 
 interface ConfirmRemoveItemResult {
   message: WhatsAppInteractiveMessage | null;
@@ -201,11 +283,25 @@ export const buildAddItemMessage = async (
     });
   }
 
-  const itemCount = await prisma.draft_order_item.count({ where: { draft_order_id: cart.id } });
   const total = await prisma.draft_order_item.aggregate({
     where: { draft_order_id: cart.id },
     _sum: { total_price: true }
   });
+
+  const draftLinesForSections = await prisma.draft_order_item.findMany({
+    where: { draft_order_id: cart.id },
+    include: {
+      menu_item: {
+        select: {
+          name: true,
+          menu_category: { select: { category_tag: true, name: true } },
+        },
+      },
+    },
+    orderBy: { id: "asc" },
+  });
+  const orderSectionsBlock =
+    formatDraftOrderSectionsForWhatsApp(draftLinesForSections);
 
   const defaultAddress = await prisma.customer_address.findFirst({
     where: {
@@ -259,9 +355,7 @@ export const buildAddItemMessage = async (
 
   const qtyLine =
     qty > 1 ? `*${qty}* × ` : '';
-  const messageText = `🤖\n\n${qtyLine}*${item.name}* agregado 🛒${postAddMainFocus}\n\n` +
-    `${guidanceBlock}\n\n` +
-    `Ítems distintos en el pedido: ${itemCount}\n` +
+  const messageText = `🤖\n\n${qtyLine}*${item.name}* agregado 🛒${postAddMainFocus}\n\n${orderSectionsBlock}\n\n${guidanceBlock}\n\n` +
     `Total: $${total._sum.total_price || 0}\n\n` +
     `¿Seguís comprando o querés *finalizar*?${addressLine}`;
 
@@ -662,10 +756,16 @@ export const handleViewCartFromWebhook = async (
       status: 'active'
     },
     include: {
-      draft_order_item: {  // ← Nombre correcto según tu schema
-        include: { menu_item: true }
-      }
-    }
+      draft_order_item: {
+        include: {
+          menu_item: {
+            include: {
+              menu_category: { select: { category_tag: true, name: true } },
+            },
+          },
+        },
+      },
+    },
   });
 
   console.log(' handleViewCartFromWebhook debug:cartItems', cartItems?.draft_order_item.map(item => item.menu_item?.name));
@@ -705,10 +805,14 @@ export const handleViewCartFromWebhook = async (
   );
   const guidanceBlock = formatCartGuidanceBlock(coverage);
 
-  const summary = cartItems
-    .draft_order_item.map((item: draft_order_item & { menu_item: menu_item | null }) => `${item.quantity}x ${item.menu_item?.name ?? ''} ${item.unit_price.toNumber()}${business.currency_code ?? 'ARS'}`)
-    .join('\n');
-  const total = cartItems.draft_order_item.reduce((acc: number, item) => acc + item.unit_price.toNumber() * item.quantity, 0);
+  const orderSectionsBlock = formatDraftOrderSectionsForWhatsApp(
+    cartItems.draft_order_item as DraftLineForSection[],
+    "*Tu pedido actual*"
+  );
+  const total = cartItems.draft_order_item.reduce(
+    (acc: number, item) => acc + item.unit_price.toNumber() * item.quantity,
+    0
+  );
 
   return {
     type: 'list',
@@ -717,7 +821,7 @@ export const handleViewCartFromWebhook = async (
       text: ''
     },
     body: {
-      text: `*Tu pedido actual*\n\n${guidanceBlock}\n\n${summary}\n\nTotal: ${total}${business.currency_code ?? 'ARS'}\n\n¿Qué deseas hacer ahora?`
+      text: `${orderSectionsBlock}\n\n${guidanceBlock}\n\nTotal: ${total}${business.currency_code ?? 'ARS'}\n\n¿Qué deseas hacer ahora?`
     },
     footer: {
       text: 'Selecciona una opción'

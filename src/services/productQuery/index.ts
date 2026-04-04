@@ -9,7 +9,6 @@ export {
   classifyPortionVsParty,
   dedupeMenuItemSearchResultsById,
   FOOD_RECOMMENDER_PROMPT,
-  formatMainCoverageGuidance,
   formatSingleProductPortionHint,
   formatSmartRecommendationsBlock,
   formatSmartRecommendationsBulletLines,
