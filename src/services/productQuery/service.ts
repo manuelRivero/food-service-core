@@ -33,20 +33,10 @@ import { buildRecommendationCartSummary } from './recommendationCartSummary';
 import {
   dedupeMenuItemSearchResultsById,
   formatSmartRecommendationsBlock,
+  formatSingleProductPortionHint,
   getSmartRecommendations,
+  suggestedUnitsForListRow,
 } from './smartFoodRecommendations';
-
-/**
- * Después de las sugerencias: explica porciones sin insinuar que el listado ya cubre N personas.
- * (Estructura: primero recomendaciones, luego esta aclaración.)
- */
-function formatPartyPortionClarification(partySize: number): string {
-  return (
-    `Sobre cantidades: indicaste aproximadamente ${partySize} persona${partySize === 1 ? '' : 's'}. ` +
-    `Cada plato suma porciones según su ficha; si no dice otra cosa, una unidad suele equivaler a una porción. ` +
-    `Al elegir, revisá la ficha de cada opción para ver cuántas porciones cubre y cuántas unidades conviene pedir.`
-  );
-}
 
 /**
  * Flujo PRODUCT_QUERY: búsqueda, estado y payloads para WhatsApp (sin envolver en HandlerResult).
@@ -145,19 +135,23 @@ export async function executeProductQuery(
         ? formatSmartRecommendationsBlock(
             smart.forDisplay,
             smart.llmNote,
-            smart.llmProgress
+            smart.llmProgress,
+            partySize
           )
         : '';
 
-    const portionBlock =
-      partySize != null && partySize > 0
-        ? formatPartyPortionClarification(partySize)
+    const fallbackNoLlmPortion =
+      smart.forDisplay.length === 0 &&
+      partySize != null &&
+      partySize > 0 &&
+      listSource.length > 0
+        ? `Para ${partySize} persona${partySize === 1 ? '' : 's'} podés elegir en la lista y ajustar unidades en el siguiente paso 👇`
         : '';
 
     const intro =
       smart.forDisplay.length > 0
-        ? `${recBlock}${portionBlock ? `\n\n${portionBlock}` : ''}\n\nSeleccioná en la lista 👇`
-        : `${portionBlock ? `${portionBlock}\n\n` : ''}Seleccioná un plato en la lista 👇`;
+        ? `${recBlock}\n\nSeleccioná en la lista 👇`
+        : `${fallbackNoLlmPortion ? `${fallbackNoLlmPortion}\n\n` : ''}Seleccioná un plato en la lista 👇`;
 
     const listBody = formatBotUserMessage('Resultados a tu consulta', '📋', intro);
 
@@ -172,13 +166,15 @@ export async function executeProductQuery(
           rows: listSource.map((item) => {
             const rec = smart.forList.find((r) => r.id === item.id);
             const fromLlm = rec?.suggestedQuantity;
-            const partyForRow =
-              partySize != null && partySize >= 1 ? partySize : undefined;
+            const fromPortion = suggestedUnitsForListRow(
+              item.serves_people,
+              partySize
+            );
             const effectiveListQty =
-              fromLlm != null && fromLlm >= 1
+              fromLlm != null && fromLlm >= 2
                 ? fromLlm
-                : partyForRow != null
-                  ? partyForRow
+                : fromPortion != null
+                  ? fromPortion
                   : undefined;
             const rowId =
               effectiveListQty != null && effectiveListQty >= 2
@@ -248,7 +244,10 @@ export async function executeProductQuery(
 
   const portionSingle =
     partySizeSingle != null && partySizeSingle > 0
-      ? `\n\n${formatPartyPortionClarification(partySizeSingle)}`
+      ? `\n\n${formatSingleProductPortionHint(
+          matchedItem.serves_people,
+          partySizeSingle
+        )}`
       : '';
   const fullText = formatBotUserMessage(
     'Info del plato',

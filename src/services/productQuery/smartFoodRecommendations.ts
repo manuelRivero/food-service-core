@@ -9,6 +9,8 @@ export type FoodRecommenderCandidate = {
   name: string;
   description: string | null;
   category: string;
+  /** Personas por porción según ficha (null = no indicado). */
+  serves_people: number | null;
 };
 
 export type SmartFoodRecommendation = {
@@ -18,6 +20,8 @@ export type SmartFoodRecommendation = {
   reason: string;
   /** Cantidad sugerida para agregar (1 si no aplica). */
   suggestedQuantity?: number;
+  /** Porciones según ficha; solo para texto y cantidad sugerida, sin inventar. */
+  serves_people?: number | null;
 };
 
 export type GetSmartRecommendationsResult = {
@@ -173,6 +177,7 @@ function finalizeRecommendationsForWhatsAppList(
       id,
       name,
       description: src?.description ?? r.description ?? null,
+      serves_people: src?.serves_people ?? r.serves_people ?? null,
     });
   }
   return out;
@@ -219,7 +224,138 @@ function menuResultsToSmart(
     name: i.name,
     description: i.description,
     reason,
+    serves_people: i.serves_people ?? null,
   }));
+}
+
+export type PortionCase = 'enough' | 'not_enough' | 'unknown';
+
+/** Clasificación solo con datos de ficha; sin asumir si falta serves_people. */
+export function classifyPortionVsParty(
+  servesPeople: number | null | undefined,
+  requestedPartySize: number
+): PortionCase {
+  if (requestedPartySize <= 0) return 'unknown';
+  if (servesPeople == null || servesPeople <= 0) return 'unknown';
+  if (servesPeople >= requestedPartySize) return 'enough';
+  return 'not_enough';
+}
+
+/**
+ * Texto breve según serves_people vs comensales (un solo plato).
+ * Sin referencias al carrito ni estados internos.
+ */
+export function formatSingleProductPortionHint(
+  servesPeople: number | null | undefined,
+  partySize: number | null | undefined
+): string {
+  const party = partySize != null && partySize > 0 ? partySize : null;
+  if (party == null) return '';
+
+  const sp = servesPeople != null && servesPeople > 0 ? servesPeople : null;
+  if (sp == null) {
+    return 'Podés elegir esta opción y, según el tamaño, sumar más unidades si hace falta 👇';
+  }
+  if (sp >= party) {
+    return `Este plato puede alcanzar para ${party} persona${party === 1 ? '' : 's'} 👍`;
+  }
+  if (sp === 1) {
+    return `Es por porción individual; para ${party} persona${party === 1 ? '' : 's'} podés sumar varias unidades 👇`;
+  }
+  return `Una porción alcanza hasta ${sp} persona${sp === 1 ? '' : 's'}; para ${party} conviene pedir más de una unidad 👇`;
+}
+
+/**
+ * Bloque de aclaración de porciones tras la lista de recomendaciones (determinístico).
+ * Máx. ~2 frases cortas en casos uniformes; mezclas: un párrafo compacto.
+ */
+export function buildPortionClarificationForRecommendations(
+  recommendations: SmartFoodRecommendation[],
+  requestedPartySize: number | null | undefined
+): string {
+  const party =
+    requestedPartySize != null && requestedPartySize > 0
+      ? requestedPartySize
+      : null;
+  if (party == null || recommendations.length === 0) return '';
+
+  const cases = recommendations.map((r) => ({
+    name: r.name,
+    serves: r.serves_people ?? null,
+    kind: classifyPortionVsParty(r.serves_people, party),
+  }));
+
+  const allEnough = cases.every((c) => c.kind === 'enough');
+  const allNotEnough = cases.every((c) => c.kind === 'not_enough');
+  const allUnknown = cases.every((c) => c.kind === 'unknown');
+
+  if (allEnough) {
+    return recommendations.length === 1
+      ? `Este plato puede alcanzar para ${party} persona${party === 1 ? '' : 's'} 👍`
+      : `Estas opciones pueden alcanzar para ${party} persona${party === 1 ? '' : 's'} 👍`;
+  }
+
+  if (allNotEnough) {
+    const allIndividual = cases.every((c) => c.serves === 1);
+    if (allIndividual && recommendations.length >= 2) {
+      return `Cada plato es individual, así que para ${party} persona${party === 1 ? '' : 's'} podés sumar varias unidades 👇`;
+    }
+    if (allIndividual && recommendations.length === 1) {
+      return `Es por porción individual; para ${party} persona${party === 1 ? '' : 's'} podés sumar varias unidades 👇`;
+    }
+    const sp0 = cases[0].serves;
+    if (recommendations.length === 1 && sp0 != null && sp0 > 1) {
+      return `Una porción alcanza hasta ${sp0} persona${sp0 === 1 ? '' : 's'}; para ${party} conviene pedir más de una unidad 👇`;
+    }
+    return `Según la ficha, una porción no alcanza para todos: para ${party} persona${party === 1 ? '' : 's'} podés pedir más de una unidad 👇`;
+  }
+
+  if (allUnknown) {
+    return recommendations.length === 1
+      ? 'Podés elegir esta opción y, según el tamaño, sumar más unidades si hace falta 👇'
+      : 'Podés elegir de la lista y, según el tamaño, sumar más unidades si hace falta 👇';
+  }
+
+  const lines = cases.map((c) => {
+    if (c.kind === 'enough') {
+      return `• ${c.name}: puede alcanzar para ${party} persona${party === 1 ? '' : 's'} 👍`;
+    }
+    if (c.kind === 'not_enough') {
+      if (c.serves === 1) {
+        return `• ${c.name}: porción individual; para ${party} podés sumar varias unidades 👇`;
+      }
+      if (c.serves != null && c.serves > 0) {
+        return `• ${c.name}: una porción alcanza hasta ${c.serves} persona${c.serves === 1 ? '' : 's'}; para ${party} conviene más de una unidad 👇`;
+      }
+    }
+    return `• ${c.name}: podés ajustar unidades según el tamaño 👇`;
+  });
+  return lines.join('\n');
+}
+
+function resolveSuggestedQuantityFromPortion(
+  servesPeople: number | null | undefined,
+  party: number | null | undefined,
+  fromLlm: number | undefined
+): number | undefined {
+  if (party != null && party > 0 && servesPeople != null && servesPeople > 0) {
+    const need = Math.ceil(party / servesPeople);
+    if (need > 1) return Math.min(99, need);
+    return undefined;
+  }
+  if (fromLlm != null && fromLlm > 1) return Math.min(99, fromLlm);
+  return undefined;
+}
+
+/** Unidades sugeridas en payload de lista (≥2); si una porción alcanza, undefined. */
+export function suggestedUnitsForListRow(
+  servesPeople: number | null | undefined,
+  party: number | null | undefined
+): number | undefined {
+  if (party == null || party <= 0) return undefined;
+  if (servesPeople == null || servesPeople <= 0) return undefined;
+  const need = Math.ceil(party / servesPeople);
+  return need >= 2 ? Math.min(99, need) : undefined;
 }
 
 /**
@@ -234,106 +370,75 @@ export function FOOD_RECOMMENDER_PROMPT(
   const lines = candidates
     .map((c, i) => {
       const desc = (c.description ?? '').replace(/\s+/g, ' ').trim().slice(0, 220);
-      return `${i + 1}. id=${c.id} | categoría=${c.category} | nombre=${c.name}${desc ? ` | descripción=${desc}` : ''}`;
+      const serves =
+        c.serves_people != null && c.serves_people > 0
+          ? String(c.serves_people)
+          : '—';
+      return `${i + 1}. id=${c.id} | categoría=${c.category} | nombre=${c.name} | sirve_a_personas_ficha=${serves}${desc ? ` | descripción=${desc}` : ''}`;
     })
     .join('\n');
 
   const partyLine =
     requestedPartySize != null && requestedPartySize > 0
-      ? `Comensales de referencia (lo que el cliente mencionó; no implica que el listado ya cubra ese total): aproximadamente ${requestedPartySize}.`
+      ? `Comensales de referencia (solo lo que el cliente dijo; no asumas que ya eligió platos): aproximadamente ${requestedPartySize}.`
       : 'Comensales de referencia: no indicado.';
 
   const cartJson = JSON.stringify(cartSummary);
 
-  return `Sos asistente de un restaurante por WhatsApp. El mensaje del cliente es: "${userQuery}".
+  return `Sos el mozo virtual del restaurante por WhatsApp. Mensaje del cliente: "${userQuery}".
 
 ${partyLine}
 
-Estado del carrito (única fuente de verdad sobre lo que hay en el borrador; suma de unidades por tipo de categoría):
+CONTEXTO INTERNO (para elegir candidatos; NO lo repitas al cliente en reason, note ni progress):
 ${cartJson}
-- starters = entradas (STARTER), mains = platos principales (MAIN), drinks = bebidas (DRINK), desserts = postres (DESSERT).
-- Valores 0 = ninguna unidad de ese tipo en el borrador según el sistema. Si todo es 0, el carrito está vacío: no inventes ítems.
+- starters/mains/drinks/desserts = unidades por tipo en el flujo actual; 0 = aún no sumó de ese tipo.
+- Usá esto solo para priorizar variedad o huecos; no lo describas con jerga al usuario.
 
-Tu rol: actuar como un mozo inteligente que ayuda a armar el pedido. Elegís SOLO entre los candidatos listados abajo (retrieval por similitud). Toda la explicación la generás vos; no hay otro texto automático fuera del JSON.
+Tu tarea: elegir SOLO entre los candidatos de abajo y devolver JSON. El cliente ve reason, note y progress.
 
-STATE RULES (obligatorio):
-- NO asumas que el usuario ya tiene productos en el pedido salvo que el JSON muestre cantidades > 0 en algún campo.
-- NO uses "ya tenés", "ya tienes", "tenés", "tienes", "tu pedido tiene", "tu pedido incluye", "completaste" ni afirmaciones similares sobre el estado del pedido, salvo que el JSON lo respalde explícitamente.
-- Solo referí el pedido actual con los números del JSON; si no hay datos positivos, hablá solo de sugerencias posibles, no de lo que "ya" tiene.
-- No inventes líneas de pedido, ni cantidades, ni que "agregó" algo.
+PORCIONES (campo sirve_a_personas_ficha en cada candidato):
+- Ese número es el único dato de "cuántas personas alcanza una porción". Si es "—", no hay dato: NO inventes tamaños.
+- NO repitas en note/progress el razonamiento de porciones: el mensaje ya llevará un bloque aparte según la ficha.
+- En "reason" NO menciones personas, porciones ni "alcanza para N"; solo por qué el plato encaja con la búsqueda (una oración corta, tono venta).
 
-INTENCIÓN vs ESTADO:
-- Expresiones como "quiero pedir", "busco", "necesito", "para llevar" son intención o deseo, no confirmación de que el pedido ya existe. Respondé en tono de sugerencia, no de confirmación.
+VOZ (texto al cliente):
+- Seguro, cercano, natural.
+- NO menciones: borrador, carrito, JSON, sistema, "ítems", "ficha", "base de datos".
+- NO uses: "podrías", "considerá", "tal vez", "no está de más".
+- NUNCA digas "ya tenés", "tenés", "tu pedido tiene" ni asumas productos ya cargados.
 
-ENCABEZADOS Y GRUPO (obligatorio):
-- NO uses "Para X personas:" ni variantes como título o primera línea en "reason", "note" ni "progress". Eso lo agrega el sistema después; suena a que las opciones ya alcanzan para X personas.
-- Presentá las recomendaciones de forma neutra; el tamaño del grupo ya está en el contexto superior.
+CADA "reason" (una oración, corta):
+- Solo encaje con la búsqueda; sin porciones ni comensales.
 
-LENGUAJE (sugerencias, no afirmaciones sobre su pedido):
-- Evitá: "ya tenés...", "tenés...", "tu pedido tiene..."
-- Preferí: "podrías pedir...", "te recomiendo...", "una opción es...", "si querés sumar...", "podría servir para..."
-- Si mencionás el grupo, hacelo en una frase aclaratoria, no como encabezado (ej.: orientación general, sin afirmar que el listado cubre ese número).
+"note" y "progress" (opcionales):
+- Juntos: máximo 2 oraciones cortas en total; si no suman, null ambos.
+- Solo siguiente paso útil (elegir de la lista, seguir). Sin repetir platos ni porciones.
 
-INTENT:
-- Entendé el pedido del cliente y sus preferencias si se infieren del texto (ingredientes solo si constan en la ficha, etc.).
-- Si hay personas en contexto, usalas como guía para sugerencias generales (sin asumir cantidades ya pedidas por el usuario).
+PRIORIZACIÓN (resumen interno):
+- Si falta un tipo de plato y hay candidatos, incluí ese tipo.
+- Si ya hay bastante de un tipo, ofrecé variedad o bebida/postre según candidatos.
 
-CART AWARENESS (anclado al JSON):
-- Mirá solo el resumen: qué tipos tienen cantidad > 0 y cuáles están en 0.
-- Si falta un tipo relevante y hay candidatos, priorizá sugerir de ese tipo.
-- Si hay cantidades > 0 pero bajas respecto a las personas, orientá con cautela ("para sumar", "podría ayudar a...") sin asumir más de lo que dice el JSON.
-- Si hay bastante de un tipo según el JSON, podés sugerir diversificar o el siguiente paso lógico según el listado.
+SELECCIÓN:
+- Preferí 2 o 3 recomendaciones si hay buenos candidatos; una sola solo si el resto es irrelevante.
 
-DECISION LOGIC (flexible, sin reglas rígidas en código):
-- Si falta una categoría importante (según JSON) → sugerí ítems que la cubran.
-- Si está parcialmente cubierta → sugerí completar con cautela, sin afirmar totales no mostrados.
-- Si el JSON muestra bastante en un tipo → podés sugerir exploración o siguiente paso (bebida/postre) según el listado.
+UNICIDAD:
+- Cada id una sola vez en "recommendations".
 
-SELECTION BEHAVIOR:
-- Preferí ofrecer 2 o 3 recomendaciones cuando haya al menos dos ítems razonablemente útiles.
-- No seas demasiado estricto: incluí alternativas "bastante bien" o relacionadas si el listado las trajo por similitud.
-- Equilibrá relevancia y diversidad.
-- Devolvé una sola recomendación solo cuando el resto de candidatos sea claramente irrelevante para el pedido.
+TRUTH:
+- Solo datos del candidato. No inventes ingredientes, alérgenos ni tiempos.
 
-UNICIDAD Y SALIDA (obligatorio):
-- Cada "id" de producto debe aparecer como máximo UNA vez en "recommendations". Nunca repitas el mismo id ni dupliques el mismo plato con distinta redacción.
-- No incluyas razonamiento interno, cadena de pensamiento, notas para vos mismo ni texto meta fuera de los campos del JSON (reason, note, progress).
-- Los valores "reason", "note" y "progress" son texto para el cliente: frases cortas y útiles, no explicaciones de proceso.
-
-TRUTH RULES:
-- Usá únicamente lo que se desprende con certeza razonable del nombre, categoría y descripción del ítem.
-- NO asumas tamaño de porción, cuántas personas alcanza un plato ni si es para compartir, salvo que la ficha lo diga explícitamente.
-- NO digas que un plato es "ideal para X personas" salvo que la ficha lo indique con claridad.
-- Si no hay dato de porciones, usá lenguaje cauteloso: "puede servir", "depende del tamaño de la porción", etc.
-
-ANTI-HALLUCINATION:
-- No inventes: tamaños de porción, ingredientes no mencionados, idoneidad para N personas, alérgenos, tiempos, etc.
-
-suggestedQuantity (por ítem, opcional, 1–99):
-- No asumas cantidades previas del usuario ni "lo que ya pidió"; solo guiá por personas (si hay), carrito según JSON y ficha.
-- Indicá cuántas unidades de ESE ítem podrían tener sentido como sugerencia prudente, sin pretender cerrar el pedido al detalle.
-- Si no tiene sentido más de una unidad, omití el campo o usá 1.
-- Con incertidumbre, preferí rangos conservadores (p. ej. 1–2 o 2–3) y explicá la cautela en "reason" si hace falta, sin afirmar números exactos obligatorios.
-
-Campo "progress" (opcional, string corto):
-- Resumen del estado según el JSON y el pedido del usuario (1–3 oraciones). Si el carrito está vacío (todo 0), indicá que aún no hay ítems en el borrador o enfocá en primeras sugerencias, sin decir que "ya tiene" platos.
-- No empieces con "Para X personas:"; no presentes el tamaño del grupo como si las sugerencias ya cubrieran ese total.
-- No repitas texto de los "reason" ni de "note".
-
-Campo "note" (opcional):
-- Orientación general (personas / sugerencias) sin repetir "progress" ni los "reason"; tono de recomendación, no de hechos sobre su pedido salvo lo que muestre el JSON.
-- Una o dos oraciones máximo.
+suggestedQuantity (opcional, 1–99 por ítem):
+- Si sirve_a_personas_ficha es un número N y hay comensales de referencia C, podés sugerir ceil(C/N) unidades cuando una porción no alcanza; si alcanza con una, omití o 1.
 
 REDUNDANCY:
-- Cada "reason" debe ser UNA sola oración breve; no repitas la misma idea entre ítems.
+- Cada "reason" distinta.
 
 Candidatos (usá solo estos ids):
 ${lines}
 
 Respondé SOLO JSON válido, sin markdown ni texto fuera del JSON, con esta forma:
 {"recommendations":[{"id":"<uuid>","reason":"<una oración>","suggestedQuantity":2}],"note":null,"progress":null}
-- "suggestedQuantity" es opcional por ítem.
-- "note" y "progress" pueden ser null o string.`;
+- "note" y "progress" pueden ser null o string; entre ambos, máximo 2 oraciones cortas en total.`;
 }
 
 /**
@@ -413,6 +518,7 @@ export async function getSmartRecommendations(params: {
     name: row.name,
     description: row.description,
     category: categoryById.get(row.id) ?? 'Sin categoría',
+    serves_people: row.serves_people ?? null,
   }));
 
   const allowed = new Set(ids);
@@ -420,7 +526,7 @@ export async function getSmartRecommendations(params: {
 
   try {
     const system =
-      'Sos el motor de recomendación guiada del menú. Usás solo el carrito del JSON y las personas como contexto; no inventás datos de fichas ni del pedido. Nunca afirmes que el usuario "ya tiene" algo en el pedido si el JSON no muestra cantidades > 0. Respondés solo JSON: cada id en recommendations debe ser único (sin repetir). No incluyas razonamiento interno fuera del JSON. Campos: recommendations (reason, suggestedQuantity opcional), note y progress opcionales.';
+      'Sos el mozo virtual: respondés solo JSON (ids únicos). Elegís candidatos con el resumen interno; en "reason" no hables de porciones ni comensales (eso va aparte). No digas "ya tenés" ni "tu pedido". Campos: recommendations (reason, suggestedQuantity opcional), note y progress opcionales.';
     const user = FOOD_RECOMMENDER_PROMPT(
       trimmedUtterance,
       candidates,
@@ -455,14 +561,18 @@ export async function getSmartRecommendations(params: {
       const src = byIdVector.get(row.id);
       if (!src) continue;
       pickedIds.add(row.id);
+      const sq = resolveSuggestedQuantityFromPortion(
+        src.serves_people,
+        params.requestedPartySize,
+        row.suggestedQuantity
+      );
       picked.push({
         id: src.id,
         name: src.name,
         description: src.description,
         reason: row.reason.slice(0, 280),
-        ...(row.suggestedQuantity != null && row.suggestedQuantity > 1
-          ? { suggestedQuantity: row.suggestedQuantity }
-          : {}),
+        serves_people: src.serves_people ?? null,
+        ...(sq != null && sq > 1 ? { suggestedQuantity: sq } : {}),
       });
     }
 
@@ -483,23 +593,47 @@ export async function getSmartRecommendations(params: {
   }
 }
 
+/** Lista: nombre en bullet; motivo en línea siguiente (sin duplicar porciones aquí). */
 export function formatSmartRecommendationsBullets(
   recommendations: SmartFoodRecommendation[]
 ): string {
-  return recommendations.map((r) => `• ${r.name}: ${r.reason}`).join('\n');
+  return formatSmartRecommendationsBulletLines(recommendations);
 }
 
-/** Bullets + progreso + nota del LLM (orden: recomendaciones, progress, note). */
+export function formatSmartRecommendationsBulletLines(
+  recommendations: SmartFoodRecommendation[]
+): string {
+  return recommendations
+    .map((r) => {
+      const nameLine = `• ${r.name}`;
+      const rsn = r.reason?.trim();
+      return rsn ? `${nameLine}\n${rsn}` : nameLine;
+    })
+    .join('\n\n');
+}
+
+/**
+ * Bullets → aclaración de porciones (ficha) → nota/progress del LLM (solo paso siguiente).
+ * `requestedPartySize` alimenta el bloque determinístico de porciones.
+ */
 export function formatSmartRecommendationsBlock(
   recommendations: SmartFoodRecommendation[],
   llmNote?: string | null,
-  llmProgress?: string | null
+  llmProgress?: string | null,
+  requestedPartySize?: number | null
 ): string {
-  const bullets = formatSmartRecommendationsBullets(recommendations);
+  const bullets = formatSmartRecommendationsBulletLines(recommendations);
   const parts: string[] = [bullets];
-  const prog = llmProgress?.trim();
-  if (prog) parts.push(prog);
+
+  const portion = buildPortionClarificationForRecommendations(
+    recommendations,
+    requestedPartySize ?? null
+  );
+  if (portion) parts.push(portion);
+
   const n = llmNote?.trim();
   if (n) parts.push(n);
+  const prog = llmProgress?.trim();
+  if (prog) parts.push(prog);
   return parts.join('\n\n');
 }
