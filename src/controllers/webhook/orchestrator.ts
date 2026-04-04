@@ -17,7 +17,9 @@ import {
   clearConversationIdleTimestamps,
   clearLastReferencedProductId,
   findRecentMessagesForDetectionContext,
-  updateConversationState
+  updateConversationState,
+  patchConversationMetadata,
+  omitConversationMetadataKeys,
 } from '../../repositories';
 import { ConversationIntent } from '../../types/conversationIntent';
 import { EnrichedContext, WebhookContext } from './types';
@@ -28,6 +30,14 @@ import {
   formatClosedBusinessCustomerNotice,
   getBusinessOpenInfo
 } from '../../services/businessHours.service';
+import { extractDeterministicPeopleCount } from '../../helpers/peopleCountExtraction';
+import {
+  parsePeopleCountResume,
+  PEOPLE_COUNT_INVALID_REPLY_MESSAGE,
+  PEOPLE_COUNT_PROMPT_MESSAGE,
+  shouldBlockForMissingPeopleCount,
+} from '../../services/peopleCountGate.service';
+import { normalizeMetadata, partySizeMetadataFields } from '../../services/productQuery/utils';
 
 
 export const processWebhook = async (payload: any): Promise<void> => {
@@ -179,6 +189,65 @@ export const processWebhook = async (payload: any): Promise<void> => {
 
     const userMessage = ctx.message?.text?.body || '';
 
+    const metaPre = normalizeMetadata(conversationState.metadata);
+
+    if (metaPre.awaitingPeopleCount) {
+      const resume = parsePeopleCountResume(metaPre);
+      if (resume) {
+        const extractedPeople = extractDeterministicPeopleCount(userMessage);
+        if (extractedPeople != null && extractedPeople > 0) {
+          await patchConversationMetadata(conversation.id, {
+            ...partySizeMetadataFields(extractedPeople),
+            awaitingPeopleCount: false,
+          });
+          await omitConversationMetadataKeys(conversation.id, ['peopleCountResume']);
+
+          const resumedCtx: EnrichedContext = {
+            ...enrichedBase,
+            detection: resume.detection,
+            message: {
+              ...ctx.message,
+              type: 'text',
+              text: { body: resume.userMessage },
+            },
+          };
+
+          const resumedResult = await dispatchIntent(resumedCtx);
+          if (resumedResult) {
+            await sendResponse(ctx, resumedResult);
+            await createConversationMessage(
+              conversation.id,
+              'ai',
+              typeof resumedResult.content === 'string'
+                ? resumedResult.content
+                : '[interactive]',
+              true
+            );
+            await updateConversationLastMessageAt(conversation.id);
+          }
+          return;
+        }
+
+        await sendResponse(ctx, {
+          content: PEOPLE_COUNT_INVALID_REPLY_MESSAGE,
+          isInteractive: false,
+        });
+        await createConversationMessage(
+          conversation.id,
+          'ai',
+          PEOPLE_COUNT_INVALID_REPLY_MESSAGE,
+          true
+        );
+        await updateConversationLastMessageAt(conversation.id);
+        return;
+      }
+
+      await omitConversationMetadataKeys(conversation.id, [
+        'awaitingPeopleCount',
+        'peopleCountResume',
+      ]);
+    }
+
     const detection = await detectIntentWithConfidence(
       userMessage,
       detectionContext
@@ -192,6 +261,36 @@ export const processWebhook = async (payload: any): Promise<void> => {
       topCandidate: detection.topCandidate || null,
       rescueMargin: detection.rescueMargin ?? null
     });
+
+    const metaForGate = normalizeMetadata(conversationState.metadata);
+
+    if (
+      shouldBlockForMissingPeopleCount({
+        intent: detection.intent,
+        metadata: metaForGate,
+        detectionQuantity: detection.quantity,
+      })
+    ) {
+      await patchConversationMetadata(conversation.id, {
+        awaitingPeopleCount: true,
+        peopleCountResume: {
+          userMessage,
+          detection: JSON.parse(JSON.stringify(detection)),
+        },
+      });
+      await sendResponse(ctx, {
+        content: PEOPLE_COUNT_PROMPT_MESSAGE,
+        isInteractive: false,
+      });
+      await createConversationMessage(
+        conversation.id,
+        'ai',
+        PEOPLE_COUNT_PROMPT_MESSAGE,
+        true
+      );
+      await updateConversationLastMessageAt(conversation.id);
+      return;
+    }
 
     const enrichedCtx: EnrichedContext = {
       ...enrichedBase,

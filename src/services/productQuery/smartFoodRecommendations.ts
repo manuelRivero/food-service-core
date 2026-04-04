@@ -249,10 +249,9 @@ export function formatMainCoverageGuidance(
   mainCoverage: number,
   peopleCount: number
 ): string {
-  const z = Math.max(0, peopleCount - mainCoverage);
   return (
-    `Tenés ${mainCoverage} de ${peopleCount} en platos principales.\n` +
-    `Te faltan ${z} para completar.`
+    `Llevás ${mainCoverage} de ${peopleCount} en platos principales (porciones según la ficha).\n` +
+    `Si querés algo para todos, podés sumar más platos principales.`
   );
 }
 
@@ -350,7 +349,7 @@ export function formatSingleProductPortionHint(
 
   const sp = servesPeople != null && servesPeople > 0 ? servesPeople : null;
   if (sp == null) {
-    return 'Podés elegir esta opción y, según el tamaño, sumar más unidades si hace falta 👇';
+    return 'Podés elegir esta opción y, según el tamaño, sumar más unidades si querés 👇';
   }
   if (sp >= party) {
     return `Este plato puede alcanzar para ${party} persona${party === 1 ? '' : 's'} 👍`;
@@ -358,7 +357,7 @@ export function formatSingleProductPortionHint(
   if (sp === 1) {
     return `Es por porción individual; para ${party} persona${party === 1 ? '' : 's'} podés sumar varias unidades 👇`;
   }
-  return `Una porción alcanza hasta ${sp} persona${sp === 1 ? '' : 's'}; para ${party} conviene pedir más de una unidad 👇`;
+  return `Una porción alcanza hasta ${sp} persona${sp === 1 ? '' : 's'}; para ${party} podés pedir más de una unidad si querés 👇`;
 }
 
 /**
@@ -401,15 +400,15 @@ export function buildPortionClarificationForRecommendations(
     }
     const sp0 = cases[0].serves;
     if (recommendations.length === 1 && sp0 != null && sp0 > 1) {
-      return `Una porción alcanza hasta ${sp0} persona${sp0 === 1 ? '' : 's'}; para ${party} conviene pedir más de una unidad 👇`;
+      return `Una porción alcanza hasta ${sp0} persona${sp0 === 1 ? '' : 's'}; para ${party} podés pedir más de una unidad si querés 👇`;
     }
-    return `Según la ficha, una porción no alcanza para todos: para ${party} persona${party === 1 ? '' : 's'} podés pedir más de una unidad 👇`;
+    return `Según la ficha, si querés cubrir a ${party} persona${party === 1 ? '' : 's'}, podés sumar más de una unidad 👇`;
   }
 
   if (allUnknown) {
     return recommendations.length === 1
-      ? 'Podés elegir esta opción y, según el tamaño, sumar más unidades si hace falta 👇'
-      : 'Podés elegir de la lista y, según el tamaño, sumar más unidades si hace falta 👇';
+      ? 'Podés elegir esta opción y, según el tamaño, sumar más unidades si querés 👇'
+      : 'Podés elegir de la lista y, según el tamaño, sumar más unidades si querés 👇';
   }
 
   const lines = cases.map((c) => {
@@ -421,7 +420,7 @@ export function buildPortionClarificationForRecommendations(
         return `• ${c.name}: porción individual; para ${party} podés sumar varias unidades 👇`;
       }
       if (c.serves != null && c.serves > 0) {
-        return `• ${c.name}: una porción alcanza hasta ${c.serves} persona${c.serves === 1 ? '' : 's'}; para ${party} conviene más de una unidad 👇`;
+        return `• ${c.name}: una porción alcanza hasta ${c.serves} persona${c.serves === 1 ? '' : 's'}; para ${party} podés sumar más de una unidad si querés 👇`;
       }
     }
     return `• ${c.name}: podés ajustar unidades según el tamaño 👇`;
@@ -460,7 +459,7 @@ export function suggestedUnitsForListRow(
 function strictCategoryGatePromptLines(tag: MenuCategoryTag | null): string {
   if (tag == null) return '';
   if (tag === 'MAIN') {
-    return `\nREGLA DURA (prioridad absoluta): Falta cobertura de PLATOS PRINCIPALES respecto a los comensales. Los candidatos listados son solo tag=MAIN. NO sugieras ni menciones bebidas, postres ni entradas. Solo ayudá a elegir más platos principales.\n`;
+    return `\nPrioridad de este listado: platos principales (MAIN) para el grupo de comensales de referencia. Los candidatos son solo tag=MAIN. No sugieras bebidas, postres ni entradas; ayudá a elegir entre platos principales.\n`;
   }
   const label =
     tag === 'DRINK'
@@ -470,12 +469,12 @@ function strictCategoryGatePromptLines(tag: MenuCategoryTag | null): string {
         : tag === 'DESSERT'
           ? 'postres'
           : 'esta categoría';
-  return `\nREGLA DURA: Completá primero ${label} en este paso del pedido. Los candidatos son solo tag=${tag}. No mezcles otras categorías en la elección.\n`;
+  return `\nEn este paso el listado es solo ${label} (tag=${tag}). No mezcles otras categorías en la elección.\n`;
 }
 
 function prioritizationBlock(strictTag: MenuCategoryTag | null): string {
   if (strictTag === 'MAIN') {
-    return `- Solo platos principales (MAIN) hasta completar la cobertura de comensales.\n- No ofrezcas bebidas, postres, entradas ni guarniciones aunque el resumen muestre 0 en otros rubros.`;
+    return `- Priorizá solo platos principales (MAIN) para el grupo de referencia.\n- No ofrezcas bebidas, postres, entradas ni guarniciones aunque el resumen muestre 0 en otros rubros.`;
   }
   if (strictTag === 'DRINK') {
     return `- Solo bebidas (DRINK). No sugieras platos principales, entradas ni postres.`;
@@ -486,7 +485,7 @@ function prioritizationBlock(strictTag: MenuCategoryTag | null): string {
   if (strictTag === 'DESSERT') {
     return `- Solo postres (DESSERT). No sugieras principales, bebidas ni entradas en esta elección.`;
   }
-  return `- Si falta un tipo de plato y hay candidatos, incluí ese tipo.\n- Si ya hay bastante de un tipo, ofrecé variedad o bebida/postre según candidatos.`;
+  return `- Si hay hueco en algún tipo de plato y hay candidatos, podés incluir ese tipo.\n- Si ya hay bastante de un tipo, ofrecé variedad o bebida/postre según candidatos.`;
 }
 
 export function FOOD_RECOMMENDER_PROMPT(

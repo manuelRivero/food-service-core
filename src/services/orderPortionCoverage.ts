@@ -122,15 +122,15 @@ function categoryLabelPlural(tag: MenuCategoryTag): string {
 function categoryAckComplete(tag: MenuCategoryTag): string {
   switch (tag) {
     case 'STARTER':
-      return 'Ya cubriste las entradas.';
+      return 'Tenés entradas sumadas para la referencia del grupo 👌';
     case 'MAIN':
-      return 'Ya cubriste los platos principales.';
+      return 'Tenés platos principales para la referencia del grupo 👌';
     case 'DRINK':
-      return 'Ya cubriste las bebidas.';
+      return 'Tenés bebidas sumadas para la referencia del grupo 👌';
     case 'SIDE':
-      return 'Ya cubriste las guarniciones.';
+      return 'Tenés guarniciones sumadas para la referencia del grupo 👌';
     case 'DESSERT':
-      return 'Ya cubriste los postres.';
+      return 'Tenés postres sumados para la referencia del grupo 👌';
     default:
       return '';
   }
@@ -164,13 +164,12 @@ function linesForCategoryVsPeople(
   const label = categoryLabelPlural(tag);
   if (coverage === 0) {
     return [
-      `No tenés ${label} en el pedido: sumá hasta ${people} porciones (según cantidad por plato).`,
+      `Todavía no agregaste ${label}. Si querés, podés sumar hasta ${people} porciones de referencia (según cantidad por plato).`,
     ];
   }
-  const z = people - coverage;
   return [
-    `Tenés ${coverage} de ${people} porciones de ${label}.`,
-    `Te faltan ${z} para completar ${label}.`,
+    `Llevás ${coverage} de ${people} porciones de referencia de ${label}.`,
+    `Si querés alinear con el grupo, podés sumar más ${label}.`,
   ];
 }
 
@@ -179,9 +178,9 @@ function linesGuidanceWithPeople(r: PortionCoverageResult, people: number): stri
   const focus = firstIncompleteCategory(r, people);
   if (focus == null) {
     out.push(
-      'Ya cubriste las porciones objetivo en todas las categorías guiadas (entradas, principales, bebidas, guarniciones y postres).'
+      'En las categorías guiadas (entradas, principales, bebidas, guarniciones y postres) tenés cobertura de referencia para el grupo 👌'
     );
-    out.push('Podés pasar a revisar el total o finalizar el pedido.');
+    out.push('Si querés, podés revisar el total o finalizar el pedido.');
     return out;
   }
 
@@ -202,7 +201,7 @@ function linesGuidanceWithPeople(r: PortionCoverageResult, people: number): stri
   if (nextIdx < GUIDANCE_ORDER.length) {
     const nextTag = GUIDANCE_ORDER[nextIdx];
     const nextLabel = categoryLabelPlural(nextTag);
-    out.push(`Después podés completar ${nextLabel} u otras categorías.`);
+    out.push(`Más adelante, si querés, podés sumar ${nextLabel} u otras categorías.`);
   }
 
   return out;
@@ -218,7 +217,7 @@ function linesGuidanceNoPeople(r: PortionCoverageResult): string[] {
   }
   const label = categoryLabelPlural(empty);
   return [
-    `Te falta sumar ${label}: agregá ítems de esa categoría cuando quieras.`,
+    `Si querés, podés sumar ${label} cuando te parezca.`,
   ];
 }
 
@@ -230,7 +229,7 @@ function pickDeterministicNextStep(r: PortionCoverageResult): string | null {
       return 'Estás cerca del total de porciones: podés finalizar o seguir sumando.';
     }
     if (r.missingPortions === 0) {
-      return 'Ya alcanzaste el total de porciones: podés finalizar el pedido o agregar algo más.';
+      return 'Llegaste al total de referencia de porciones: si querés, podés finalizar el pedido o seguir sumando.';
     }
   }
 
@@ -244,7 +243,7 @@ function pickDeterministicNextStep(r: PortionCoverageResult): string | null {
   }
 
   if (people != null && r.missingPortions != null && r.missingPortions > 2) {
-    return 'Seguí sumando porciones hasta alcanzar el total para tu grupo.';
+    return 'Si querés acercarte al total de referencia del grupo, podés seguir sumando porciones.';
   }
 
   return null;
@@ -261,9 +260,13 @@ export function formatCartGuidanceBlock(result: PortionCoverageResult): string {
     lines.push(`Porciones cubiertas: ${result.coveredPortions} de ${y}`);
     if (result.missingPortions != null) {
       if (result.coveredPortions < y) {
-        lines.push(`Te faltan ${result.missingPortions} porciones en total.`);
+        lines.push(
+          `Referencia: podrías sumar hasta ${result.missingPortions} porciones más para el grupo, si querés.`
+        );
       } else {
-        lines.push('Ya cubriste la cantidad de personas (porciones totales).');
+        lines.push(
+          'Tenés el total de referencia de porciones para la cantidad de personas del pedido 👌'
+        );
       }
     }
   } else {

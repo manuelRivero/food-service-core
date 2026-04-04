@@ -14,11 +14,11 @@ import { prisma } from '../../lib/prisma';
 import { generateAIResponse } from './openai.service';
 
 const TAG_LABELS: Record<MenuCategoryTag, { title: string; emoji: string }> = {
-  STARTER: { title: 'Sumá una entrada', emoji: '🥗' },
+  STARTER: { title: 'Podés sumar una entrada', emoji: '🥗' },
   MAIN: { title: 'Plato principal', emoji: '🍽️' },
-  SIDE: { title: 'Una guarnición', emoji: '🥬' },
-  DRINK: { title: 'Bebida ideal', emoji: '🥤' },
-  DESSERT: { title: 'Para el cierre dulce', emoji: '🍰' },
+  SIDE: { title: 'Podés sumar guarnición', emoji: '🥬' },
+  DRINK: { title: 'Bebida que va bien', emoji: '🥤' },
+  DESSERT: { title: 'Algo dulce para el cierre', emoji: '🍰' },
   OTHER: { title: 'Sugerencia', emoji: '✨' },
 };
 
@@ -37,7 +37,7 @@ function buildFallbackBridgeMessage(
 ): string {
   const hint = TAG_BRIDGE_HINT[nextTag] ?? 'opciones';
   return (
-    `¡Genial! Ya sumaste *${lastItemName}*. Completemos el menú: tengo sugerencias de ${hint} que combinan *muy bien* con lo que pediste. ¿Las miramos?`
+    `¡Genial! Ya sumaste *${lastItemName}*. Si querés seguir armando el pedido, tengo sugerencias de ${hint} que combinan *muy bien* con lo que pediste. ¿Las miramos?`
   );
 }
 
@@ -192,7 +192,7 @@ async function llmMenuStepUnified(params: {
     .map((i) => `- ${i.id} | ${i.categoryTag} | ${i.name}`)
     .join('\n');
 
-  const system = `Sos asistente de un restaurante por WhatsApp. El cliente va armando un pedido; querés acercarlo a un menú completo (entrada, plato fuerte, bebida, guarnición si aplica, postre), UN paso a la vez.
+  const system = `Sos asistente de un restaurante por WhatsApp. El cliente va armando un pedido; si le sirve, podés sugerirle acercarse a un menú equilibrado (entrada, plato fuerte, bebida, guarnición si aplica, postre), UN paso a la vez, sin presionar.
 
 FORMATO DE NEGRITA (WhatsApp Business, obligatorio):
 - En WhatsApp la negrita es con UN solo asterisco de cada lado: *palabra o frase* (ejemplo: *muy rico*).
@@ -202,7 +202,7 @@ FORMATO DE NEGRITA (WhatsApp Business, obligatorio):
 TAREA EN UNA SOLA RESPUESTA (JSON):
 1) "nextTag": elegí EXACTAMENTE UNO entre [${allowed}] — solo tags que el cliente aún no cubrió (la lista permitida ya está validada).
 2) "pitch": 2 a 4 oraciones en español (Argentina/latino), para cuando el usuario abra la lista de productos: motivá a sumar algo de ESE tipo. Sin listas numeradas. No incluyas nombres de platos del catálogo.
-3) "bridgeMessage": 2 a 4 oraciones en español (Argentina/latino), tono cercano. Es el texto que verá el cliente antes de la lista, junto a botones (Ver sugerencias, Seguir comprando, Finalizar pedido). Debe: reconocer lo que ya agregó ("${lastItemName}"), transmitir que el menú se puede completar, y anticipar que tenés sugerencias del tipo asociado a "nextTag" que combinan bien. No listes platos ni ids.
+3) "bridgeMessage": 2 a 4 oraciones en español (Argentina/latino), tono cercano. Es el texto que verá el cliente antes de la lista, junto a botones (Ver sugerencias, Seguir comprando, Finalizar pedido). Debe: reconocer lo que ya agregó ("${lastItemName}"), ofrecer de forma opcional seguir armando el pedido si le interesa, y anticipar que tenés sugerencias del tipo asociado a "nextTag" que combinan bien. Nada de tono obligatorio ni de "falta" algo. No listes platos ni ids.
 4) "orderedIds": array con los UUID de TODOS los productos del catálogo cuyo tag (segunda columna) sea EXACTAMENTE igual a "nextTag", cada id una sola vez, ordenados de MAYOR a MENOR interés para este cliente según el carrito y el último plato agregado. No inventes ids: solo los del catálogo.
 
 Respondé SOLO JSON válido:
@@ -326,7 +326,7 @@ export async function buildComplementarySuggestionsWithLlm(
 
   let nextTag: MenuCategoryTag = fallbackTag;
   let pitch =
-    'Armá un pedido redondo: sumá algo de la lista que va bien con lo que ya elegiste 👇';
+    'Si querés, podés mirar la lista: son opciones que van bien con lo que ya elegiste 👇';
   let bridgePlain = buildFallbackBridgeMessage(lastItemName, fallbackTag);
   let ordered: ComplementaryMenuItemSummary[] = multiPool.filter((i) => i.categoryTag === fallbackTag);
 

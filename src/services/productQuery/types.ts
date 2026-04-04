@@ -2,6 +2,7 @@ import type {
   WhatsAppInteractiveMessage,
   WhatsAppListMessage,
 } from '../../domain/intent/whatsappTemplates';
+import type { IntentDetectionResult } from '../ai/detection.service';
 
 export type ConversationMetadata = {
   pendingProductSelection?: boolean;
@@ -31,6 +32,13 @@ export type ConversationMetadata = {
   nextActionHintsShown?: Partial<
     Record<'DRINK' | 'STARTER' | 'DESSERT' | 'CHECKOUT', boolean>
   >;
+  /** Esperando respuesta numérica de personas antes de recomendaciones/pedido. */
+  awaitingPeopleCount?: boolean;
+  /** Snapshot para reanudar ORDER_FOOD / PRODUCT_QUERY tras responder cuántas personas. */
+  peopleCountResume?: {
+    userMessage: string;
+    detection: IntentDetectionResult;
+  };
 };
 
 export type ConversationMode = 'GLOBAL' | 'FILTER_SET' | 'PRODUCT_FOCUS';

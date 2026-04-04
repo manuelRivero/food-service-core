@@ -58,7 +58,8 @@ const BANNER: Record<NextActionHintKey, string> = {
   DRINK: 'Ya tenés los platos principales 👌 ¿Querés algo para tomar?',
   STARTER: 'Podés sumar una entrada para compartir 👌',
   DESSERT: '¿Querés agregar algo dulce para cerrar?',
-  CHECKOUT: 'Tu pedido ya está completo 👌 ¿Lo cerramos?',
+  CHECKOUT:
+    'Tenés entrada, principales, bebida y postre en el pedido 👌 Si querés, podemos cerrarlo.',
 };
 
 /**
@@ -81,7 +82,7 @@ export function acknowledgeNonMainAddLine(
 }
 
 export const GUIDE_CHOOSE_MAINS_AFTER_NON_MAIN =
-  'Ahora te conviene elegir los platos principales para completar el pedido';
+  'Si querés, podés seguir con platos principales para el grupo 👌';
 
 export function getNextActionBannerMessage(
   phase: NextActionFlowPhase,
