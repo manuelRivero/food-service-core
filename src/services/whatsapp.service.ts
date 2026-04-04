@@ -647,6 +647,17 @@ Respondé en español con información útil sobre el plato (precio, porciones s
     ? ({ type: 'image', image: { link: item.image } } as const)
     : ({ type: 'text', text: 'Tenemos un match para tu consulta' } as const);
 
+  /** WhatsApp permite máximo 3 botones de respuesta (error 131009 si se excede). */
+  const MAX_REPLY_BUTTONS = 3;
+
+  const extraAddQuantities = new Set<number>();
+  if (listSuggestedQuantity != null && listSuggestedQuantity > 1) {
+    extraAddQuantities.add(listSuggestedQuantity);
+  }
+  if (servesMismatch && requestedQty != null && requestedQty >= 2) {
+    extraAddQuantities.add(requestedQty);
+  }
+
   const buttons: Array<{
     type: 'reply';
     reply: { id: string; title: string };
@@ -657,14 +668,9 @@ Respondé en español con información útil sobre el plato (precio, porciones s
     },
   ];
 
-  const extraAddQuantities = new Set<number>();
-  if (listSuggestedQuantity != null && listSuggestedQuantity > 1) {
-    extraAddQuantities.add(listSuggestedQuantity);
-  }
-  if (servesMismatch && requestedQty != null && requestedQty >= 2) {
-    extraAddQuantities.add(requestedQty);
-  }
   for (const q of Array.from(extraAddQuantities).sort((a, b) => a - b)) {
+    if (q === 1) continue;
+    if (buttons.length >= MAX_REPLY_BUTTONS) break;
     buttons.push({
       type: 'reply',
       reply: {
@@ -674,10 +680,12 @@ Respondé en español con información útil sobre el plato (precio, porciones s
     });
   }
 
-  buttons.push({
-    type: 'reply',
-    reply: { id: 'VIEW_MENU', title: 'Ver menú' },
-  });
+  if (buttons.length < MAX_REPLY_BUTTONS) {
+    buttons.push({
+      type: 'reply',
+      reply: { id: 'VIEW_MENU', title: 'Ver menú' },
+    });
+  }
 
   return {
     type: 'interactive',

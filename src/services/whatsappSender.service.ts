@@ -1,5 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { WhatsAppInteractiveMessage, WhatsAppListMessage, WhatsAppListSection } from '../domain/intent/whatsappTemplates';
+import { normalizeWhatsAppButtonInteractiveMessage } from './whatsappInteractiveButton.util';
 
 export class WhatsAppSenderService {
   private readonly baseUrl = 'https://graph.facebook.com/v18.0';
@@ -104,7 +105,16 @@ export class WhatsAppSenderService {
       totalPages
     } = params;
     const normalizedTo = this.normalizeRecipient(to);
-    const isButton = !forceList && buttons.length <= 3;
+
+    const sanitizedForButtons = buttons
+      .filter((b) => {
+        const p = typeof b.payload === 'string' ? b.payload.trim() : '';
+        const t = typeof b.title === 'string' ? b.title.trim() : '';
+        return Boolean(p && t && p.length < 256);
+      })
+      .slice(0, 3);
+
+    const isButton = !forceList && sanitizedForButtons.length > 0 && sanitizedForButtons.length <= 3;
     const bodyText =
       page && totalPages
         ? `${text}\n\nPágina ${page} de ${totalPages}`
@@ -131,10 +141,10 @@ export class WhatsAppSenderService {
         type: 'button',
         body: { text: bodyText },
         action: {
-          buttons: buttons.map((button) => ({
-            type: 'reply',
+          buttons: sanitizedForButtons.map((button) => ({
+            type: 'reply' as const,
             reply: {
-              id: button.payload,
+              id: button.payload.trim(),
               title: this.truncateLabel(button.title)
             }
           }))
@@ -154,6 +164,46 @@ export class WhatsAppSenderService {
           }))
         }
       };
+
+    let interactiveToSend = interactive;
+    if (isButton && interactive.type === 'button') {
+      const fullMsg: WhatsAppInteractiveMessage = {
+        type: 'interactive',
+        interactive: {
+          ...interactive,
+          header: { type: 'text', text: '' },
+          footer: { text: '' }
+        }
+      };
+      const norm = normalizeWhatsAppButtonInteractiveMessage(fullMsg);
+      if (!norm.success) {
+        console.log(
+          'BUTTON PAYLOAD (fallback from sendInteractiveMenu):',
+          JSON.stringify(fullMsg, null, 2)
+        );
+        await this.sendTextMessage({
+          phoneNumberId,
+          to,
+          message: norm.fallbackText
+        });
+        return;
+      }
+      interactiveToSend = norm.message.interactive;
+      console.log(
+        'BUTTON PAYLOAD:',
+        JSON.stringify(
+          {
+            messaging_product: 'whatsapp',
+            to: normalizedTo,
+            type: 'interactive',
+            interactive: interactiveToSend
+          },
+          null,
+          2
+        )
+      );
+    }
+
     try {
       await axios.post(
         `${this.baseUrl}/${phoneNumberId}/messages`,
@@ -161,7 +211,7 @@ export class WhatsAppSenderService {
           messaging_product: 'whatsapp',
           to: normalizedTo,
           type: 'interactive',
-          interactive
+          interactive: interactiveToSend
         },
         {
           headers: {
@@ -312,16 +362,57 @@ export class WhatsAppSenderService {
     to: string;
     interactiveMessage: WhatsAppInteractiveMessage;
   }): Promise<void> {
-    // Para mensajes de botones (type: 'button')
     if (params.interactiveMessage.interactive.type !== 'button') {
       throw new Error('sendButtonMessage solo acepta interactive.type === "button"');
     }
 
-    await this.sendInteractiveMessage({
-      phoneNumberId: params.phoneNumberId,
-      to: params.to,
-      messageObject: params.interactiveMessage
-    });
+    const normalized = normalizeWhatsAppButtonInteractiveMessage(
+      params.interactiveMessage
+    );
+    const normalizedTo = this.normalizeRecipient(params.to);
+
+    if (!normalized.success) {
+      console.log(
+        'BUTTON PAYLOAD (fallback, invalid/empty buttons):',
+        JSON.stringify(params.interactiveMessage, null, 2)
+      );
+      await this.sendTextMessage({
+        phoneNumberId: params.phoneNumberId,
+        to: params.to,
+        message: normalized.fallbackText
+      });
+      return;
+    }
+
+    const payload = {
+      messaging_product: 'whatsapp' as const,
+      to: normalizedTo,
+      ...normalized.message
+    };
+    console.log('BUTTON PAYLOAD:', JSON.stringify(payload, null, 2));
+
+    try {
+      await axios.post(
+        `${this.baseUrl}/${params.phoneNumberId}/messages`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`
+          }
+        }
+      );
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      const status = axiosError.response?.status;
+      const data = axiosError.response?.data;
+
+      const messageDetail =
+        typeof data === 'string' ? data : JSON.stringify(data ?? {});
+
+      throw new Error(
+        `Error al enviar mensaje WhatsApp: ${status ?? 'sin_status'} ${messageDetail}`
+      );
+    }
   }
 
   private async uploadImageDataUrl(
