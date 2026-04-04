@@ -85,11 +85,12 @@ Examples:
 - "Actualizá a 6"
 
 6) VIEW_MENU
-User wants to see the menu.
+User wants to see the menu or categories ONLY without naming a specific food or ingredient.
+Do NOT use VIEW_MENU when the user names food (e.g. pollo, carne, pizza) — use PRODUCT_QUERY.
 Examples:
 - "Menu"
 - "Ver menu"
-- "Qué tienen?"
+- Short standalone "Qué tienen?"
 
 7) VIEW_CART
 User wants to see current order.

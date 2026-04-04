@@ -58,21 +58,22 @@ Available intents:
 - ORDER_FOOD: wants to order/add something (e.g., "quiero una hamburguesa", "dame 2 pizzas")
 - REMOVE_ITEM: wants to remove/delete something from order (e.g., "sacá la pizza", "quitame la coca")
 - MODIFY_QUANTITY: wants to change quantity (e.g., "cambiá a 3", "son 4 en total")
-- PRODUCT_QUERY: searching for a product (e.g., "tienen ceviche?", "hay postres")
+- PRODUCT_QUERY: user searches for food — any ingredient, dish type, or generic food word (e.g. "tienen ceviche?", "pollo para 3 personas", "algo con carne", "hay postres", "qué tienen de pescado"). Always set detectedProductName to the food keyword (pollo, carne, pescado, etc.) when the user names food, even if generic or no exact menu match exists.
 - PRODUCT_ATTRIBUTE_QUESTION: asking about product details (e.g., "cuánto cuesta?", "es picante?")
-- VIEW_MENU: wants to see the menu / catalog to start or continue an order (e.g., "ver menú", "qué tienen?", "mostrame el menú", "quiero hacer un pedido", "hola quiero pedir para 3 personas"). If the user mentions how many people the order is for (headcount) while opening the menu or starting an order, use VIEW_MENU and set quantity to that number — not RESERVATION unless they ask for a table/booking.
+- VIEW_MENU: ONLY when the user wants to browse the full catalog WITHOUT naming a specific food or ingredient. Examples: "ver menú", "mostrar el menú", "mostrar categorías", a very short standalone "qué tienen?" with no dish/ingredient. Do NOT use VIEW_MENU if the user mentions any food, ingredient, or dish — use PRODUCT_QUERY with detectedProductName instead. Headcount alone (e.g. "para 3 personas") with a food word is PRODUCT_QUERY + quantity, not VIEW_MENU.
 - VIEW_CART: wants to see current cart (e.g., "cuánto llevo?", "ver mi pedido")
 - VIEW_CART_FOR_EDITION: wants to see current cart for edition (e.g., "modificar mi pedido")
 - SMALL_TALK: greeting or casual (e.g., "hola", "buenas")
 - ASK_QUESTION: general question (e.g., "dónde están?", "cuál es el horario?")
 - BUSINESS_HOURS: asks for business hours (e.g., "horarios", "a qué hora abren?")
 - EDIT_ADDRESS: wants to change or update the delivery address (e.g., "quiero cambiar mi dirección")
-- RESERVATION: wants to reserve a table (e.g., "reservar mesa", "mesa para 4", "book a table"). Do NOT use RESERVATION when the user is ordering food for N people or browsing the menu (that is VIEW_MENU + quantity).
+- RESERVATION: wants to reserve a table (e.g., "reservar mesa", "mesa para 4", "book a table"). Do NOT use RESERVATION when the user is ordering food for N people (that is PRODUCT_QUERY or ORDER_FOOD + quantity, not a table booking).
 - VIEW_RESERVATION: wants to view an existing reservation (e.g., "ver mi reserva", "mostrar reserva", "mi reserva")
 - VIEW_QR: wants to view reservation QR code (e.g., "ver qr", "mostrar codigo qr", "pasame el qr")
 - UNKNOWN: cannot classify
 
 Rules:
+- Priority: if the user mentions any food or ingredient, prefer PRODUCT_QUERY over VIEW_MENU (never classify food-seeking messages as VIEW_MENU).
 - Extract product name when mentioned
 - Extract quantity when specified (number or words like "dos", "tres"). For "pedido/orden para N personas" or "somos N", quantity is N people (party size), not item count.
 - If the user includes a delivery address, extract it in addressText even if there is a greeting
@@ -91,6 +92,11 @@ Rules:
 
     try {
       const parsed = JSON.parse(content);
+
+      let detectedProductName: string | null =
+        typeof parsed.detectedProductName === 'string'
+          ? parsed.detectedProductName.trim() || null
+          : null;
 
       // Normalizar intent principal y candidatos para resolver un intent final estable
       const parsedConfidence =
@@ -139,16 +145,25 @@ Rules:
         message,
         intent: finalIntent,
         quantity,
-        parsedConfidence
+        parsedConfidence,
+        detectedProductName
       });
       finalIntent = coerced.intent;
       quantity = coerced.quantity;
       const outConfidence = coerced.confidence;
 
+      const productQueryPriority = applyProductQueryPriorityRules({
+        message,
+        intent: finalIntent,
+        detectedProductName
+      });
+      finalIntent = productQueryPriority.intent;
+      detectedProductName = productQueryPriority.detectedProductName;
+
       return {
         intent: finalIntent,
         confidence: outConfidence,
-        detectedProductName: parsed.detectedProductName || null,
+        detectedProductName,
         quantity,
         addressText:
           typeof parsed.addressText === 'string' ? parsed.addressText.trim() : null,
@@ -334,6 +349,85 @@ const extractQuantityFromText = (text: string): number | null => {
   return null;
 };
 
+/**
+ * Mención de comida/ingrediente genérico → prioridad PRODUCT_QUERY sobre VIEW_MENU.
+ * Lista ampliable; coincide con platos típicos y variantes en español.
+ */
+const LOOSE_FOOD_PATTERN =
+  /\b(pollo|carne|pescado|cerdo|vac(a|o|ío)|hamburguesa|pizza|pasta|ensalada|postres?|tarta|empanada[s]?|asado|milanesa|ñoquis|ravioles|sándwich|sandwich|ceviche|sushi|tacos?|burrito|verdura[s]?|vegetariano|vegano|bebida[s]?|gaseosa|cerveza|vino|café|helado|guiso|sopa|milanesas?)\b/i;
+
+function hasLooseFoodTopic(text: string): boolean {
+  return LOOSE_FOOD_PATTERN.test(text);
+}
+
+function extractLooseFoodKeyword(text: string): string | null {
+  const m = text.match(LOOSE_FOOD_PATTERN);
+  return m ? m[0].trim().toLowerCase() : null;
+}
+
+/**
+ * Pedido explícito de catálogo sin ingrediente concreto (VIEW_MENU legítimo).
+ * Si el texto nombra comida, debe devolver false para no bloquear PRODUCT_QUERY.
+ */
+function isExplicitMenuOnlyRequest(text: string): boolean {
+  const t = text.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (t.length <= 28 && /^(qu[eé]|que)\s+tienen\??$/.test(t)) return true;
+  if (/\bmostrar\s+(las\s+)?categor/i.test(t)) return true;
+  if (/\bver\s+(las\s+)?categor/i.test(t)) return true;
+  if (
+    /\b(ver|mostrar|mostrame|mostrá)\s+(el\s+)?(menú|menu)\b/.test(t) &&
+    !hasLooseFoodTopic(t)
+  ) {
+    return true;
+  }
+  if (/\bcat[aá]logo\b/.test(t) && !hasLooseFoodTopic(t)) return true;
+  return false;
+}
+
+const INTENTS_BLOCK_FORCE_PRODUCT_QUERY: ReadonlySet<ConversationIntent> = new Set([
+  ConversationIntent.REMOVE_ITEM,
+  ConversationIntent.MODIFY_QUANTITY,
+  ConversationIntent.PRODUCT_ATTRIBUTE_QUESTION,
+  ConversationIntent.VIEW_CART,
+  ConversationIntent.VIEW_CART_FOR_EDITION,
+  ConversationIntent.RESERVATION,
+  ConversationIntent.EDIT_ADDRESS,
+  ConversationIntent.CHECKOUT,
+  ConversationIntent.CANCEL_ORDER
+]);
+
+/**
+ * PRODUCT_QUERY > VIEW_MENU: si hay producto detectado o mención de comida, forzar búsqueda/recomendación.
+ */
+function applyProductQueryPriorityRules(params: {
+  message: string;
+  intent: ConversationIntent;
+  detectedProductName: string | null;
+}): { intent: ConversationIntent; detectedProductName: string | null } {
+  const { message, intent } = params;
+  let name = params.detectedProductName?.trim() || null;
+
+  if (!name && hasLooseFoodTopic(message) && !isExplicitMenuOnlyRequest(message)) {
+    name = extractLooseFoodKeyword(message);
+  }
+
+  if (!name) {
+    return {
+      intent,
+      detectedProductName: params.detectedProductName?.trim() || null
+    };
+  }
+
+  if (INTENTS_BLOCK_FORCE_PRODUCT_QUERY.has(intent)) {
+    return { intent, detectedProductName: name };
+  }
+
+  return {
+    intent: ConversationIntent.PRODUCT_QUERY,
+    detectedProductName: name
+  };
+}
+
 /** Indica que el número se refiere a personas/comensales, no a ítems. */
 const hasPartySizeContext = (text: string): boolean => {
   const lower = text.toLowerCase();
@@ -354,20 +448,29 @@ const looksLikeReservationIntent = (text: string): boolean =>
 
 /**
  * Si el modelo confunde saludo/pedido genérico con headcount, forzar VIEW_MENU + quantity.
- * No aplica cuando ya es PRODUCT_QUERY u otra intención concreta.
+ * No aplica si hay nombre de producto o mención de comida (flujo PRODUCT_QUERY / recomendaciones).
  */
 const applyViewMenuPartyIntentOverride = (params: {
   message: string;
   intent: ConversationIntent;
   quantity: number | null;
   parsedConfidence: number;
+  detectedProductName: string | null;
 }): {
   intent: ConversationIntent;
   quantity: number | null;
   confidence: number;
 } => {
-  const { message, intent, parsedConfidence } = params;
+  const { message, intent, parsedConfidence, detectedProductName } = params;
   let { quantity } = params;
+
+  if (detectedProductName?.trim()) {
+    return { intent, quantity, confidence: parsedConfidence };
+  }
+
+  if (hasLooseFoodTopic(message) && !isExplicitMenuOnlyRequest(message)) {
+    return { intent, quantity, confidence: parsedConfidence };
+  }
 
   const eligible =
     intent === ConversationIntent.ORDER_FOOD ||
