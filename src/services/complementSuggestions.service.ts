@@ -59,6 +59,37 @@ export function buildComplementBridgeInteractive(bridgeBodyFormatted: string): W
   };
 }
 
+/** Segundo mensaje tras agregar al carrito cuando aún falta cobertura de platos principales vs N personas. */
+export function buildMainIncompleteFollowUpInteractive(
+  bridgeBodyFormatted: string
+): WhatsAppInteractiveMessage {
+  return {
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      header: { type: 'text', text: '' },
+      body: { text: bridgeBodyFormatted },
+      footer: { text: 'Elegí una opción' },
+      action: {
+        buttons: [
+          {
+            type: 'reply',
+            reply: { id: 'VIEW_MENU', title: 'Ver menú' },
+          },
+          {
+            type: 'reply',
+            reply: { id: 'VIEW_CART_FOR_EDITION', title: 'Ver mi pedido' },
+          },
+          {
+            type: 'reply',
+            reply: { id: 'CHECKOUT', title: 'Finalizar' },
+          },
+        ],
+      },
+    },
+  };
+}
+
 /**
  * Construye la lista de sugerencias desde metadata, valida borrador y limpia estado.
  */

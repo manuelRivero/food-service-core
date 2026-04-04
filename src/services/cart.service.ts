@@ -20,6 +20,7 @@ import { buildListMessageFromButtons } from '../whatsappBuilders';
 import { buildComplementarySuggestionsWithLlm } from './ai/complementarySuggestion.ai.service';
 import {
   buildComplementBridgeInteractive,
+  buildMainIncompleteFollowUpInteractive,
   persistComplementSuggestionSnapshot,
 } from './complementSuggestions.service';
 import { formatBotUserMessage } from './productQuery';
@@ -430,6 +431,19 @@ export const buildAddItemMessage = async (
     );
     complementBridge = buildComplementBridgeInteractive(bridgeBody);
     await createConversationMessage(conversation.id, 'ai', bridgeBody, false);
+    await updateConversationLastMessageAt(conversation.id);
+  } else if (mainIncomplete) {
+    const peoplePhrase =
+      peopleCount != null && peopleCount > 0
+        ? `para ${peopleCount} persona${peopleCount === 1 ? '' : 's'}`
+        : 'para el grupo';
+    const mainFollowBody = formatBotUserMessage(
+      'Platos principales',
+      '🍽️',
+      `Podés sumar más platos principales desde el menú ${peoplePhrase} si todavía falta cobertura según la ficha del plato.`
+    );
+    complementBridge = buildMainIncompleteFollowUpInteractive(mainFollowBody);
+    await createConversationMessage(conversation.id, 'ai', mainFollowBody, false);
     await updateConversationLastMessageAt(conversation.id);
   }
 
