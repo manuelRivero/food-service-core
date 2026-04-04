@@ -60,21 +60,21 @@ Available intents:
 - MODIFY_QUANTITY: wants to change quantity (e.g., "cambiá a 3", "son 4 en total")
 - PRODUCT_QUERY: searching for a product (e.g., "tienen ceviche?", "hay postres")
 - PRODUCT_ATTRIBUTE_QUESTION: asking about product details (e.g., "cuánto cuesta?", "es picante?")
-- VIEW_MENU: wants to see menu (e.g., "ver menú", "qué tienen?")
+- VIEW_MENU: wants to see the menu / catalog to start or continue an order (e.g., "ver menú", "qué tienen?", "mostrame el menú", "quiero hacer un pedido", "hola quiero pedir para 3 personas"). If the user mentions how many people the order is for (headcount) while opening the menu or starting an order, use VIEW_MENU and set quantity to that number — not RESERVATION unless they ask for a table/booking.
 - VIEW_CART: wants to see current cart (e.g., "cuánto llevo?", "ver mi pedido")
 - VIEW_CART_FOR_EDITION: wants to see current cart for edition (e.g., "modificar mi pedido")
 - SMALL_TALK: greeting or casual (e.g., "hola", "buenas")
 - ASK_QUESTION: general question (e.g., "dónde están?", "cuál es el horario?")
 - BUSINESS_HOURS: asks for business hours (e.g., "horarios", "a qué hora abren?")
 - EDIT_ADDRESS: wants to change or update the delivery address (e.g., "quiero cambiar mi dirección")
-- RESERVATION: wants to reserve a table (e.g., "reservar", "reserva", "mesa", "book", "reservation", "table for 4")
+- RESERVATION: wants to reserve a table (e.g., "reservar mesa", "mesa para 4", "book a table"). Do NOT use RESERVATION when the user is ordering food for N people or browsing the menu (that is VIEW_MENU + quantity).
 - VIEW_RESERVATION: wants to view an existing reservation (e.g., "ver mi reserva", "mostrar reserva", "mi reserva")
 - VIEW_QR: wants to view reservation QR code (e.g., "ver qr", "mostrar codigo qr", "pasame el qr")
 - UNKNOWN: cannot classify
 
 Rules:
 - Extract product name when mentioned
-- Extract quantity when specified (number or words like "dos", "tres")
+- Extract quantity when specified (number or words like "dos", "tres"). For "pedido/orden para N personas" or "somos N", quantity is N people (party size), not item count.
 - If the user includes a delivery address, extract it in addressText even if there is a greeting
 - If there is a clear address, still return intent but always include addressText
 - Provide confidence 0-1
@@ -133,11 +133,21 @@ Rules:
       }
 
       // Extraer cantidad de texto si no viene en JSON
-      const quantity = parsed.quantity ?? extractQuantityFromText(message);
+      let quantity = parsed.quantity ?? extractQuantityFromText(message);
+
+      const coerced = applyViewMenuPartyIntentOverride({
+        message,
+        intent: finalIntent,
+        quantity,
+        parsedConfidence
+      });
+      finalIntent = coerced.intent;
+      quantity = coerced.quantity;
+      const outConfidence = coerced.confidence;
 
       return {
         intent: finalIntent,
-        confidence: parsedConfidence,
+        confidence: outConfidence,
         detectedProductName: parsed.detectedProductName || null,
         quantity,
         addressText:
@@ -322,4 +332,73 @@ const extractQuantityFromText = (text: string): number | null => {
   }
 
   return null;
+};
+
+/** Indica que el número se refiere a personas/comensales, no a ítems. */
+const hasPartySizeContext = (text: string): boolean => {
+  const lower = text.toLowerCase();
+  if (/\b(personas?|comensales?)\b/.test(lower)) return true;
+  if (/\bsomos\b/.test(lower) && /\b(un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\b/.test(lower))
+    return true;
+  return false;
+};
+
+/** Quiere abrir flujo de pedido o ver menú/catálogo (no una consulta puntual de producto). */
+const wantsMenuOrOpenOrderFlow = (text: string): boolean =>
+  /(menú|menu|\bpedido\b|orden(ar|á|amos)?|hacer\s+(un\s+)?pedido|quiero\s+(pedir|hacer)|mostrar(me)?\s+(el\s+)?(menú|menu)|ver\s+(el\s+)?(menú|menu)|cat[aá]logo|empez(ar|á|amos)\s+(a\s+)?(pedir|ordenar))/i.test(
+    text
+  );
+
+const looksLikeReservationIntent = (text: string): boolean =>
+  /\b(reserva|reservar|mesa\s+para|booking|book\s+a\s+table)\b/i.test(text);
+
+/**
+ * Si el modelo confunde saludo/pedido genérico con headcount, forzar VIEW_MENU + quantity.
+ * No aplica cuando ya es PRODUCT_QUERY u otra intención concreta.
+ */
+const applyViewMenuPartyIntentOverride = (params: {
+  message: string;
+  intent: ConversationIntent;
+  quantity: number | null;
+  parsedConfidence: number;
+}): {
+  intent: ConversationIntent;
+  quantity: number | null;
+  confidence: number;
+} => {
+  const { message, intent, parsedConfidence } = params;
+  let { quantity } = params;
+
+  const eligible =
+    intent === ConversationIntent.ORDER_FOOD ||
+    intent === ConversationIntent.SMALL_TALK ||
+    intent === ConversationIntent.UNKNOWN;
+
+  if (!eligible) {
+    return { intent, quantity, confidence: parsedConfidence };
+  }
+
+  if (looksLikeReservationIntent(message)) {
+    return { intent, quantity, confidence: parsedConfidence };
+  }
+
+  if (!hasPartySizeContext(message) || !wantsMenuOrOpenOrderFlow(message)) {
+    return { intent, quantity, confidence: parsedConfidence };
+  }
+
+  const q = quantity ?? extractQuantityFromText(message);
+  if (q == null || q <= 0) {
+    return { intent, quantity, confidence: parsedConfidence };
+  }
+
+  const confidence =
+    intent === ConversationIntent.UNKNOWN
+      ? Math.max(parsedConfidence, 0.72)
+      : parsedConfidence;
+
+  return {
+    intent: ConversationIntent.VIEW_MENU,
+    quantity: q,
+    confidence
+  };
 };
