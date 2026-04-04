@@ -1,5 +1,5 @@
 // webhooks/handlers/addItemHandler.ts
-import type { HandlerFollowUp, IntentHandler } from '../types';
+import type { IntentHandler } from '../types';
 import type { EnrichedContext, HandlerResult } from '../types';
 import {
   interactiveResponse,
@@ -59,16 +59,8 @@ export class AddItemHandler implements IntentHandler {
     );
     if (result === null) return noResponse();
     if (typeof result === 'string') return textResponse(result);
-    const followUps: HandlerFollowUp[] = [];
-    if (result.mainFollowUpList) {
-      followUps.push({ type: 'list', listMessage: result.mainFollowUpList });
-    }
-    if (result.complementBridge) {
-      followUps.push({ type: 'interactive', message: result.complementBridge });
-    }
-    return interactiveResponse(
-      result.main,
-      followUps.length ? followUps : undefined
-    );
+    return interactiveResponse(result.main, [
+      { type: 'list' as const, listMessage: result.mainFollowUpList },
+    ]);
   }
 }

@@ -17,16 +17,10 @@ import { createOrGetOpenConversation } from "../repositories/conversation.reposi
 import { WhatsAppWebhookPayload } from "../controllers/webhook/types";
 import { WhatsAppInteractiveMessage, WhatsAppListMessage } from "../domain/intent/whatsappTemplates";
 import { buildListMessageFromButtons } from '../whatsappBuilders';
-import { buildComplementarySuggestionsWithLlm } from './ai/complementarySuggestion.ai.service';
-import {
-  buildComplementBridgeInteractive,
-  buildMainIncompleteFollowUpList,
-  persistComplementSuggestionSnapshot,
-} from './complementSuggestions.service';
+import { buildAddItemShortcutsFollowUpList } from './complementSuggestions.service';
 import { formatBotUserMessage } from './productQuery';
 import {
   buildMetadataValue,
-  getRequestedPartySize,
   normalizeMetadata,
 } from './productQuery/utils';
 import { ConversationIntent } from "../types/conversationIntent";
@@ -36,11 +30,6 @@ import {
   formatCartGuidanceBlock,
   syncOrderCoverageToConversationState,
 } from "./orderPortionCoverage";
-import { computeMainPortionCoverageFromDraft } from "./productQuery/recommendationCartSummary";
-import {
-  acknowledgeNonMainAddLine,
-  GUIDE_CHOOSE_MAINS_AFTER_NON_MAIN,
-} from "./productQuery/nextActionAfterMains";
 import { MENU_SUGGESTION_ORDER } from "../helpers/complementaryMenu.helper";
 
 const SECTION_TITLE: Record<MenuCategoryTag, string> = {
@@ -147,13 +136,12 @@ async function clearLastListSuggestedQuantityFromConversation(
   });
 }
 
-/** Respuesta de agregar ítem: lista principal y opcional puente interactivo (metadata con snapshot de sugerencias). */
+/** Respuesta de agregar ítem: lista principal + lista de atajos por tag. */
 export type AddItemMessageResult =
   | string
   | {
       main: WhatsAppListMessage;
-      complementBridge?: WhatsAppInteractiveMessage;
-      mainFollowUpList?: WhatsAppListMessage;
+      mainFollowUpList: WhatsAppListMessage;
     };
 
 export const buildRemoveItemMessage = async (
@@ -325,56 +313,11 @@ export const buildAddItemMessage = async (
   const guidanceBlock = formatCartGuidanceBlock(coverage).trim();
   const guidanceSuffix = guidanceBlock ? `\n\n${guidanceBlock}\n\n` : '\n\n';
 
-  const mainCoverage = await computeMainPortionCoverageFromDraft({
-    businessId: business.id,
-    customerPhone: customer.phone_number,
-  });
-  const convState = await findOrCreateConversationState(conversation.id);
-  const peopleCount = getRequestedPartySize(
-    normalizeMetadata(convState.metadata) as ConversationMetadata
-  );
-
-  const mainIncomplete =
-    peopleCount != null &&
-    peopleCount > 0 &&
-    mainCoverage < peopleCount;
-
-  const addedTag = item.menu_category?.category_tag as
-    | MenuCategoryTag
-    | undefined;
-  /** Cobertura MAIN aún por debajo de N personas: guiar a sumar más principales; al completar, complement LLM sugiere otras categorías. */
-  let postAddMainFocus = '';
-  if (mainIncomplete && addedTag != null) {
-    if (
-      addedTag === 'STARTER' ||
-      addedTag === 'DRINK' ||
-      addedTag === 'DESSERT'
-    ) {
-      const ack = acknowledgeNonMainAddLine(addedTag);
-      if (ack) {
-        postAddMainFocus = `\n\n${ack}\n${GUIDE_CHOOSE_MAINS_AFTER_NON_MAIN}`;
-      }
-    } else if (addedTag === 'MAIN') {
-      postAddMainFocus = `\n\n${GUIDE_CHOOSE_MAINS_AFTER_NON_MAIN}`;
-    }
-  }
-
   const qtyLine =
     qty > 1 ? `*${qty}* × ` : '';
-  const messageText = `🤖\n\n${qtyLine}*${item.name}* agregado 🛒${postAddMainFocus}\n\n${orderSectionsBlock}${guidanceSuffix}` +
+  const messageText = `🤖\n\n${qtyLine}*${item.name}* agregado 🛒\n\n${orderSectionsBlock}${guidanceSuffix}` +
     `Total: $${total._sum.total_price || 0}\n\n` +
     `¿Seguís comprando o querés *finalizar*?${addressLine}`;
-
-  const complement =
-    mainIncomplete
-      ? null
-      : await buildComplementarySuggestionsWithLlm(business, {
-          businessId: business.id,
-          draftOrderId: cart.id,
-          lastAddedMenuItemId: item.id,
-          maxItems: 5,
-          poolSize: 12,
-        });
 
   const mainButtons = [
     {
@@ -422,34 +365,16 @@ export const buildAddItemMessage = async (
   await createConversationMessage(conversation.id, 'ai', messageText, false);
   await updateConversationLastMessageAt(conversation.id);
 
-  let complementBridge: WhatsAppInteractiveMessage | undefined;
-  if (complement && complement.items.length > 0) {
-    await persistComplementSuggestionSnapshot(conversation.id, complement.snapshot);
-    const bridgeBody = formatBotUserMessage(
-      complement.snapshot.title,
-      complement.snapshot.titleEmoji,
-      complement.bridgeMessagePlain
-    );
-    complementBridge = buildComplementBridgeInteractive(bridgeBody);
-    await createConversationMessage(conversation.id, 'ai', bridgeBody, false);
-    await updateConversationLastMessageAt(conversation.id);
-  } else if (mainIncomplete) {
-    const peoplePhrase =
-      peopleCount != null && peopleCount > 0
-        ? `para ${peopleCount} persona${peopleCount === 1 ? '' : 's'}`
-        : 'para el grupo';
-    const mainFollowBody = formatBotUserMessage(
-      'Platos principales',
-      '🍽️',
-      `Podés sumar más platos principales desde el menú ${peoplePhrase} si todavía falta cobertura según la ficha del plato.`
-    );
-    const mainFollowUpList = buildMainIncompleteFollowUpList(mainFollowBody);
-    await createConversationMessage(conversation.id, 'ai', mainFollowBody, false);
-    await updateConversationLastMessageAt(conversation.id);
-    return { main: mainList, mainFollowUpList };
-  }
+  const shortcutsBody = formatBotUserMessage(
+    'Atajos del menú',
+    '📋',
+    'Elegí una zona para ver solo esos platos, o usá ver menú, tu pedido o finalizar.'
+  );
+  const mainFollowUpList = buildAddItemShortcutsFollowUpList(shortcutsBody);
+  await createConversationMessage(conversation.id, 'ai', shortcutsBody, false);
+  await updateConversationLastMessageAt(conversation.id);
 
-  return complementBridge ? { main: mainList, complementBridge } : { main: mainList };
+  return { main: mainList, mainFollowUpList };
 };
 
 export const handleAddItemFromWebhook = async (

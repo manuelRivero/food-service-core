@@ -5,10 +5,7 @@ import {
   type ComplementSuggestionSnapshot,
   parseComplementSnapshot,
 } from '../domain/complementSuggestions.schema';
-import type {
-  WhatsAppInteractiveMessage,
-  WhatsAppListMessage,
-} from '../domain/intent/whatsappTemplates';
+import type { WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
 import { prisma } from '../lib/prisma';
 import {
   createConversationMessage,
@@ -34,48 +31,20 @@ export async function clearComplementSuggestionSnapshot(
   await omitConversationMetadataKeys(conversationId, [COMPLEMENT_METADATA_KEY]);
 }
 
-export function buildComplementBridgeInteractive(bridgeBodyFormatted: string): WhatsAppInteractiveMessage {
-  return {
-    type: 'interactive',
-    interactive: {
-      type: 'button',
-      header: { type: 'text', text: '' },
-      body: { text: bridgeBodyFormatted },
-      footer: { text: 'Elegí una opción' },
-      action: {
-        buttons: [
-          {
-            type: 'reply',
-            reply: { id: 'COMPLEMENT_SHOW_SUGGESTIONS', title: 'Ver sugerencias' },
-          },
-          {
-            type: 'reply',
-            reply: { id: 'VIEW_MENU', title: 'Seguir comprando' },
-          },
-          {
-            type: 'reply',
-            reply: { id: 'CHECKOUT', title: 'Finalizar pedido' },
-          },
-        ],
-      },
-    },
-  };
-}
-
-/** Segundo mensaje tras agregar al carrito cuando aún falta cobertura de platos principales vs N personas. */
-export function buildMainIncompleteFollowUpList(
-  bridgeBodyFormatted: string
+/** Segundo mensaje tras agregar al carrito: atajos por tag + menú / pedido / checkout. */
+export function buildAddItemShortcutsFollowUpList(
+  bodyFormatted: string
 ): WhatsAppListMessage {
   return {
     type: 'list',
-    header: { type: 'text', text: '🍽️ Seguí con tu pedido' },
-    body: { text: bridgeBodyFormatted },
+    header: { type: 'text', text: '📋 Atajos del menú' },
+    body: { text: bodyFormatted },
     footer: { text: 'Elegí una opción' },
     action: {
       button: 'Ver opciones',
       sections: [
         {
-          title: 'Menú y pedido',
+          title: 'Zonas del menú y pedido',
           rows: [
             {
               id: 'VIEW_MENU',
