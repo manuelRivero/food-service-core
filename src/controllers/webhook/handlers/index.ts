@@ -6,6 +6,7 @@ import { SelectOrderProductHandler } from './selectOrderProductHandler';
 import { OrderSearchPageHandler } from './orderSearchPageHandler';
 import { CategoryPageHandler } from './categoryPageHandler';
 import { CategoryListPageHandler } from './categoryListPageHandler';
+import { MenuByTagHandler } from './menuByTagHandler';
 import { CategoryHandler } from './categoryHandler';
 import { AddItemHandler } from './addItemHandler';
 import { ShowComplementSuggestionsHandler } from './showComplementSuggestionsHandler';
@@ -48,6 +49,7 @@ export const handlers = [
   new OrderSearchPageHandler(),
   new CategoryPageHandler(),
   new CategoryListPageHandler(),
+  new MenuByTagHandler(),
   new CategoryHandler(),
   new AddItemHandler(),
   new ShowComplementSuggestionsHandler(),

@@ -25,6 +25,8 @@ export enum ConversationIntent {
   ORDER_SEARCH_PAGE = 'ORDER_SEARCH_PAGE',
   CATEGORY_PAGE = 'CATEGORY_PAGE',
   CATEGORY_LIST_PAGE = 'CATEGORY_LIST_PAGE',
+  /** Lista de productos filtrada por tag de categoría (p. ej. MENU_BY_TAG:STARTER:1). */
+  MENU_BY_TAG = 'MENU_BY_TAG',
   CATEGORY = 'CATEGORY',
   ADD_ITEM = 'ADD_ITEM',                 // Botón "Agregar al pedido"
   /** Ver listado de complementos guardado en metadata (tras puente con botones). */

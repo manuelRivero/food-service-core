@@ -20,7 +20,7 @@ import { buildListMessageFromButtons } from '../whatsappBuilders';
 import { buildComplementarySuggestionsWithLlm } from './ai/complementarySuggestion.ai.service';
 import {
   buildComplementBridgeInteractive,
-  buildMainIncompleteFollowUpInteractive,
+  buildMainIncompleteFollowUpList,
   persistComplementSuggestionSnapshot,
 } from './complementSuggestions.service';
 import { formatBotUserMessage } from './productQuery';
@@ -153,6 +153,7 @@ export type AddItemMessageResult =
   | {
       main: WhatsAppListMessage;
       complementBridge?: WhatsAppInteractiveMessage;
+      mainFollowUpList?: WhatsAppListMessage;
     };
 
 export const buildRemoveItemMessage = async (
@@ -442,9 +443,10 @@ export const buildAddItemMessage = async (
       '🍽️',
       `Podés sumar más platos principales desde el menú ${peoplePhrase} si todavía falta cobertura según la ficha del plato.`
     );
-    complementBridge = buildMainIncompleteFollowUpInteractive(mainFollowBody);
+    const mainFollowUpList = buildMainIncompleteFollowUpList(mainFollowBody);
     await createConversationMessage(conversation.id, 'ai', mainFollowBody, false);
     await updateConversationLastMessageAt(conversation.id);
+    return { main: mainList, mainFollowUpList };
   }
 
   return complementBridge ? { main: mainList, complementBridge } : { main: mainList };

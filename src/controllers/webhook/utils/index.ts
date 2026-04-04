@@ -1,3 +1,4 @@
+import { MenuCategoryTag } from '@prisma/client';
 import { HandlerFollowUp, HandlerResult } from '../types';
 
 export const parseProductId = (payloadId: string): string => {
@@ -47,6 +48,24 @@ export const parseCategoryPage = (payloadId: string): { categoryId: string; page
     const page = Number.isFinite(Number(pageValue)) ? Number(pageValue) : 1;
     return { categoryId: categoryId ?? '', page };
 };
+
+const MENU_CATEGORY_TAG_VALUES = new Set<string>(
+  Object.values(MenuCategoryTag) as string[]
+);
+
+/** `MENU_BY_TAG:<TAG>[:<page>]` — page por defecto 1. */
+export function parseMenuByTagPayload(
+  payloadId: string
+): { tag: MenuCategoryTag; page: number } | null {
+  const parts = payloadId.split(':');
+  if (parts[0] !== 'MENU_BY_TAG' || parts.length < 2) return null;
+  const tagStr = parts[1];
+  if (!tagStr || !MENU_CATEGORY_TAG_VALUES.has(tagStr)) return null;
+  const pageRaw = parts[2];
+  const page =
+    pageRaw != null && /^\d+$/.test(pageRaw) ? Math.max(1, parseInt(pageRaw, 10)) : 1;
+  return { tag: tagStr as MenuCategoryTag, page };
+}
 
 export const parsePageOnly = (payloadId: string): number => {
     const [, pageValue] = payloadId.split(':');

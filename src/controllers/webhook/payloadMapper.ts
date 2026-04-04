@@ -77,6 +77,13 @@ export const detectIntentFromPayload = (
     );
   }
 
+  if (payloadId.startsWith('MENU_BY_TAG:')) {
+    return buildInteractiveResult(
+      ConversationIntent.MENU_BY_TAG,
+      payloadId
+    );
+  }
+
   if (payloadId.startsWith('CATEGORY:')) {
     return buildInteractiveResult(
       ConversationIntent.CATEGORY,

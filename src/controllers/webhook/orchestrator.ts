@@ -701,6 +701,7 @@ const maybeClearContext = async (
     ConversationIntent.CONFIRM_REMOVE,
     ConversationIntent.UNKNOWN,
     ConversationIntent.CATEGORY,
+    ConversationIntent.MENU_BY_TAG,
     ConversationIntent.CATEGORY_LIST_PAGE,
     ConversationIntent.CHECKOUT,
     ConversationIntent.CANCEL_ORDER,

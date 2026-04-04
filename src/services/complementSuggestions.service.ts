@@ -5,7 +5,10 @@ import {
   type ComplementSuggestionSnapshot,
   parseComplementSnapshot,
 } from '../domain/complementSuggestions.schema';
-import type { WhatsAppInteractiveMessage } from '../domain/intent/whatsappTemplates';
+import type {
+  WhatsAppInteractiveMessage,
+  WhatsAppListMessage,
+} from '../domain/intent/whatsappTemplates';
 import { prisma } from '../lib/prisma';
 import {
   createConversationMessage,
@@ -60,32 +63,58 @@ export function buildComplementBridgeInteractive(bridgeBodyFormatted: string): W
 }
 
 /** Segundo mensaje tras agregar al carrito cuando aún falta cobertura de platos principales vs N personas. */
-export function buildMainIncompleteFollowUpInteractive(
+export function buildMainIncompleteFollowUpList(
   bridgeBodyFormatted: string
-): WhatsAppInteractiveMessage {
+): WhatsAppListMessage {
   return {
-    type: 'interactive',
-    interactive: {
-      type: 'button',
-      header: { type: 'text', text: '' },
-      body: { text: bridgeBodyFormatted },
-      footer: { text: 'Elegí una opción' },
-      action: {
-        buttons: [
-          {
-            type: 'reply',
-            reply: { id: 'VIEW_MENU', title: 'Ver menú' },
-          },
-          {
-            type: 'reply',
-            reply: { id: 'VIEW_CART_FOR_EDITION', title: 'Ver mi pedido' },
-          },
-          {
-            type: 'reply',
-            reply: { id: 'CHECKOUT', title: 'Finalizar' },
-          },
-        ],
-      },
+    type: 'list',
+    header: { type: 'text', text: '🍽️ Seguí con tu pedido' },
+    body: { text: bridgeBodyFormatted },
+    footer: { text: 'Elegí una opción' },
+    action: {
+      button: 'Ver opciones',
+      sections: [
+        {
+          title: 'Menú y pedido',
+          rows: [
+            {
+              id: 'VIEW_MENU',
+              title: 'Ver menú completo',
+              description: 'Todas las categorías',
+            },
+            {
+              id: 'VIEW_CART_FOR_EDITION',
+              title: 'Ver mi pedido',
+              description: 'Revisar o editar',
+            },
+            {
+              id: 'CHECKOUT',
+              title: 'Finalizar pedido',
+              description: 'Ir al checkout',
+            },
+            {
+              id: 'MENU_BY_TAG:STARTER:1',
+              title: 'Ver entradas',
+              description: 'Solo entradas',
+            },
+            {
+              id: 'MENU_BY_TAG:MAIN:1',
+              title: 'Ver platos principales',
+              description: 'Solo principales',
+            },
+            {
+              id: 'MENU_BY_TAG:DRINK:1',
+              title: 'Ver bebidas',
+              description: 'Solo bebidas',
+            },
+            {
+              id: 'MENU_BY_TAG:DESSERT:1',
+              title: 'Ver postres',
+              description: 'Solo postres',
+            },
+          ],
+        },
+      ],
     },
   };
 }

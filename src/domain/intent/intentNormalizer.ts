@@ -8,6 +8,7 @@ export const INTENT_ENUM_VALUES = [
   ConversationIntent.ORDER_SEARCH_PAGE,
   ConversationIntent.CATEGORY_PAGE,
   ConversationIntent.CATEGORY_LIST_PAGE,
+  ConversationIntent.MENU_BY_TAG,
   ConversationIntent.CATEGORY,
   ConversationIntent.SELECT_CART_ITEM,
   ConversationIntent.ADD_ITEM,
@@ -80,6 +81,7 @@ export const INTENT_PRIORITY: ConversationIntent[] = [
   ConversationIntent.ADD_PRODUCT,        // NUEVO
   
   // 3. Navegación
+  ConversationIntent.MENU_BY_TAG,
   ConversationIntent.CATEGORY,
   ConversationIntent.CATEGORY_PAGE,
   ConversationIntent.CATEGORY_LIST_PAGE,
@@ -123,6 +125,7 @@ export const normalizeIntent = (value: string): ConversationIntent => {
     case ConversationIntent.ORDER_SEARCH_PAGE:
     case ConversationIntent.CATEGORY_PAGE:
     case ConversationIntent.CATEGORY_LIST_PAGE:
+    case ConversationIntent.MENU_BY_TAG:
     case ConversationIntent.CATEGORY:
     case ConversationIntent.ADD_ITEM:
     case ConversationIntent.COMPLEMENT_SHOW_SUGGESTIONS:
