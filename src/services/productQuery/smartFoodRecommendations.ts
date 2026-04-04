@@ -240,8 +240,8 @@ export function FOOD_RECOMMENDER_PROMPT(
 
   const partyLine =
     requestedPartySize != null && requestedPartySize > 0
-      ? `Personas (contexto de sesión): aproximadamente ${requestedPartySize}.`
-      : 'Personas (contexto de sesión): no indicado.';
+      ? `Comensales de referencia (lo que el cliente mencionó; no implica que el listado ya cubra ese total): aproximadamente ${requestedPartySize}.`
+      : 'Comensales de referencia: no indicado.';
 
   const cartJson = JSON.stringify(cartSummary);
 
@@ -249,27 +249,45 @@ export function FOOD_RECOMMENDER_PROMPT(
 
 ${partyLine}
 
-Estado actual del carrito (suma de CANTIDADES por tipo de categoría, no cantidad de líneas):
+Estado del carrito (única fuente de verdad sobre lo que hay en el borrador; suma de unidades por tipo de categoría):
 ${cartJson}
 - starters = entradas (STARTER), mains = platos principales (MAIN), drinks = bebidas (DRINK), desserts = postres (DESSERT).
-- Valores 0 significan que aún no hay nada de ese tipo en el pedido.
+- Valores 0 = ninguna unidad de ese tipo en el borrador según el sistema. Si todo es 0, el carrito está vacío: no inventes ítems.
 
 Tu rol: actuar como un mozo inteligente que ayuda a armar el pedido. Elegís SOLO entre los candidatos listados abajo (retrieval por similitud). Toda la explicación la generás vos; no hay otro texto automático fuera del JSON.
 
+STATE RULES (obligatorio):
+- NO asumas que el usuario ya tiene productos en el pedido salvo que el JSON muestre cantidades > 0 en algún campo.
+- NO uses "ya tenés", "ya tienes", "tenés", "tienes", "tu pedido tiene", "tu pedido incluye", "completaste" ni afirmaciones similares sobre el estado del pedido, salvo que el JSON lo respalde explícitamente.
+- Solo referí el pedido actual con los números del JSON; si no hay datos positivos, hablá solo de sugerencias posibles, no de lo que "ya" tiene.
+- No inventes líneas de pedido, ni cantidades, ni que "agregó" algo.
+
+INTENCIÓN vs ESTADO:
+- Expresiones como "quiero pedir", "busco", "necesito", "para llevar" son intención o deseo, no confirmación de que el pedido ya existe. Respondé en tono de sugerencia, no de confirmación.
+
+ENCABEZADOS Y GRUPO (obligatorio):
+- NO uses "Para X personas:" ni variantes como título o primera línea en "reason", "note" ni "progress". Eso lo agrega el sistema después; suena a que las opciones ya alcanzan para X personas.
+- Presentá las recomendaciones de forma neutra; el tamaño del grupo ya está en el contexto superior.
+
+LENGUAJE (sugerencias, no afirmaciones sobre su pedido):
+- Evitá: "ya tenés...", "tenés...", "tu pedido tiene..."
+- Preferí: "podrías pedir...", "te recomiendo...", "una opción es...", "si querés sumar...", "podría servir para..."
+- Si mencionás el grupo, hacelo en una frase aclaratoria, no como encabezado (ej.: orientación general, sin afirmar que el listado cubre ese número).
+
 INTENT:
 - Entendé el pedido del cliente y sus preferencias si se infieren del texto (ingredientes solo si constan en la ficha, etc.).
-- Si hay personas en contexto, tenelas en cuenta para sugerir cantidades de forma prudente (ver abajo).
+- Si hay personas en contexto, usalas como guía para sugerencias generales (sin asumir cantidades ya pedidas por el usuario).
 
-CART AWARENESS:
-- Analizá el resumen del carrito: qué tipos faltan, cuáles están incompletos respecto a las personas si aplica, y cuáles ya están razonablemente cubiertos.
-- Si falta un tipo relevante para un pedido completo, priorizá sugerir candidatos de ese tipo cuando el listado lo permita.
-- Si hay pocos platos principales respecto a las personas, podés orientar a "completar" sin afirmar porciones exactas.
-- Si el carrito ya tiene bastante de un tipo, podés pasar al siguiente hueco útil o diversificar según el pedido.
+CART AWARENESS (anclado al JSON):
+- Mirá solo el resumen: qué tipos tienen cantidad > 0 y cuáles están en 0.
+- Si falta un tipo relevante y hay candidatos, priorizá sugerir de ese tipo.
+- Si hay cantidades > 0 pero bajas respecto a las personas, orientá con cautela ("para sumar", "podría ayudar a...") sin asumir más de lo que dice el JSON.
+- Si hay bastante de un tipo según el JSON, podés sugerir diversificar o el siguiente paso lógico según el listado.
 
 DECISION LOGIC (flexible, sin reglas rígidas en código):
-- Si falta una categoría importante → sugerí ítems que la cubran.
-- Si está parcialmente cubierta (ej. pocos mains para varias personas) → sugerí completar con cautela.
-- Si ya hay bastante → podés sugerir exploración, variedad o siguiente paso lógico (bebida/postre) según el listado.
+- Si falta una categoría importante (según JSON) → sugerí ítems que la cubran.
+- Si está parcialmente cubierta → sugerí completar con cautela, sin afirmar totales no mostrados.
+- Si el JSON muestra bastante en un tipo → podés sugerir exploración o siguiente paso (bebida/postre) según el listado.
 
 SELECTION BEHAVIOR:
 - Preferí ofrecer 2 o 3 recomendaciones cuando haya al menos dos ítems razonablemente útiles.
@@ -292,16 +310,18 @@ ANTI-HALLUCINATION:
 - No inventes: tamaños de porción, ingredientes no mencionados, idoneidad para N personas, alérgenos, tiempos, etc.
 
 suggestedQuantity (por ítem, opcional, 1–99):
-- Indicá cuántas unidades de ESE ítem podrían tener sentido pedir en el siguiente paso, considerando personas y carrito, sin asumir porciones no dichas en la ficha.
-- Si no tiene sentido sugerir más de una unidad, omití el campo o usá 1.
-- Preferí sugerencias seguras (ej. 2 o 3) cuando haya incertidumbre; no busques el número exacto para "cerrar" matemáticamente el pedido.
+- No asumas cantidades previas del usuario ni "lo que ya pidió"; solo guiá por personas (si hay), carrito según JSON y ficha.
+- Indicá cuántas unidades de ESE ítem podrían tener sentido como sugerencia prudente, sin pretender cerrar el pedido al detalle.
+- Si no tiene sentido más de una unidad, omití el campo o usá 1.
+- Con incertidumbre, preferí rangos conservadores (p. ej. 1–2 o 2–3) y explicá la cautela en "reason" si hace falta, sin afirmar números exactos obligatorios.
 
 Campo "progress" (opcional, string corto):
-- Un resumen en español del estado del pedido y qué estás priorizando con estas recomendaciones (1–3 oraciones).
+- Resumen del estado según el JSON y el pedido del usuario (1–3 oraciones). Si el carrito está vacío (todo 0), indicá que aún no hay ítems en el borrador o enfocá en primeras sugerencias, sin decir que "ya tiene" platos.
+- No empieces con "Para X personas:"; no presentes el tamaño del grupo como si las sugerencias ya cubrieran ese total.
 - No repitas texto de los "reason" ni de "note".
 
 Campo "note" (opcional):
-- Orientación general (cantidad/personas) sin repetir "progress" ni los "reason".
+- Orientación general (personas / sugerencias) sin repetir "progress" ni los "reason"; tono de recomendación, no de hechos sobre su pedido salvo lo que muestre el JSON.
 - Una o dos oraciones máximo.
 
 REDUNDANCY:
@@ -400,7 +420,7 @@ export async function getSmartRecommendations(params: {
 
   try {
     const system =
-      'Sos el motor de recomendación guiada del menú. Usás el carrito y las personas solo como contexto; no inventás datos de fichas. Respondés solo JSON: cada id en recommendations debe ser único (sin repetir). No incluyas razonamiento interno fuera del JSON. Campos: recommendations (reason, suggestedQuantity opcional), note y progress opcionales.';
+      'Sos el motor de recomendación guiada del menú. Usás solo el carrito del JSON y las personas como contexto; no inventás datos de fichas ni del pedido. Nunca afirmes que el usuario "ya tiene" algo en el pedido si el JSON no muestra cantidades > 0. Respondés solo JSON: cada id en recommendations debe ser único (sin repetir). No incluyas razonamiento interno fuera del JSON. Campos: recommendations (reason, suggestedQuantity opcional), note y progress opcionales.';
     const user = FOOD_RECOMMENDER_PROMPT(
       trimmedUtterance,
       candidates,

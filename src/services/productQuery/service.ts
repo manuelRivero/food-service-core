@@ -37,6 +37,18 @@ import {
 } from './smartFoodRecommendations';
 
 /**
+ * Después de las sugerencias: explica porciones sin insinuar que el listado ya cubre N personas.
+ * (Estructura: primero recomendaciones, luego esta aclaración.)
+ */
+function formatPartyPortionClarification(partySize: number): string {
+  return (
+    `Sobre cantidades: indicaste aproximadamente ${partySize} persona${partySize === 1 ? '' : 's'}. ` +
+    `Cada plato suma porciones según su ficha; si no dice otra cosa, una unidad suele equivaler a una porción. ` +
+    `Al elegir, revisá la ficha de cada opción para ver cuántas porciones cubre y cuántas unidades conviene pedir.`
+  );
+}
+
+/**
  * Flujo PRODUCT_QUERY: búsqueda, estado y payloads para WhatsApp (sin envolver en HandlerResult).
  */
 export async function executeProductQuery(
@@ -128,15 +140,24 @@ export async function executeProductQuery(
       await clearLastReferencedProductId(ctx.conversation.id);
     }
 
-    const partyLine =
+    const recBlock =
+      smart.forDisplay.length > 0
+        ? formatSmartRecommendationsBlock(
+            smart.forDisplay,
+            smart.llmNote,
+            smart.llmProgress
+          )
+        : '';
+
+    const portionBlock =
       partySize != null && partySize > 0
-        ? `Para ${partySize} persona${partySize === 1 ? '' : 's'}:\n\n`
+        ? formatPartyPortionClarification(partySize)
         : '';
 
     const intro =
       smart.forDisplay.length > 0
-        ? `${partyLine}${formatSmartRecommendationsBlock(smart.forDisplay, smart.llmNote, smart.llmProgress)}\n\nSeleccioná en la lista 👇`
-        : `${partyLine}Seleccioná un plato en la lista 👇`;
+        ? `${recBlock}${portionBlock ? `\n\n${portionBlock}` : ''}\n\nSeleccioná en la lista 👇`
+        : `${portionBlock ? `${portionBlock}\n\n` : ''}Seleccioná un plato en la lista 👇`;
 
     const listBody = formatBotUserMessage('Resultados a tu consulta', '📋', intro);
 
@@ -225,14 +246,14 @@ export async function executeProductQuery(
     requestedPartySize: partySizeSingle,
   });
 
-  const singlePartyLine =
+  const portionSingle =
     partySizeSingle != null && partySizeSingle > 0
-      ? `Para ${partySizeSingle} persona${partySizeSingle === 1 ? '' : 's'}.\n\n`
+      ? `\n\n${formatPartyPortionClarification(partySizeSingle)}`
       : '';
   const fullText = formatBotUserMessage(
     'Info del plato',
     '🍽️',
-    `${singlePartyLine}${aiResponse}`
+    `${aiResponse}${portionSingle}`
   );
 
   await createConversationMessage(ctx.conversation.id, 'ai', fullText, true);
