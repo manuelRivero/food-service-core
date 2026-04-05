@@ -73,7 +73,10 @@ export const detectIntentFromPayload = (
     );
   }
 
-  if (payloadId.startsWith('CANCEL_REMOVE:')) {
+  if (
+    payloadId === 'CANCEL_REMOVE' ||
+    payloadId.startsWith('CANCEL_REMOVE:')
+  ) {
     return buildInteractiveResult(
       ConversationIntent.CANCEL_REMOVE,
       payloadId

@@ -11,7 +11,14 @@ import {
 import type { MenuCategoryTag } from "@prisma/client";
 import type { ConversationMetadata } from "./productQuery/types";
 import { prisma } from "../lib/prisma";
-import { createConversationMessage, findBusinessByPhoneNumberId, findOrCreateConversationState, updateConversationLastMessageAt, updateConversationState } from "../repositories";
+import {
+  createConversationMessage,
+  findBusinessByPhoneNumberId,
+  findOrCreateConversationState,
+  omitConversationMetadataKeys,
+  updateConversationLastMessageAt,
+  updateConversationState,
+} from "../repositories";
 import { findOrCreateCustomer } from "../repositories/customer.repository";
 import { createOrGetOpenConversation } from "../repositories/conversation.repository";
 import { WhatsAppWebhookPayload } from "../controllers/webhook/types";
@@ -483,6 +490,125 @@ export const buildConfirmRemoveItemMessage = async (
   await updateConversationLastMessageAt(conversation.id);
 
   return { message: confirmMessage };
+};
+
+/**
+ * Ejecuta la eliminación tras tocar "Sí, remover" (borrador + total + cobertura + metadata).
+ */
+export const executeRemoveDraftOrderItemFromWebhook = async (
+  payload: WhatsAppWebhookPayload,
+  menuItemId: string
+): Promise<WhatsAppInteractiveMessage | string | null> => {
+  const entry = payload.entry?.[0];
+  const change = entry?.changes?.[0];
+  const value = change?.value;
+  const message = value?.messages?.[0];
+  const from = message?.from;
+  const phoneNumberId = value?.metadata?.phone_number_id;
+
+  if (!phoneNumberId || !from || !menuItemId) return null;
+
+  const business = await findBusinessByPhoneNumberId(phoneNumberId);
+  if (!business) return null;
+
+  const customer = await findOrCreateCustomer(business.id, from);
+  const conversation = await createOrGetOpenConversation(business.id, customer.id);
+  await findOrCreateConversationState(conversation.id);
+
+  const draftOrder = await prisma.draft_order.findFirst({
+    where: {
+      business_id: business.id,
+      customer_phone: customer.phone_number,
+      status: "active",
+    },
+    include: {
+      draft_order_item: { include: { menu_item: true } },
+    },
+  });
+
+  if (!draftOrder?.draft_order_item.length) {
+    const errorText =
+      "🤖\n\n*No tenés items en tu pedido para remover.*\n\nPodés explorar el menú para empezar tu pedido.";
+    await createConversationMessage(conversation.id, "ai", errorText, false);
+    await updateConversationLastMessageAt(conversation.id);
+    return errorText;
+  }
+
+  const line = draftOrder.draft_order_item.find(
+    (ci) => ci.product_id === menuItemId
+  );
+  if (!line) {
+    const errorText = `🤖\n\n*No encontré ese producto en tu pedido.*`;
+    await createConversationMessage(conversation.id, "ai", errorText, false);
+    await updateConversationLastMessageAt(conversation.id);
+    return errorText;
+  }
+
+  const removedName = line.menu_item?.name ?? "Producto";
+  const removedQty = line.quantity;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.draft_order_item.delete({ where: { id: line.id } });
+    const items = await tx.draft_order_item.findMany({
+      where: { draft_order_id: draftOrder.id },
+    });
+    const totalAmount = items.reduce(
+      (acc, item) => acc.add(item.total_price),
+      new Prisma.Decimal(0)
+    );
+    await tx.draft_order.update({
+      where: { id: draftOrder.id },
+      data: { total_amount: totalAmount },
+    });
+  });
+
+  await omitConversationMetadataKeys(conversation.id, [
+    "pendingAction",
+    "pendingItemId",
+    "pendingItemName",
+  ]);
+  await refreshDraftOrderTimeout(draftOrder.id);
+
+  const coverage = await syncOrderCoverageToConversationState(
+    conversation.id,
+    business.id,
+    customer.phone_number
+  );
+  const guidance = formatCartGuidanceBlock(coverage);
+  const guide = guidance.trim() ? `\n\n${guidance.trim()}` : "";
+  const currency = business.currency_code ?? draftOrder.currency ?? "ARS";
+
+  const bodyText = `Se quitó *${removedName}* (cantidad: ${removedQty}) de tu pedido.${guide}\n\n¿Querés seguir comprando o volver al pedido?`;
+
+  const successMessage: WhatsAppInteractiveMessage = {
+    type: "interactive",
+    interactive: {
+      type: "button",
+      header: { type: "text", text: "Pedido actualizado" },
+      body: { text: bodyText },
+      footer: { text: "Elegí una opción" },
+      action: {
+        buttons: [
+          {
+            type: "reply",
+            reply: { id: "VIEW_MENU", title: "Seguir comprando" },
+          },
+          { type: "reply", reply: { id: "VIEW_CART", title: "Ver pedido" } },
+          { type: "reply", reply: { id: "CHECKOUT", title: "Finalizar" } },
+        ],
+      },
+    },
+  };
+
+  await createConversationMessage(
+    conversation.id,
+    "ai",
+    `Quitado del pedido: ${removedName} × ${removedQty}. Total actualizado (${currency}).`,
+    false
+  );
+  await updateConversationLastMessageAt(conversation.id);
+
+  return successMessage;
 };
 
 export const handleConfirmRemoveItemFromWebhook = async (

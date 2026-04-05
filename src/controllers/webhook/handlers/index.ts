@@ -17,6 +17,7 @@ import { AskQuestionHandler } from './askQuestionHandler';
 import { ViewMenuReturnHandler } from './viewMenuReturnHandler';
 import { ViewCategoriesHandler } from './viewCategoriesHandler';
 import { ConfirmRemoveActionHandler } from './confirmRemoveActionHandler';
+import { CancelRemoveActionHandler } from './cancelRemoveActionHandler';
 
 // Handlers de intención (NLP)
 import { OrderFoodHandler } from './orderFoodHandler';
@@ -59,7 +60,8 @@ export const handlers = [
   new AskQuestionHandler(),
   new ViewMenuReturnHandler(),
   new ViewCategoriesHandler(),
-  new ConfirmRemoveActionHandler(), // CONFIRM_REMOVE:id y CANCEL_REMOVE
+  new CancelRemoveActionHandler(),
+  new ConfirmRemoveActionHandler(),
   new ViewCartForEditionHandler(),
   new ViewCartHandler(),
   new ViewMenuHandler(),

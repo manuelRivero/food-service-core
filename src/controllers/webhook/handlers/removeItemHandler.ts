@@ -2,7 +2,7 @@
 
 import { IntentHandler, EnrichedContext, HandlerResult, IntentClassification } from '../types';
 import { textResponse, interactiveResponse, noResponse, parseProductId } from '../utils';
-import { buildConfirmRemoveItemMessage, handleConfirmRemoveItemFromWebhook } from '../../../services/cart.service';
+import { handleConfirmRemoveItemFromWebhook } from '../../../services/cart.service';
 import { ConversationIntent } from '../../../types/conversationIntent';
 
 export class RemoveItemHandler implements IntentHandler {
@@ -26,7 +26,7 @@ export class RemoveItemHandler implements IntentHandler {
     console.log('[RemoveItemHandler] Removing:', productId);
 
     const result = await handleConfirmRemoveItemFromWebhook(
-      ctx.business,
+      ctx.payload,
       productId
     );
     
