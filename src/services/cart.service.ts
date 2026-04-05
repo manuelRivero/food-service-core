@@ -136,11 +136,11 @@ async function clearLastListSuggestedQuantityFromConversation(
   });
 }
 
-/** Respuesta de agregar ítem: lista principal + lista de atajos por tag. */
+/** Respuesta de agregar ítem: texto de confirmación + lista de gestión del pedido. */
 export type AddItemMessageResult =
   | string
   | {
-      main: WhatsAppListMessage;
+      main: string;
       mainFollowUpList: WhatsAppListMessage;
     };
 
@@ -301,8 +301,9 @@ export const buildAddItemMessage = async (
     select: { street_address: true }
   });
 
-  const addressLine = defaultAddress?.street_address
-    ? `\n\n📍 Dirección de entrega: ${defaultAddress.street_address}\nSi querés cambiarla, elegí "Editar dirección".`
+  const hasDeliveryAddress = Boolean(defaultAddress?.street_address);
+  const addressLine = hasDeliveryAddress
+    ? `\n\n📍 Dirección de entrega: ${defaultAddress!.street_address}`
     : '';
 
   const coverage = await syncOrderCoverageToConversationState(
@@ -315,66 +316,32 @@ export const buildAddItemMessage = async (
 
   const qtyLine =
     qty > 1 ? `*${qty}* × ` : '';
-  const messageText = `🤖\n\n${qtyLine}*${item.name}* agregado 🛒\n\n${orderSectionsBlock}${guidanceSuffix}` +
-    `Total: $${total._sum.total_price || 0}\n\n` +
-    `¿Seguís comprando o querés *finalizar*?${addressLine}`;
+  const mainInner =
+    `${qtyLine}*${item.name}* sumado a tu pedido.\n\n${orderSectionsBlock}${guidanceSuffix}` +
+    `Total: $${total._sum.total_price || 0}${addressLine}\n\n` +
+    `En el siguiente mensaje tenés las opciones para seguir.`;
 
-  const mainButtons = [
-    {
-      title: 'Seguir comprando',
-      payload: 'VIEW_MENU',
-      description: 'Explorar más platos',
-      sectionTitle: 'Opciones',
-    },
-    {
-      title: 'Finalizar pedido',
-      payload: 'CHECKOUT',
-      description: 'Ir al checkout',
-      sectionTitle: 'Opciones',
-    },
-    {
-      title: 'Modificar pedido',
-      payload: 'VIEW_CART_FOR_EDITION',
-      description: 'Editar items del pedido',
-      sectionTitle: 'Opciones',
-    },
-  ] as Array<{
-    title: string;
-    payload: string;
-    description?: string;
-    sectionTitle?: string;
-  }>;
+  const mainText = formatBotUserMessage('Producto agregado', '🛒', mainInner);
 
-  if (defaultAddress?.street_address) {
-    mainButtons.push({
-      title: 'Editar dirección',
-      payload: 'EDIT_ADDRESS',
-      description: 'Actualizar dirección de entrega',
-      sectionTitle: 'Opciones',
-    });
+  await createConversationMessage(conversation.id, 'ai', mainText, false);
+  await updateConversationLastMessageAt(conversation.id);
+
+  let followUpBody =
+    'Elegí una opción para gestionar tu pedido:\n\n' +
+    '• Ver el *menú completo* o solo una *zona* (entradas, principales, bebidas o postres).\n' +
+    '• *Modificar* cantidades o ítems, o *finalizar* la compra cuando quieras.';
+  if (hasDeliveryAddress) {
+    followUpBody +=
+      '\n\nTambién podés *actualizar la dirección de entrega* si la necesitás.';
   }
 
-  const mainList = buildListMessageFromButtons(
-    messageText,
-    mainButtons,
-    'Ver opciones',
-    '',
-    '*Pedido actualizado*'
-  );
-
-  await createConversationMessage(conversation.id, 'ai', messageText, false);
+  const mainFollowUpList = buildAddItemShortcutsFollowUpList(followUpBody, {
+    includeEditAddressRow: hasDeliveryAddress,
+  });
+  await createConversationMessage(conversation.id, 'ai', followUpBody, false);
   await updateConversationLastMessageAt(conversation.id);
 
-  const shortcutsBody = formatBotUserMessage(
-    'Atajos del menú',
-    '📋',
-    'Elegí una zona para ver solo esos platos, o usá ver menú, tu pedido o finalizar.'
-  );
-  const mainFollowUpList = buildAddItemShortcutsFollowUpList(shortcutsBody);
-  await createConversationMessage(conversation.id, 'ai', shortcutsBody, false);
-  await updateConversationLastMessageAt(conversation.id);
-
-  return { main: mainList, mainFollowUpList };
+  return { main: mainText, mainFollowUpList };
 };
 
 export const handleAddItemFromWebhook = async (

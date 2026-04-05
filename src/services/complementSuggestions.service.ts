@@ -31,57 +31,79 @@ export async function clearComplementSuggestionSnapshot(
   await omitConversationMetadataKeys(conversationId, [COMPLEMENT_METADATA_KEY]);
 }
 
-/** Segundo mensaje tras agregar al carrito: atajos por tag + menú / pedido / checkout. */
+export type AddItemFollowUpListOptions = {
+  /** Fila extra si el cliente ya tiene dirección por defecto. */
+  includeEditAddressRow?: boolean;
+};
+
+/**
+ * Segundo mensaje tras agregar al carrito: gestión del pedido (menú, carrito, checkout, zonas por tag).
+ * Cabecera: 🤖 + *Gestión de pedido*; el cuerpo va aparte (solo texto descriptivo, sin repetir título).
+ */
 export function buildAddItemShortcutsFollowUpList(
-  bodyFormatted: string
+  bodyPlain: string,
+  options?: AddItemFollowUpListOptions
 ): WhatsAppListMessage {
+  const rows: WhatsAppListMessage['action']['sections'][0]['rows'] = [
+    {
+      id: 'VIEW_MENU',
+      title: 'Ver menú completo',
+      description: 'Todas las categorías',
+    },
+    {
+      id: 'VIEW_CART_FOR_EDITION',
+      title: 'Modificar pedido',
+      description: 'Cantidades, ítems y revisión',
+    },
+    {
+      id: 'CHECKOUT',
+      title: 'Finalizar pedido',
+      description: 'Ir al checkout',
+    },
+  ];
+
+  if (options?.includeEditAddressRow) {
+    rows.push({
+      id: 'EDIT_ADDRESS',
+      title: 'Editar dirección',
+      description: 'Cambiar entrega',
+    });
+  }
+
+  rows.push(
+    {
+      id: 'MENU_BY_TAG:STARTER:1',
+      title: 'Ver entradas',
+      description: 'Solo entradas',
+    },
+    {
+      id: 'MENU_BY_TAG:MAIN:1',
+      title: 'Ver platos principales',
+      description: 'Solo principales',
+    },
+    {
+      id: 'MENU_BY_TAG:DRINK:1',
+      title: 'Ver bebidas',
+      description: 'Solo bebidas',
+    },
+    {
+      id: 'MENU_BY_TAG:DESSERT:1',
+      title: 'Ver postres',
+      description: 'Solo postres',
+    }
+  );
+
   return {
     type: 'list',
-    header: { type: 'text', text: '📋 Atajos del menú' },
-    body: { text: bodyFormatted },
+    header: { type: 'text', text: '🤖\n\n*Gestión de pedido*' },
+    body: { text: bodyPlain.trim() },
     footer: { text: 'Elegí una opción' },
     action: {
       button: 'Ver opciones',
       sections: [
         {
-          title: 'Zonas del menú y pedido',
-          rows: [
-            {
-              id: 'VIEW_MENU',
-              title: 'Ver menú completo',
-              description: 'Todas las categorías',
-            },
-            {
-              id: 'VIEW_CART_FOR_EDITION',
-              title: 'Ver mi pedido',
-              description: 'Revisar o editar',
-            },
-            {
-              id: 'CHECKOUT',
-              title: 'Finalizar pedido',
-              description: 'Ir al checkout',
-            },
-            {
-              id: 'MENU_BY_TAG:STARTER:1',
-              title: 'Ver entradas',
-              description: 'Solo entradas',
-            },
-            {
-              id: 'MENU_BY_TAG:MAIN:1',
-              title: 'Ver platos principales',
-              description: 'Solo principales',
-            },
-            {
-              id: 'MENU_BY_TAG:DRINK:1',
-              title: 'Ver bebidas',
-              description: 'Solo bebidas',
-            },
-            {
-              id: 'MENU_BY_TAG:DESSERT:1',
-              title: 'Ver postres',
-              description: 'Solo postres',
-            },
-          ],
+          title: 'Opciones',
+          rows,
         },
       ],
     },

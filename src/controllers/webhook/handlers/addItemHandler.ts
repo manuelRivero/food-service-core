@@ -2,7 +2,6 @@
 import type { IntentHandler } from '../types';
 import type { EnrichedContext, HandlerResult } from '../types';
 import {
-  interactiveResponse,
   noResponse,
   parseAddItemButtonPayload,
   textResponse,
@@ -59,7 +58,7 @@ export class AddItemHandler implements IntentHandler {
     );
     if (result === null) return noResponse();
     if (typeof result === 'string') return textResponse(result);
-    return interactiveResponse(result.main, [
+    return textResponse(result.main, [
       { type: 'list' as const, listMessage: result.mainFollowUpList },
     ]);
   }
