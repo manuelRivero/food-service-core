@@ -264,7 +264,26 @@ const normalizeCandidates = (
 
 const DIRECT_THRESHOLD = 0.55;
 const RESCUE_THRESHOLD = 0.45;
-const MIN_MARGIN = 0.15;
+
+/** Diferencia mínima entre el 1.er y 2.º candidato para aceptar la intención sin confirmación. */
+export const MIN_MARGIN = 0.15;
+
+/**
+ * Hay al menos dos candidatos y el margen entre el primero y el segundo es menor que {@link MIN_MARGIN}:
+ * conviene pedir confirmación explícita al usuario.
+ */
+export function shouldAskIntentConfirmation(
+  detection: IntentDetectionResult
+): boolean {
+  if (!detection.candidates || detection.candidates.length < 2) {
+    return false;
+  }
+  const margin = detection.rescueMargin;
+  if (margin == null) {
+    return false;
+  }
+  return margin < MIN_MARGIN;
+}
 
 const resolveFinalIntent = (
   intent: ConversationIntent,

@@ -3,6 +3,7 @@ import type {
   WhatsAppListMessage,
 } from '../../domain/intent/whatsappTemplates';
 import type { IntentDetectionResult } from '../ai/detection.service';
+import type { ConversationIntent } from '../../types/conversationIntent';
 
 export type ConversationMetadata = {
   pendingProductSelection?: boolean;
@@ -34,6 +35,10 @@ export type ConversationMetadata = {
   >;
   /** Esperando respuesta numérica de personas antes de recomendaciones/pedido. */
   awaitingPeopleCount?: boolean;
+  /** El clasificador dudó entre intenciones; el usuario debe elegir un botón CONFIRM_INTENT. */
+  awaitingIntentConfirmation?: boolean;
+  /** Los dos candidatos principales mostrados al usuario (misma forma que en detection). */
+  intentCandidates?: Array<{ intent: ConversationIntent; confidence: number }>;
   /** Snapshot para reanudar ORDER_FOOD / PRODUCT_QUERY tras responder cuántas personas. */
   peopleCountResume?: {
     userMessage: string;

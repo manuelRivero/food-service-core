@@ -3,7 +3,12 @@
 import { extractContext, isWhatsAppStatusOnlyEvent } from './extractor';
 import { dispatchIntent, dispatchInteractive } from './dispachers';
 import { sendResponse } from './sender';
-import { detectIntentWithConfidence, DetectionContext } from '../../services/ai/detection.service';
+import {
+  detectIntentWithConfidence,
+  DetectionContext,
+  shouldAskIntentConfirmation,
+} from '../../services/ai/detection.service';
+import { buildIntentAmbiguityInteractiveMessage } from '../../services/intentAmbiguityConfirmation.service';
 import {
   findBusinessByPhoneNumberId,
   findOrCreateCustomer,
@@ -111,6 +116,8 @@ export const processWebhook = async (payload: any): Promise<void> => {
       recentMessages
     } = contextData;
 
+    let workingConversationState = conversationState;
+
     const enrichedBase = {
       ...ctx,
       conversation,
@@ -167,6 +174,12 @@ export const processWebhook = async (payload: any): Promise<void> => {
     // =========================================================
     if (ctx.message?.type === 'interactive') {
       console.log('[Orchestrator] Route: Interactive');
+      if (ctx.payloadId?.startsWith('CONFIRM_INTENT:')) {
+        await omitConversationMetadataKeys(conversation.id, [
+          'awaitingIntentConfirmation',
+          'intentCandidates',
+        ]);
+      }
       const result = await dispatchInteractive(enrichedBase);
 
       if (result) {
@@ -189,7 +202,21 @@ export const processWebhook = async (payload: any): Promise<void> => {
 
     const userMessage = ctx.message?.text?.body || '';
 
-    const metaPre = normalizeMetadata(conversationState.metadata);
+    if (
+      normalizeMetadata(workingConversationState.metadata)
+        .awaitingIntentConfirmation &&
+      userMessage.trim()
+    ) {
+      await omitConversationMetadataKeys(conversation.id, [
+        'awaitingIntentConfirmation',
+        'intentCandidates',
+      ]);
+      workingConversationState = await findOrCreateConversationState(
+        conversation.id
+      );
+    }
+
+    const metaPre = normalizeMetadata(workingConversationState.metadata);
 
     if (metaPre.awaitingPeopleCount) {
       const resume = parsePeopleCountResume(metaPre);
@@ -262,7 +289,31 @@ export const processWebhook = async (payload: any): Promise<void> => {
       rescueMargin: detection.rescueMargin ?? null
     });
 
-    const metaForGate = normalizeMetadata(conversationState.metadata);
+    if (shouldAskIntentConfirmation(detection)) {
+      const top2 = detection.candidates.slice(0, 2);
+      await patchConversationMetadata(conversation.id, {
+        awaitingIntentConfirmation: true,
+        intentCandidates: top2,
+      });
+      const ambiguityMessage = buildIntentAmbiguityInteractiveMessage(top2);
+      const ambiguityBody =
+        ambiguityMessage.interactive.body?.text ??
+        '[confirmación de intención]';
+      await sendResponse(ctx, {
+        content: ambiguityMessage,
+        isInteractive: true,
+      });
+      await createConversationMessage(
+        conversation.id,
+        'ai',
+        ambiguityBody,
+        true
+      );
+      await updateConversationLastMessageAt(conversation.id);
+      return;
+    }
+
+    const metaForGate = normalizeMetadata(workingConversationState.metadata);
 
     if (
       shouldBlockForMissingPeopleCount({
@@ -294,6 +345,7 @@ export const processWebhook = async (payload: any): Promise<void> => {
 
     const enrichedCtx: EnrichedContext = {
       ...enrichedBase,
+      conversationState: workingConversationState,
       detection
     };
 

@@ -1,12 +1,22 @@
 // payloadIntentMapper.ts
 
 import { IntentDetectionResult } from '../../services/ai/detection.service';
+import { normalizeIntent } from '../../domain/intent/intentNormalizer';
 import { ConversationIntent } from '../../types/conversationIntent';
 import { parseAddItemButtonPayload } from './utils';
 
 export const detectIntentFromPayload = (
   payloadId: string
 ): IntentDetectionResult | null => {
+
+  if (payloadId.startsWith('CONFIRM_INTENT:')) {
+    const rawIntent = payloadId.slice('CONFIRM_INTENT:'.length);
+    const intent = normalizeIntent(rawIntent);
+    if (intent === ConversationIntent.UNKNOWN) {
+      return null;
+    }
+    return buildInteractiveResult(intent, payloadId);
+  }
 
   // Prefijos con ID dinámico
   if (payloadId.startsWith('SELECT_PRODUCT:')) {
@@ -175,7 +185,12 @@ const buildInteractiveResult = (
   confidence: 1,
   detectedProductName: null,
   quantity,
+  addressText: null,
+  addressConfidence: null,
   candidates: [],
+  resolutionSource: 'direct',
+  topCandidate: null,
+  rescueMargin: null,
   raw,
   productId
 });
