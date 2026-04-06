@@ -20,6 +20,7 @@ import { updateConversationState } from '../../repositories/conversationState.re
 import { buildListMessageFromButtons } from '../../whatsappBuilders';
 import { generateReservationQR } from '../../utils/reservationQr';
 import type { FindTableInput, FindTableResult, ReservationState } from './types';
+import { wantsReservationManagement } from './reservationIntentText';
 import {
   buildDateTime,
   filterSlotsByTurnLead,
@@ -33,22 +34,47 @@ import {
   selectTables,
 } from './utils';
 
-/** Texto libre: el parser solo acepta DD/MM con dígitos (ver `dateRegex` más abajo). */
+/** Instrucción breve; el formato se valida con `dateRegex` / `normalizeDate`. */
 function reservationAskDateInstructions(nextDateExample: string): string {
   return (
     `*¿Para qué fecha querés reservar?*\n\n` +
-    `📌 *Qué enviar:* solo *números* y barras en formato *DD/MM* o *DD/MM/AAAA* (ej: *${nextDateExample}*).\n` +
-    `No escribas el día o el mes en palabras; tampoco uses "mañana" u otras frases en lugar del formato.`
+    `Ejemplo: *${nextDateExample}* (*DD/MM* o *DD/MM/AAAA*).`
   );
 }
 
-/** `Number(...)` solo entiende dígitos; evitar "cuatro", "dos personas" sin número. */
 function reservationAskPartyInstructions(): string {
-  return (
-    `*¿Para cuántas personas?*\n\n` +
-    `📌 *Qué enviar:* un *solo número en dígitos* (ej: *4*, *2*, *8*).\n` +
-    `No uses números en letras (evitá "cuatro", "seis"); si ponés texto, incluí siempre el dígito.`
-  );
+  return `*¿Para cuántas personas?*\n\nEjemplo: *4*`;
+}
+
+/** Misma UI que cuando hay reserva activa y el usuario entra a "reservar" de nuevo. */
+export function buildActiveReservationManagementMessage(): WhatsAppInteractiveMessage {
+  return {
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      header: { type: 'text', text: '' },
+      body: {
+        text: '🤖\n\n📋 *Reserva activa* ⚠️\n\nYa tenés una reserva activa.\n\nPodés gestionarla desde estas opciones:'
+      },
+      footer: { text: 'Elegí una opción' },
+      action: {
+        buttons: [
+          {
+            type: 'reply',
+            reply: { id: 'VIEW_RESERVATION', title: 'Ver mi reserva' }
+          },
+          {
+            type: 'reply',
+            reply: { id: 'RESERVATION_RESET', title: 'Editar reserva' }
+          },
+          {
+            type: 'reply',
+            reply: { id: 'RESERVATION_CANCEL', title: 'Cancelar reserva' }
+          }
+        ]
+      }
+    }
+  };
 }
 
 function buildReservationErrorMessage(text: string): WhatsAppInteractiveMessage {
@@ -185,6 +211,14 @@ export async function handleViewReservationIntent(
     };
   }
 
+  const messageText = ctx.message?.text?.body?.trim() ?? '';
+  if (wantsReservationManagement(messageText)) {
+    return {
+      content: buildActiveReservationManagementMessage(),
+      isInteractive: true
+    };
+  }
+
   const dateStr = formatReservationDateDb(r.reservation_date);
   const timeStr = formatDbTimeReservation(r.start_time);
   const mesas = r.reservation_table.map((rt) => `- ${rt.table.name}`).join('\n');
@@ -297,33 +331,7 @@ export const handleReservationIntent = async (
         today
       );
       if (activeReservation) {
-        return {
-          type: 'interactive',
-          interactive: {
-            type: 'button',
-            header: { type: 'text', text: '' },
-            body: {
-              text: '🤖\n\n📋 *Reserva activa* ⚠️\n\nYa tenés una reserva activa.\n\nPodés gestionarla desde estas opciones:'
-            },
-            footer: { text: 'Elegí una opción' },
-            action: {
-              buttons: [
-                {
-                  type: 'reply',
-                  reply: { id: 'VIEW_RESERVATION', title: 'Ver mi reserva' }
-                },
-                {
-                  type: 'reply',
-                  reply: { id: 'RESERVATION_RESET', title: 'Editar reserva' }
-                },
-                {
-                  type: 'reply',
-                  reply: { id: 'RESERVATION_CANCEL', title: 'Cancelar reserva' }
-                }
-              ]
-            }
-          }
-        };
+        return buildActiveReservationManagementMessage();
       }
     }
     const nextState: ReservationState = { step: 'ASK_DATE' };
@@ -340,7 +348,7 @@ export const handleReservationIntent = async (
       }
       if (!dateRegex.test(messageText)) {
         return buildReservationErrorMessage(
-          `🤖\n\n*Formato inválido* ❌\n\nVolvé a escribir la fecha como *DD/MM* o *DD/MM/AAAA* solo con *números* y barras (ej: *${nextDateExample}*). Sin palabras para el día o el mes.\n\nTe ayudo en cuanto la mandes bien.`
+          `🤖\n\n*Formato inválido* ❌\n\nUsá *DD/MM* o *DD/MM/AAAA* (ej: *${nextDateExample}*).`
         );
       }
       try {
@@ -351,13 +359,13 @@ export const handleReservationIntent = async (
         selected.setHours(0, 0, 0, 0);
         if (selected.getTime() < today.getTime()) {
           return buildReservationErrorMessage(
-            `🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Mandá una fecha *a futuro* con el mismo formato: *DD/MM* o *DD/MM/AAAA* con dígitos (ej: *${nextDateExample}*), con anticipación mínima de un turno.`
+            `🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Elegí una fecha a futuro (ej: *${nextDateExample}*), con el anticipo mínimo de un turno.`
           );
         }
       } catch (error) {
         if ((error as Error).message === 'INVALID_DATE') {
           return buildReservationErrorMessage(
-            `🤖\n\n*Fecha inválida* ❌\n\nEsa fecha no existe. Revisá el calendario y enviá *DD/MM* o *DD/MM/AAAA* solo con números y barras (ej: *${nextDateExample}*).`
+            `🤖\n\n*Fecha inválida* ❌\n\nEsa fecha no existe en el calendario. Probá otra (ej: *${nextDateExample}*).`
           );
         }
         throw error;
@@ -458,7 +466,7 @@ export const handleReservationIntent = async (
       const partySize = Number(messageText);
       if (Number.isNaN(partySize) || partySize <= 0) {
         return buildReservationErrorMessage(
-          '🤖\n\n*Número inválido* ❌\n\nEnviá un *entero en dígitos* (ej: *4*, *2*). No uses números en letras ni solo texto sin el número.\n\nProbá de nuevo y seguimos con tu reserva.'
+          '🤖\n\n*Número inválido* ❌\n\nEnviá un número (ej: *4*, *2*).'
         );
       }
       const nextState: ReservationState = {

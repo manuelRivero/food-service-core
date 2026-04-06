@@ -2,6 +2,7 @@
 
 import OpenAI from 'openai';
 import { ConversationIntent } from '../../types/conversationIntent';
+import { wantsReservationManagement } from '../reservations/reservationIntentText';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -67,8 +68,8 @@ Available intents:
 - ASK_QUESTION: general question (e.g., "dónde están?", "cuál es el horario?")
 - BUSINESS_HOURS: asks for business hours (e.g., "horarios", "a qué hora abren?")
 - EDIT_ADDRESS: wants to change or update the delivery address (e.g., "quiero cambiar mi dirección")
-- RESERVATION: wants to reserve a table (e.g., "reservar mesa", "mesa para 4", "book a table"). Do NOT use RESERVATION when the user is ordering food for N people (that is PRODUCT_QUERY or ORDER_FOOD + quantity, not a table booking).
-- VIEW_RESERVATION: wants to view an existing reservation (e.g., "ver mi reserva", "mostrar reserva", "mi reserva")
+- RESERVATION: wants to reserve a table OR manage an existing reservation (e.g., "reservar mesa", "gestionar reserva", "modificar reserva", "cancelar reserva", "mesa para 4"). Use RESERVATION for any change/cancel/manage intent about a booking, not only new bookings.
+- VIEW_RESERVATION: wants to only see reservation details without managing (e.g., "ver mi reserva", "mostrar mi reserva", "consultar datos de mi reserva", "mi reserva" when asking to display info). Do NOT use VIEW_RESERVATION for "gestionar", "modificar", "cancelar", "editar" reserva — those are RESERVATION.
 - VIEW_QR: wants to view reservation QR code (e.g., "ver qr", "mostrar codigo qr", "pasame el qr")
 - UNKNOWN: cannot classify
 
@@ -159,6 +160,13 @@ Rules:
       });
       finalIntent = productQueryPriority.intent;
       detectedProductName = productQueryPriority.detectedProductName;
+
+      if (
+        finalIntent === ConversationIntent.VIEW_RESERVATION &&
+        wantsReservationManagement(message)
+      ) {
+        finalIntent = ConversationIntent.RESERVATION;
+      }
 
       return {
         intent: finalIntent,
