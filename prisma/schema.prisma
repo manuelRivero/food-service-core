@@ -7,16 +7,6 @@ datasource db {
   provider = "postgresql"
 }
 
-/// Rol de la categoría para complementos (entrada vs plato fuerte, bebida, etc.). OTHER = sin clasificar.
-enum MenuCategoryTag {
-  STARTER
-  MAIN
-  SIDE
-  DRINK
-  DESSERT
-  OTHER
-}
-
 model business {
   id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                   String
@@ -39,7 +29,7 @@ model business {
   currency               currency?                @relation(fields: [currency_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
   business_coverage_zone business_coverage_zone[]
   business_hours         business_hours[]
-  reservation_slot       reservation_slot[]
+  business_user          business_user[]
   conversation           conversation[]
   customer               customer[]
   draft_order            draft_order[]
@@ -50,7 +40,34 @@ model business {
   reservation            reservation[]
   reservation_block      reservation_block[]
   reservation_config     reservation_config?
+  reservation_slot       reservation_slot[]
   table                  table[]
+}
+
+model business_user {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id      String         @db.Uuid
+  business_id  String         @db.Uuid
+  role         String
+  created_at   DateTime?      @default(now()) @db.Timestamptz(6)
+  business     business       @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_business")
+  app_user     AppUser        @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user")
+  user_session user_session[]
+
+  @@unique([user_id, business_id], map: "unique_user_business")
+}
+
+model user_session {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id          String        @db.Uuid
+  business_user_id String        @db.Uuid
+  expires_at       DateTime      @db.Timestamptz(6)
+  created_at       DateTime      @default(now()) @db.Timestamptz(6)
+  business_user    business_user @relation(fields: [business_user_id], references: [id], onDelete: Cascade)
+  app_user         AppUser       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([business_user_id])
 }
 
 model conversation {
@@ -210,16 +227,15 @@ model business_hours {
 }
 
 model reservation_slot {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  business_id String   @db.Uuid
-  day_of_week Int
-  start_time  String
-  end_time    String
-  is_active   Boolean  @default(true)
-  created_at  DateTime @default(now()) @db.Timestamptz(6)
-  business    business @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([business_id, day_of_week])
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id    String    @db.Uuid
+  day_of_week    Int
+  start_time     DateTime  @db.Time(6)
+  end_time       DateTime  @db.Time(6)
+  capacity_limit Int?
+  is_active      Boolean?  @default(true)
+  created_at     DateTime? @default(now()) @db.Timestamptz(6)
+  business       business  @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_slot_business")
 }
 
 model menu_item_price {
@@ -371,7 +387,6 @@ model environment {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model reservation {
   id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  checkin_token     String              @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   business_id       String              @db.Uuid
   customer_id       String              @db.Uuid
   conversation_id   String?             @db.Uuid
@@ -383,6 +398,7 @@ model reservation {
   notes             String?
   created_at        DateTime?           @default(now()) @db.Timestamptz(6)
   arrived_count     Int?                @default(0)
+  checkin_token     String?             @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   business          business            @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_reservation_business")
   conversation      conversation?       @relation(fields: [conversation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_conversation")
   customer          customer            @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reservation_customer")
@@ -451,4 +467,25 @@ model reservation_config {
   is_enabled              Boolean?  @default(true)
   created_at              DateTime? @default(now()) @db.Timestamptz(6)
   business                business  @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_res_config_business")
+}
+
+model AppUser {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String          @unique
+  password_hash String
+  created_at    DateTime?       @default(now()) @db.Timestamptz(6)
+  business_user business_user[]
+  user_session  user_session[]
+
+  @@map("user")
+}
+
+/// Rol de la categoría para complementos (entrada vs plato fuerte, bebida, etc.). OTHER = sin clasificar.
+enum MenuCategoryTag {
+  STARTER
+  MAIN
+  SIDE
+  DRINK
+  DESSERT
+  OTHER
 }

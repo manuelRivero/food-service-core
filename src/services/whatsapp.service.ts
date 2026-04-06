@@ -39,6 +39,7 @@ import type {
   customer as Customer
 } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { emitAdminOrderCreated } from '../socket/adminSocket';
 import {
   clearProductFilterMetadata,
   getRequestedPartySize,
@@ -1639,10 +1640,19 @@ export const handleCheckout = async (
 
     return {
       status: 'ok' as const,
+      orderId: order.id,
       total: totalAmount,
       currency: draftOrder.currency
     };
   });
+
+  if (result.status === 'ok') {
+    emitAdminOrderCreated(business.id, {
+      orderId: result.orderId,
+      total: result.total.toFixed(2),
+      currency: result.currency
+    });
+  }
 
   const sender = new WhatsAppSenderService();
 

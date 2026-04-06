@@ -1,6 +1,7 @@
 import type { EnrichedContext, HandlerResult } from '../../controllers/webhook/types';
 import type { WhatsAppInteractiveMessage, WhatsAppListMessage } from '../../domain/intent/whatsappTemplates';
 import { closeConversationAfterReservation } from '../../repositories/conversation.repository';
+import { emitAdminReservationCreated } from '../../socket/adminSocket';
 import {
   createReservationWithTables,
   fetchActiveReservationSlotById,
@@ -626,6 +627,10 @@ export const handleReservationIntent = async (
             reservation.endTime ?? ''
           ),
           tableIds: result.tableIds
+        });
+
+        emitAdminReservationCreated(ctx.business.id, {
+          reservationId: created.id
         });
 
         let followUps: HandlerResult['followUps'];

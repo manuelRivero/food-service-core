@@ -23,7 +23,7 @@ export function isValidReservationToken(token: string): boolean {
 }
 
 export async function getCheckinPayload(token: string) {
-  const reservation = await prisma.reservation.findUnique({
+  const reservation = await prisma.reservation.findFirst({
     where: { checkin_token: token },
     include: {
       reservation_table: {
@@ -61,7 +61,7 @@ export async function addArrivals(token: string, rawCount: unknown) {
   }
 
   return prisma.$transaction(async (tx) => {
-    const r = await tx.reservation.findUnique({ where: { checkin_token: token } });
+    const r = await tx.reservation.findFirst({ where: { checkin_token: token } });
     if (!r) throw new Error("NOT_FOUND");
     if (r.status === "closed") throw new Error("CLOSED");
 
@@ -85,7 +85,7 @@ export async function removeArrivals(token: string, rawCount: unknown) {
   }
 
   return prisma.$transaction(async (tx) => {
-    const r = await tx.reservation.findUnique({ where: { checkin_token: token } });
+    const r = await tx.reservation.findFirst({ where: { checkin_token: token } });
     if (!r) throw new Error("NOT_FOUND");
     if (r.status === "closed") throw new Error("CLOSED");
 
@@ -103,7 +103,7 @@ export async function removeArrivals(token: string, rawCount: unknown) {
 }
 
 export async function closeReservation(token: string) {
-  const r = await prisma.reservation.findUnique({ where: { checkin_token: token } });
+  const r = await prisma.reservation.findFirst({ where: { checkin_token: token } });
   if (!r) return null;
 
   return prisma.reservation.update({
