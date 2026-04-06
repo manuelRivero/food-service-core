@@ -1,7 +1,10 @@
 import type { Prisma } from "@prisma/client";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
+import type { AdminOrderDeliveryStatus } from "../constants/orderWorkflow";
 import { prisma } from "../lib/prisma";
+import { notifyCustomerOrderStatusFromAdmin } from "./orderStatusNotification.service";
+import { emitAdminOrderStatusChanged } from "../socket/adminSocket";
 
 dayjs.extend(utc);
 
@@ -144,4 +147,54 @@ export async function getAdminOrderById(businessId: string, orderId: string) {
     include: ORDER_INCLUDE
   });
   return order;
+}
+
+export type UpdateAdminOrderDeliveryStatusResult = {
+  order: NonNullable<Awaited<ReturnType<typeof getAdminOrderById>>>;
+  customerNotified: boolean;
+  notificationReason?: string;
+};
+
+/**
+ * Actualiza el estado operativo del pedido (entrega) y notifica al cliente por WhatsApp.
+ */
+export async function updateAdminOrderDeliveryStatus(
+  businessId: string,
+  orderId: string,
+  status: AdminOrderDeliveryStatus
+): Promise<UpdateAdminOrderDeliveryStatusResult | null> {
+  const existing = await prisma.orders.findFirst({
+    where: { id: orderId, business_id: businessId },
+    include: { customer: { select: { phone_number: true } } }
+  });
+
+  if (!existing) {
+    return null;
+  }
+
+  await prisma.orders.update({
+    where: { id: orderId },
+    data: { status }
+  });
+
+  const notify = await notifyCustomerOrderStatusFromAdmin({
+    businessId,
+    orderId,
+    customerPhone: existing.customer.phone_number,
+    conversationId: existing.conversation_id,
+    newStatus: status
+  });
+
+  emitAdminOrderStatusChanged(businessId, { orderId, status });
+
+  const order = await getAdminOrderById(businessId, orderId);
+  if (!order) {
+    return null;
+  }
+
+  return {
+    order,
+    customerNotified: notify.sent,
+    ...(notify.sent === false ? { notificationReason: notify.reason } : {})
+  };
 }

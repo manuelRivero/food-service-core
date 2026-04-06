@@ -239,6 +239,44 @@ export function emitAdminReservationEditStarted(
   );
 }
 
+/** Payload del evento Socket `admin:order` (creación o cambio de estado). */
+export type AdminOrderRealtimePayload =
+  | {
+      type: "order.created";
+      businessId: string;
+      orderId: string;
+      total: string;
+      currency: string;
+      at: string;
+    }
+  | {
+      type: "order.status_changed";
+      businessId: string;
+      orderId: string;
+      status: string;
+      at: string;
+    };
+
+function emitAdminOrderChannel(
+  businessId: string,
+  body: AdminOrderRealtimePayload,
+  logDetail: string
+): void {
+  if (!io) {
+    console.error(
+      `${LOG} emit admin:order OMITIDO (${logDetail}): Socket.IO no inicializado businessId=${businessId}`
+    );
+    return;
+  }
+  const room = adminRoom(businessId);
+  const before = roomSize(io, room);
+  io.to(room).emit("admin:order", body);
+  const after = roomSize(io, room);
+  console.log(
+    `${LOG} emit admin:order type=${body.type} room=${room} socketsEnSala=${before} (tras emit=${after})`
+  );
+}
+
 export function emitAdminOrderCreated(
   businessId: string,
   payload: {
@@ -247,25 +285,33 @@ export function emitAdminOrderCreated(
     currency: string;
   }
 ): void {
-  if (!io) {
-    console.error(
-      `${LOG} emit admin:order OMITIDO: Socket.IO no inicializado businessId=${businessId} orderId=${payload.orderId}`
-    );
-    return;
-  }
-  const room = adminRoom(businessId);
-  const before = roomSize(io, room);
-  const body = {
-    type: "order.created" as const,
+  emitAdminOrderChannel(
     businessId,
-    orderId: payload.orderId,
-    total: payload.total,
-    currency: payload.currency,
-    at: new Date().toISOString()
-  };
-  io.to(room).emit("admin:order", body);
-  const after = roomSize(io, room);
-  console.log(
-    `${LOG} emit admin:order room=${room} orderId=${payload.orderId} socketsEnSala=${before} (tras emit=${after})`
+    {
+      type: "order.created",
+      businessId,
+      orderId: payload.orderId,
+      total: payload.total,
+      currency: payload.currency,
+      at: new Date().toISOString()
+    },
+    "created"
+  );
+}
+
+export function emitAdminOrderStatusChanged(
+  businessId: string,
+  payload: { orderId: string; status: string }
+): void {
+  emitAdminOrderChannel(
+    businessId,
+    {
+      type: "order.status_changed",
+      businessId,
+      orderId: payload.orderId,
+      status: payload.status,
+      at: new Date().toISOString()
+    },
+    "status_changed"
   );
 }
