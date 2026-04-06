@@ -1674,7 +1674,7 @@ export const handleCheckout = async (
   }
 
   const totalText = `$${result.total.toFixed(2)} ${result.currency}`;
-  const message = `🧾 Pedido confirmado\n\nTotal: ${totalText}\n\nEn breve recibirás el link de pago.`;
+  const message = `🧾 Pedido confirmado\n\nTotal: ${totalText}`;
   await sender.sendTextMessage({ phoneNumberId, to, message });
   await createConversationMessage(conversation.id, 'ai', message, false);
   await updateConversationLastMessageAt(conversation.id);

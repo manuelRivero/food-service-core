@@ -64,8 +64,7 @@ export const buildCheckoutMessage = async (
     const messageText = `🤖\n\n✅ *Pedido confirmado*\n\n` +
         `Número: #${order.id}\n` +
         `Total: $${order.total_amount?.toNumber() ?? 0}\n` +
-        `Estado: Recibido\n\n` +
-        `En breve recibirás el link de pago. ¡Gracias!`;
+        `Estado: Recibido`;
 
     const followUps: HandlerFollowUp[] = [
         { type: 'image', dataUrl: qrDataUrl },
