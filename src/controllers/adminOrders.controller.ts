@@ -1,11 +1,12 @@
-import { OrderStatus } from "@prisma/client";
+import { OrderPaymentStatus, OrderStatus } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { isAdminPatchableOrderStatus } from "../constants/orderWorkflow";
 import {
   getAdminOrderById,
   listAdminOrders,
-  updateAdminOrderDeliveryStatus
+  updateAdminOrderDeliveryStatus,
+  updateAdminOrderPaymentStatus
 } from "../services/adminOrders.service";
 
 const listQuerySchema = z.object({
@@ -106,6 +107,42 @@ export async function patchOrderDeliveryStatus(req: Request, res: Response) {
     businessId,
     paramsParsed.data.id,
     bodyParsed.data.status
+  );
+
+  if (!result) {
+    return res.status(404).json({ error: "Orden no encontrada" });
+  }
+
+  return res.json(result);
+}
+
+const patchPaymentStatusSchema = z.object({
+  payment_status: z.nativeEnum(OrderPaymentStatus)
+});
+
+export async function patchOrderPaymentStatus(req: Request, res: Response) {
+  const businessId = req.user?.businessId;
+  if (!businessId) {
+    return res.status(401).json({ error: "No autenticado" });
+  }
+
+  const paramsParsed = idParamSchema.safeParse(req.params);
+  if (!paramsParsed.success) {
+    return res.status(400).json({ error: "id de orden inválido" });
+  }
+
+  const bodyParsed = patchPaymentStatusSchema.safeParse(req.body);
+  if (!bodyParsed.success) {
+    return res.status(400).json({
+      error: "Body inválido",
+      details: bodyParsed.error.flatten()
+    });
+  }
+
+  const result = await updateAdminOrderPaymentStatus(
+    businessId,
+    paramsParsed.data.id,
+    bodyParsed.data.payment_status
   );
 
   if (!result) {

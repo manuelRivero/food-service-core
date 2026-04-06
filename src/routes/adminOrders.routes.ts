@@ -2,7 +2,8 @@ import { Router } from "express";
 import {
   getOrderById,
   getOrders,
-  patchOrderDeliveryStatus
+  patchOrderDeliveryStatus,
+  patchOrderPaymentStatus
 } from "../controllers/adminOrders.controller";
 import {
   getReservationById,
@@ -17,6 +18,7 @@ router.use(authenticateJwt);
 router.get("/orders", getOrders);
 router.get("/orders/:id", getOrderById);
 router.patch("/orders/:id/status", patchOrderDeliveryStatus);
+router.patch("/orders/:id/payment-status", patchOrderPaymentStatus);
 
 router.get("/reservations", getReservations);
 router.get("/reservations/:id", getReservationById);

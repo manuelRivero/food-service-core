@@ -239,7 +239,7 @@ export function emitAdminReservationEditStarted(
   );
 }
 
-/** Payload del evento Socket `admin:order` (creación o cambio de estado). */
+/** Payload del evento Socket `admin:order` (creación o cambio de estado / pago). */
 export type AdminOrderRealtimePayload =
   | {
       type: "order.created";
@@ -254,6 +254,13 @@ export type AdminOrderRealtimePayload =
       businessId: string;
       orderId: string;
       status: string;
+      at: string;
+    }
+  | {
+      type: "order.payment_status_changed";
+      businessId: string;
+      orderId: string;
+      payment_status: string;
       at: string;
     };
 
@@ -313,5 +320,22 @@ export function emitAdminOrderStatusChanged(
       at: new Date().toISOString()
     },
     "status_changed"
+  );
+}
+
+export function emitAdminOrderPaymentStatusChanged(
+  businessId: string,
+  payload: { orderId: string; payment_status: string }
+): void {
+  emitAdminOrderChannel(
+    businessId,
+    {
+      type: "order.payment_status_changed",
+      businessId,
+      orderId: payload.orderId,
+      payment_status: payload.payment_status,
+      at: new Date().toISOString()
+    },
+    "payment_status_changed"
   );
 }

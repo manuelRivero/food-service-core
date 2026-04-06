@@ -1,10 +1,13 @@
-import type { Prisma } from "@prisma/client";
+import type { OrderPaymentStatus, Prisma } from "@prisma/client";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import type { AdminPatchableOrderStatus } from "../constants/orderWorkflow";
 import { prisma } from "../lib/prisma";
 import { notifyCustomerOrderStatusFromAdmin } from "./orderStatusNotification.service";
-import { emitAdminOrderStatusChanged } from "../socket/adminSocket";
+import {
+  emitAdminOrderPaymentStatusChanged,
+  emitAdminOrderStatusChanged
+} from "../socket/adminSocket";
 
 dayjs.extend(utc);
 
@@ -197,4 +200,42 @@ export async function updateAdminOrderDeliveryStatus(
     customerNotified: notify.sent,
     ...(notify.sent === false ? { notificationReason: notify.reason } : {})
   };
+}
+
+export type UpdateAdminOrderPaymentStatusResult = {
+  order: NonNullable<Awaited<ReturnType<typeof getAdminOrderById>>>;
+};
+
+/**
+ * Actualiza solo el cobro (`payment_status`): unpaid | paid | deferred.
+ */
+export async function updateAdminOrderPaymentStatus(
+  businessId: string,
+  orderId: string,
+  payment_status: OrderPaymentStatus
+): Promise<UpdateAdminOrderPaymentStatusResult | null> {
+  const existing = await prisma.orders.findFirst({
+    where: { id: orderId, business_id: businessId }
+  });
+
+  if (!existing) {
+    return null;
+  }
+
+  await prisma.orders.update({
+    where: { id: orderId },
+    data: { payment_status }
+  });
+
+  emitAdminOrderPaymentStatusChanged(businessId, {
+    orderId,
+    payment_status
+  });
+
+  const order = await getAdminOrderById(businessId, orderId);
+  if (!order) {
+    return null;
+  }
+
+  return { order };
 }
