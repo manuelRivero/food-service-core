@@ -1,7 +1,7 @@
 // services/checkoutService.ts
 
 import { customer as CustomerType, business as BusinessType, conversation as ConversationType } from '@prisma/client';
-import { OrderStatus } from '@prisma/client';
+import { OrderPaymentStatus, OrderStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { createConversationMessage, createOrGetOpenConversation, findBusinessByPhoneNumberId, findOrCreateConversationState, findOrCreateCustomer, updateConversationLastMessageAt } from '../repositories';
 import { WhatsAppWebhookPayload } from '../controllers/webhook/types';
@@ -39,7 +39,8 @@ export const buildCheckoutMessage = async (
             business_id: business.id,
             customer_id: customer.id,
             conversation_id: conversation.id,
-            status: OrderStatus.pending_payment,
+            status: OrderStatus.placed,
+            payment_status: OrderPaymentStatus.deferred,
             total_amount: cart.order_item.reduce((sum, item) => sum + (item.quantity * item.unit_price.toNumber()), 0),
             order_item: {
                 create: cart.order_item.map(item => ({

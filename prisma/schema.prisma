@@ -262,22 +262,34 @@ model order_item {
   orders        orders    @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
-/// Pedido: flujo lineal draft → pending_payment → preparing → shipped → delivered; `cancelled` es terminal.
+/// Flujo operativo del pedido (logística). No indica si ya se cobró — ver `payment_status`.
 enum OrderStatus {
   draft
-  pending_payment
+  /// Pedido confirmado (en cola / listo para preparar). Antes `pending_payment`.
+  placed
   preparing
   shipped
   delivered
   cancelled
 }
 
+/// Cobro: independiente del flujo operativo (efectivo al recibir, pasarela, caja).
+enum OrderPaymentStatus {
+  /// Aún no registrado como cobrado (p. ej. esperando link de pago).
+  unpaid
+  /// Cobro registrado (pasarela, caja, etc.).
+  paid
+  /// Pago acordado al entregar (efectivo contra entrega).
+  deferred
+}
+
 model orders {
-  id                        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  business_id               String            @db.Uuid
-  customer_id               String            @db.Uuid
-  conversation_id           String?           @db.Uuid
-  status                    OrderStatus       @default(draft)
+  id                        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id               String              @db.Uuid
+  customer_id               String              @db.Uuid
+  conversation_id           String?             @db.Uuid
+  status                    OrderStatus         @default(draft)
+  payment_status            OrderPaymentStatus  @default(deferred)
   currency_code             String            @db.Char(3)
   total_amount              Decimal?          @db.Decimal(12, 2)
   created_at                DateTime          @default(now()) @db.Timestamptz(6)

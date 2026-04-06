@@ -1,12 +1,12 @@
-import { OrderStatus } from "@prisma/client";
+import { OrderPaymentStatus, OrderStatus } from "@prisma/client";
 
 /**
- * Orden lineal del flujo (para “siguiente estado” en el admin).
- * No incluye `cancelled` (estado terminal aparte).
+ * Flujo operativo del pedido (logística). No refleja si el cliente ya pagó.
+ * `placed` = pedido confirmado y en cola (antes se llamaba `pending_payment`).
  */
 export const ORDER_STATUS_PIPELINE: readonly OrderStatus[] = [
   OrderStatus.draft,
-  OrderStatus.pending_payment,
+  OrderStatus.placed,
   OrderStatus.preparing,
   OrderStatus.shipped,
   OrderStatus.delivered
@@ -42,12 +42,19 @@ export function getNextOrderStatus(current: OrderStatus): OrderStatus | null {
   return ORDER_STATUS_PIPELINE[i + 1]!;
 }
 
-/** Etiquetas en español para UI (admin y mensajes). */
+/** Etiquetas en español para el estado operativo (UI admin). */
 export const ORDER_STATUS_LABEL_ES: Record<OrderStatus, string> = {
   [OrderStatus.draft]: "Borrador",
-  [OrderStatus.pending_payment]: "Pendiente de pago",
+  [OrderStatus.placed]: "Pedido recibido",
   [OrderStatus.preparing]: "En preparación",
   [OrderStatus.shipped]: "Enviado",
   [OrderStatus.delivered]: "Entregado",
   [OrderStatus.cancelled]: "Cancelado"
+};
+
+/** Etiquetas para el cobro (independiente de la logística). */
+export const ORDER_PAYMENT_STATUS_LABEL_ES: Record<OrderPaymentStatus, string> = {
+  [OrderPaymentStatus.unpaid]: "Sin cobrar",
+  [OrderPaymentStatus.paid]: "Cobrado",
+  [OrderPaymentStatus.deferred]: "Pago al entregar"
 };

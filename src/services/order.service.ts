@@ -88,7 +88,7 @@ export const buildCancelOrderMessage = async (
     where: {
       conversation_id: conversation.id,
       status: {
-        in: [OrderStatus.pending_payment, OrderStatus.preparing]
+        in: [OrderStatus.placed, OrderStatus.preparing]
       }
     }
   });

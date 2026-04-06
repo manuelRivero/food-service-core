@@ -29,7 +29,7 @@ import { detectIntentWithConfidence } from './conversationOrchestrator.service';
 import { MenuItemSearchResult, MenuService } from './menu.service';
 import { ConversationIntent } from '../types/conversationIntent';
 import { WhatsAppSenderService } from './whatsappSender.service';
-import { OrderStatus, Prisma } from '@prisma/client';
+import { OrderPaymentStatus, OrderStatus, Prisma } from '@prisma/client';
 import type { ConfirmationState } from '../domain/intent/types';
 import type { WhatsAppInteractiveMessage, WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
 import { INTENT_SELECTION_ID_PREFIX } from '../domain/intent/whatsappTemplates';
@@ -1607,7 +1607,8 @@ export const handleCheckout = async (
 
     const order = await tx.orders.create({
       data: {
-        status: OrderStatus.pending_payment,
+        status: OrderStatus.placed,
+        payment_status: OrderPaymentStatus.deferred,
         currency_code: draftOrder.currency,
         total_amount: totalAmount,
         conversation_id: conversation.id,
