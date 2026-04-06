@@ -1,6 +1,7 @@
 import type { reservation } from '@prisma/client';
 import { RESERVATION_OCCUPYING_STATUSES } from '../constants/reservation';
 import { prisma } from '../lib/prisma';
+import { emitAdminReservationCreated } from '../socket/adminSocket';
 
 export type ReservationSlotRecord = {
   id: string;
@@ -145,7 +146,7 @@ export async function createReservationWithTables(input: {
   endDateTime: Date;
   tableIds: string[];
 }): Promise<reservation> {
-  return prisma.$transaction(async (tx) => {
+  const created = await prisma.$transaction(async (tx) => {
     const conflict = await tx.reservation_table.findFirst({
       where: {
         table_id: { in: input.tableIds },
@@ -164,7 +165,7 @@ export async function createReservationWithTables(input: {
       throw new Error('TABLES_ALREADY_BOOKED');
     }
 
-    const created = await tx.reservation.create({
+    const row = await tx.reservation.create({
       data: {
         business: { connect: { id: input.businessId } },
         customer: { connect: { id: input.customerId } },
@@ -181,13 +182,22 @@ export async function createReservationWithTables(input: {
 
     await tx.reservation_table.createMany({
       data: input.tableIds.map((tableId) => ({
-        reservation_id: created.id,
+        reservation_id: row.id,
         table_id: tableId
       }))
     });
 
-    return created;
+    return row;
   });
+
+  console.log(
+    `[Reservation][repo] reserva persistida id=${created.id} business_id=${created.business_id} — llamando emitAdminReservationCreated`
+  );
+  emitAdminReservationCreated(created.business_id, {
+    reservationId: created.id
+  });
+
+  return created;
 }
 
 export async function findLatestOccupyingReservationWithTablesForCustomer(

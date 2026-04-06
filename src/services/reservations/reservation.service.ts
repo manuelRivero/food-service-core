@@ -1,7 +1,6 @@
 import type { EnrichedContext, HandlerResult } from '../../controllers/webhook/types';
 import type { WhatsAppInteractiveMessage, WhatsAppListMessage } from '../../domain/intent/whatsappTemplates';
 import { closeConversationAfterReservation } from '../../repositories/conversation.repository';
-import { emitAdminReservationCreated } from '../../socket/adminSocket';
 import {
   createReservationWithTables,
   fetchActiveReservationSlotById,
@@ -620,6 +619,9 @@ export const handleReservationIntent = async (
       if (!ctx.business?.id) {
         return '🤖\n\n*Sin disponibilidad* ❌\n\nNo hay disponibilidad.';
       }
+      console.log(
+        `[Reservation] CONFIRM: usuario pulsó Confirmar, buscando mesas businessId=${ctx.business.id} conversationId=${ctx.conversationId}`
+      );
       const result = await findAvailableTable({
         businessId: ctx.business.id,
         date: reservation.date ?? '',
@@ -628,6 +630,16 @@ export const handleReservationIntent = async (
         partySize: reservation.partySize ?? 0,
         environmentId: reservation.environmentId
       });
+      if (!result.tableIds?.length) {
+        console.warn(
+          `[Reservation] CONFIRM: findAvailableTable no devolvió mesas (tableIds vacío). No hay fila en DB ni emit. businessId=${ctx.business.id}`
+        );
+      }
+      if (!ctx.customer?.id) {
+        console.warn(
+          `[Reservation] CONFIRM: sin customer.id; no se crea reserva. conversationId=${ctx.conversationId}`
+        );
+      }
       if (result.tableIds && ctx.customer?.id) {
         const reservationDate = normalizeDate(reservation.date ?? '');
         const created = await createReservationWithTables({
@@ -645,10 +657,6 @@ export const handleReservationIntent = async (
             reservation.endTime ?? ''
           ),
           tableIds: result.tableIds
-        });
-
-        emitAdminReservationCreated(ctx.business.id, {
-          reservationId: created.id
         });
 
         let followUps: HandlerResult['followUps'];
