@@ -34,6 +34,24 @@ import {
   selectTables,
 } from './utils';
 
+/** Texto libre: el parser solo acepta DD/MM con dígitos (ver `dateRegex` más abajo). */
+function reservationAskDateInstructions(nextDateExample: string): string {
+  return (
+    `*¿Para qué fecha querés reservar?*\n\n` +
+    `📌 *Qué enviar:* solo *números* y barras en formato *DD/MM* o *DD/MM/AAAA* (ej: *${nextDateExample}*).\n` +
+    `No escribas el día o el mes en palabras; tampoco uses "mañana" u otras frases en lugar del formato.`
+  );
+}
+
+/** `Number(...)` solo entiende dígitos; evitar "cuatro", "dos personas" sin número. */
+function reservationAskPartyInstructions(): string {
+  return (
+    `*¿Para cuántas personas?*\n\n` +
+    `📌 *Qué enviar:* un *solo número en dígitos* (ej: *4*, *2*, *8*).\n` +
+    `No uses números en letras (evitá "cuatro", "seis"); si ponés texto, incluí siempre el dígito.`
+  );
+}
+
 function buildReservationErrorMessage(text: string): WhatsAppInteractiveMessage {
   return {
     type: 'interactive',
@@ -268,7 +286,7 @@ export const handleReservationIntent = async (
     await updateConversationState(ctx.conversationId, {
       metadata: { ...metadata, reservation: nextState }
     });
-    return `🤖\n\n*Reserva reiniciada* 🔄\n\n¿Para qué fecha querés reservar? (Ej: ${nextDateExample})\n\nRecordá que tomamos reservas con anticipación mínima de un turno.`;
+    return `🤖\n\n*Reserva reiniciada* 🔄\n\n${reservationAskDateInstructions(nextDateExample)}\n\nRecordá que tomamos reservas con anticipación mínima de un turno.`;
   }
 
   if (!reservation) {
@@ -313,17 +331,17 @@ export const handleReservationIntent = async (
     await updateConversationState(ctx.conversationId, {
       metadata: { ...metadata, reservation: nextState }
     });
-    return `🤖\n\n*Coordinemos tu reserva* 📅\n\n¿Para qué fecha querés reservar? (Ej: ${nextDateExample})\n\nTe pedimos reservar con anticipación mínima de un turno para poder prepararte una mejor experiencia.`;
+    return `🤖\n\n*Coordinemos tu reserva* 📅\n\n${reservationAskDateInstructions(nextDateExample)}\n\nTe pedimos reservar con anticipación mínima de un turno para poder prepararte una mejor experiencia.`;
   }
 
   switch (reservation.step) {
     case 'ASK_DATE': {
       if (!messageText) {
-        return `🤖\n\n*Fecha de reserva* 📅\n\n¿Para qué fecha querés reservar? (Ej: ${nextDateExample})\n\nRecordá que las reservas deben hacerse con anticipación mínima de un turno.`;
+        return `🤖\n\n*Fecha de reserva* 📅\n\n${reservationAskDateInstructions(nextDateExample)}\n\nRecordá que las reservas deben hacerse con anticipación mínima de un turno.`;
       }
       if (!dateRegex.test(messageText)) {
         return buildReservationErrorMessage(
-          `🤖\n\n*Formato inválido* ❌\n\nEscribí nuevamente la fecha en formato DD/MM (ej: ${nextDateExample}) y te ayudo a reservar en segundos.`
+          `🤖\n\n*Formato inválido* ❌\n\nVolvé a escribir la fecha como *DD/MM* o *DD/MM/AAAA* solo con *números* y barras (ej: *${nextDateExample}*). Sin palabras para el día o el mes.\n\nTe ayudo en cuanto la mandes bien.`
         );
       }
       try {
@@ -334,13 +352,13 @@ export const handleReservationIntent = async (
         selected.setHours(0, 0, 0, 0);
         if (selected.getTime() < today.getTime()) {
           return buildReservationErrorMessage(
-            `🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Escribí nuevamente una fecha a futuro en formato DD/MM (ej: ${nextDateExample}), con anticipación mínima de un turno, y te reservo enseguida.`
+            `🤖\n\n*Fecha inválida* ❌\n\nEsa fecha ya pasó. Mandá una fecha *a futuro* con el mismo formato: *DD/MM* o *DD/MM/AAAA* con dígitos (ej: *${nextDateExample}*), con anticipación mínima de un turno.`
           );
         }
       } catch (error) {
         if ((error as Error).message === 'INVALID_DATE') {
           return buildReservationErrorMessage(
-            `🤖\n\n*Fecha inválida* ❌\n\nEsa fecha no existe. Escribí nuevamente la fecha en formato DD/MM (ej: ${nextDateExample}).`
+            `🤖\n\n*Fecha inválida* ❌\n\nEsa fecha no existe. Revisá el calendario y enviá *DD/MM* o *DD/MM/AAAA* solo con números y barras (ej: *${nextDateExample}*).`
           );
         }
         throw error;
@@ -435,13 +453,13 @@ export const handleReservationIntent = async (
       await updateConversationState(ctx.conversationId, {
         metadata: { ...metadata, reservation: nextState }
       });
-      return '🤖\n\n*¡Hora registrada!* ✅\n\nExcelente, ya tengo la hora.\n\n*Cantidad de personas* 👥\n\n¿Para cuántas personas?';
+      return `🤖\n\n*¡Hora registrada!* ✅\n\nExcelente, ya tengo la hora.\n\n*Cantidad de personas* 👥\n\n${reservationAskPartyInstructions()}`;
     }
     case 'ASK_PARTY_SIZE': {
       const partySize = Number(messageText);
       if (Number.isNaN(partySize) || partySize <= 0) {
         return buildReservationErrorMessage(
-          '🤖\n\n*Número inválido* ❌\n\nIndicá un número válido de personas (ej: 4) y seguimos con tu reserva.'
+          '🤖\n\n*Número inválido* ❌\n\nEnviá un *entero en dígitos* (ej: *4*, *2*). No uses números en letras ni solo texto sin el número.\n\nProbá de nuevo y seguimos con tu reserva.'
         );
       }
       const nextState: ReservationState = {
