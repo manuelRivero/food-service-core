@@ -1648,6 +1648,7 @@ export const handleCheckout = async (
   });
 
   if (result.status === 'ok') {
+    await closeConversation(conversation.id);
     emitAdminOrderCreated(business.id, {
       orderId: result.orderId,
       total: result.total.toFixed(2),
