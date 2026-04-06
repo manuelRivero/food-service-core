@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
-import type { AdminOrderDeliveryStatus } from "../constants/orderWorkflow";
+import type { AdminPatchableOrderStatus } from "../constants/orderWorkflow";
 import { prisma } from "../lib/prisma";
 import { notifyCustomerOrderStatusFromAdmin } from "./orderStatusNotification.service";
 import { emitAdminOrderStatusChanged } from "../socket/adminSocket";
@@ -161,7 +161,7 @@ export type UpdateAdminOrderDeliveryStatusResult = {
 export async function updateAdminOrderDeliveryStatus(
   businessId: string,
   orderId: string,
-  status: AdminOrderDeliveryStatus
+  status: AdminPatchableOrderStatus
 ): Promise<UpdateAdminOrderDeliveryStatusResult | null> {
   const existing = await prisma.orders.findFirst({
     where: { id: orderId, business_id: businessId },

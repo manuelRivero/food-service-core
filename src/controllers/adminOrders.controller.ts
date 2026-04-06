@@ -1,5 +1,7 @@
+import { OrderStatus } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
+import { isAdminPatchableOrderStatus } from "../constants/orderWorkflow";
 import {
   getAdminOrderById,
   listAdminOrders,
@@ -74,7 +76,11 @@ export async function getOrderById(req: Request, res: Response) {
 }
 
 const patchDeliveryStatusSchema = z.object({
-  status: z.enum(["preparing", "shipped", "delivered"])
+  status: z
+    .nativeEnum(OrderStatus)
+    .refine((s) => isAdminPatchableOrderStatus(s), {
+      message: "Solo preparing, shipped o delivered"
+    })
 });
 
 export async function patchOrderDeliveryStatus(req: Request, res: Response) {

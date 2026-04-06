@@ -1,10 +1,11 @@
+import { OrderStatus } from "@prisma/client";
 import {
   createConversationMessage,
   updateConversationLastMessageAt
 } from "../repositories";
+import type { AdminPatchableOrderStatus } from "../constants/orderWorkflow";
+import { ORDER_STATUS_LABEL_ES } from "../constants/orderWorkflow";
 import { prisma } from "../lib/prisma";
-import type { AdminOrderDeliveryStatus } from "../constants/orderWorkflow";
-import { ADMIN_ORDER_DELIVERY_LABEL_ES } from "../constants/orderWorkflow";
 import { WhatsAppSenderService } from "./whatsappSender.service";
 
 function shortOrderRef(orderId: string): string {
@@ -15,24 +16,24 @@ function shortOrderRef(orderId: string): string {
  * Mensaje al cliente (mismo estilo que el bot: 🤖, negritas con *...*).
  */
 export function buildOrderStatusCustomerMessage(
-  status: AdminOrderDeliveryStatus,
+  status: AdminPatchableOrderStatus,
   orderId: string
 ): string {
-  const label = ADMIN_ORDER_DELIVERY_LABEL_ES[status];
+  const label = ORDER_STATUS_LABEL_ES[status as OrderStatus];
   const ref = shortOrderRef(orderId);
   switch (status) {
-    case "preparing":
+    case OrderStatus.preparing:
       return (
         `🤖\n\n*Actualización de tu pedido* 📦\n\n` +
         `Pedido *#${ref}*\n\nTu pedido está *${label.toLowerCase()}*. ` +
         `En breve te avisamos el siguiente paso.`
       );
-    case "shipped":
+    case OrderStatus.shipped:
       return (
         `🤖\n\n*Actualización de tu pedido* 🚚\n\n` +
         `Pedido *#${ref}*\n\nTu pedido está *${label.toLowerCase()}* y va en camino.`
       );
-    case "delivered":
+    case OrderStatus.delivered:
       return (
         `🤖\n\n*Actualización de tu pedido* ✅\n\n` +
         `Pedido *#${ref}*\n\nTu pedido figura como *${label.toLowerCase()}*. ` +
@@ -51,7 +52,7 @@ export async function notifyCustomerOrderStatusFromAdmin(params: {
   orderId: string;
   customerPhone: string;
   conversationId: string | null;
-  newStatus: AdminOrderDeliveryStatus;
+  newStatus: AdminPatchableOrderStatus;
 }): Promise<NotifyOrderStatusResult> {
   const business = await prisma.business.findUnique({
     where: { id: params.businessId },

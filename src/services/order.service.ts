@@ -1,4 +1,5 @@
 // services/orderService.ts
+import { emitAdminOrderStatusChanged } from '../socket/adminSocket';
 import { prisma } from '../lib/prisma';
 import {
   findBusinessByPhoneNumberId,
@@ -12,7 +13,7 @@ import { buildOrderSearchListMessage } from '../whatsappBuilders'; // Tu ruta: r
 import { normalizeMetadata } from './utils'; // Ajusta ruta si es diferente
 import type { WhatsAppWebhookPayload } from '../types/whatsapp'; // Ajusta ruta
 import { WhatsAppListMessage } from '../domain/intent/whatsappTemplates';
-import { business, conversation, customer } from '@prisma/client';
+import { OrderStatus, business, conversation, customer } from '@prisma/client';
 import { draft_order } from '@prisma/client';
 
 export const handleOrderSearchPageFromWebhook = async (
@@ -86,7 +87,9 @@ export const buildCancelOrderMessage = async (
   const pendingOrder = await prisma.orders.findFirst({
     where: {
       conversation_id: conversation.id,
-      status: { in: ['PENDING', 'CONFIRMED'] }
+      status: {
+        in: [OrderStatus.pending_payment, OrderStatus.preparing]
+      }
     }
   });
 
@@ -99,7 +102,12 @@ export const buildCancelOrderMessage = async (
 
   await prisma.orders.update({
     where: { id: pendingOrder.id },
-    data: { status: 'CANCELLED' }
+    data: { status: OrderStatus.cancelled }
+  });
+
+  emitAdminOrderStatusChanged(pendingOrder.business_id, {
+    orderId: pendingOrder.id,
+    status: OrderStatus.cancelled
   });
 
   const messageText = `❌ Pedido #${pendingOrder.id} cancelado correctamente.`;
