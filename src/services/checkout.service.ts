@@ -53,6 +53,24 @@ export const buildCheckoutMessage = async (
         }
     });
 
+    /**
+     * El carrito en WhatsApp vive en `draft_order` (timeouts / recordatorio "pedido en curso").
+     * `closeConversation` no lo toca; hay que marcar el borrador como convertido para que el worker
+     * no siga enviando recordatorios tras un checkout exitoso.
+     */
+    await prisma.draft_order.updateMany({
+        where: {
+            business_id: business.id,
+            customer_phone: customer.phone_number,
+            status: 'active'
+        },
+        data: {
+            status: 'converted',
+            expires_at: null,
+            reminder_sent_at: null
+        }
+    });
+
     const qrDataUrl = await QRCode.toDataURL(order.id, {
         errorCorrectionLevel: 'M',
         margin: 1,
