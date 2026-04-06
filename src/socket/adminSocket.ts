@@ -3,6 +3,7 @@ import type { Server as HttpServer } from "http";
 import { Server, type Socket } from "socket.io";
 import { ACCESS_COOKIE_NAME } from "../lib/authCookies";
 import { verifyAccessToken } from "../services/auth.service";
+import type { BusinessUserRole } from "../types/auth";
 
 const LOG = "[adminSocket]";
 
@@ -30,6 +31,8 @@ function roomSize(server: Server, room: string): number {
 function adminRoom(businessId: string): string {
   return `admin:${businessId}`;
 }
+
+const ADMIN_NOTIFICATION_ROLES = new Set<BusinessUserRole>(["OWNER", "ADMIN"]);
 
 function getTokenFromHandshake(socket: Socket): string | undefined {
   const auth = socket.handshake.auth;
@@ -129,8 +132,16 @@ export function attachAdminSocket(httpServer: HttpServer): Server {
 
   io.on("connection", (socket) => {
     const businessId = socket.data.businessId as string | undefined;
+    const role = socket.data.role as BusinessUserRole | undefined;
     if (!businessId) {
       console.warn(`${LOG} connection sin businessId, desconectando socket.id=${socket.id}`);
+      socket.disconnect(true);
+      return;
+    }
+    if (!role || !ADMIN_NOTIFICATION_ROLES.has(role)) {
+      console.warn(
+        `${LOG} conexión sin permiso para notificaciones admin socket.id=${socket.id} businessId=${businessId} role=${role ?? "?"}`
+      );
       socket.disconnect(true);
       return;
     }
@@ -138,7 +149,7 @@ export function attachAdminSocket(httpServer: HttpServer): Server {
     void Promise.resolve(socket.join(room)).then(() => {
       const size = roomSize(io!, room);
       console.log(
-        `${LOG} cliente en sala socket.id=${socket.id} room=${room} roomSize=${size} transport=${socket.conn.transport.name}`
+        `${LOG} cliente admin en sala socket.id=${socket.id} room=${room} role=${role} roomSize=${size} transport=${socket.conn.transport.name}`
       );
     });
   });

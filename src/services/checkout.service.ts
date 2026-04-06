@@ -4,7 +4,7 @@ import { customer as CustomerType, business as BusinessType, conversation as Con
 import { OrderPaymentStatus, OrderStatus } from '@prisma/client';
 import QRCode from 'qrcode';
 import { prisma } from '../lib/prisma';
-import { createOrGetOpenConversation, findBusinessByPhoneNumberId, findOrCreateConversationState, findOrCreateCustomer } from '../repositories';
+import { closeConversation, createOrGetOpenConversation, findBusinessByPhoneNumberId, findOrCreateConversationState, findOrCreateCustomer } from '../repositories';
 import { HandlerFollowUp, WhatsAppWebhookPayload } from '../controllers/webhook/types';
 
 
@@ -59,10 +59,12 @@ export const buildCheckoutMessage = async (
         width: 280
     });
 
-    const messageText = `✅ *Pedido confirmado*\n\n` +
+    await closeConversation(conversation.id);
+
+    const messageText = `🤖\n\n✅ *Pedido confirmado*\n\n` +
         `Número: #${order.id}\n` +
         `Total: $${order.total_amount?.toNumber() ?? 0}\n` +
-        `Estado: ${order.status}\n\n` +
+        `Estado: Recibido\n\n` +
         `En breve recibirás el link de pago. ¡Gracias!`;
 
     const followUps: HandlerFollowUp[] = [
