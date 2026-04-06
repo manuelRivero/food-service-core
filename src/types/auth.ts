@@ -1,5 +1,10 @@
 /** Alineado con `business_user.role` en BD (TEXT / CHECK), no enum en Prisma. */
-export const BUSINESS_USER_ROLES = ["OWNER", "ADMIN", "STAFF"] as const;
+export const BUSINESS_USER_ROLES = [
+  "OWNER",
+  "ADMIN",
+  "STAFF",
+  "DELIVERY"
+] as const;
 export type BusinessUserRole = (typeof BUSINESS_USER_ROLES)[number];
 
 export function parseBusinessUserRole(role: string): BusinessUserRole {
