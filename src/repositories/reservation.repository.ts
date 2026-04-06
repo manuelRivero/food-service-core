@@ -1,7 +1,10 @@
 import type { reservation } from '@prisma/client';
 import { RESERVATION_OCCUPYING_STATUSES } from '../constants/reservation';
 import { prisma } from '../lib/prisma';
-import { emitAdminReservationCreated } from '../socket/adminSocket';
+import {
+  emitAdminReservationCancelled,
+  emitAdminReservationCreated
+} from '../socket/adminSocket';
 
 export type ReservationSlotRecord = {
   id: string;
@@ -265,10 +268,17 @@ export async function updateReservationStatus(
   reservationId: string,
   status: reservation['status']
 ) {
-  return prisma.reservation.update({
+  const row = await prisma.reservation.update({
     where: { id: reservationId },
     data: { status }
   });
+  if (status === 'closed') {
+    emitAdminReservationCancelled(row.business_id, {
+      reservationId: row.id,
+      status: 'closed'
+    });
+  }
+  return row;
 }
 
 export async function findActiveEnvironmentsByBusinessId(businessId: string) {

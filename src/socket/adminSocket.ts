@@ -146,28 +146,96 @@ export function attachAdminSocket(httpServer: HttpServer): Server {
   return io;
 }
 
-export function emitAdminReservationCreated(
+/** Payload unificado del evento Socket `admin:reservation` (tipar el cliente admin). */
+export type AdminReservationRealtimePayload =
+  | {
+      type: "reservation.created";
+      businessId: string;
+      reservationId: string;
+      at: string;
+    }
+  | {
+      type: "reservation.cancelled";
+      businessId: string;
+      reservationId: string;
+      /** Estado persistido, p. ej. `closed` al cancelar desde el bot */
+      status: string;
+      at: string;
+    }
+  | {
+      type: "reservation.edit_started";
+      businessId: string;
+      /** Reserva que el usuario va a reemplazar/editar al completar el flujo */
+      reservationId: string;
+      at: string;
+    };
+
+function emitAdminReservationChannel(
   businessId: string,
-  payload: { reservationId: string }
+  body: AdminReservationRealtimePayload,
+  logLabel: string
 ): void {
   if (!io) {
     console.error(
-      `${LOG} emit admin:reservation OMITIDO: Socket.IO no inicializado (¿attachAdminSocket antes de listen?) businessId=${businessId} reservationId=${payload.reservationId}`
+      `${LOG} emit admin:reservation OMITIDO (${logLabel}): Socket.IO no inicializado businessId=${businessId}`
     );
     return;
   }
   const room = adminRoom(businessId);
   const before = roomSize(io, room);
-  const body = {
-    type: "reservation.created" as const,
-    businessId,
-    reservationId: payload.reservationId,
-    at: new Date().toISOString()
-  };
   io.to(room).emit("admin:reservation", body);
   const after = roomSize(io, room);
   console.log(
-    `${LOG} emit admin:reservation room=${room} reservationId=${payload.reservationId} socketsEnSala=${before} (tras emit, mismos clientes conectados=${after})`
+    `${LOG} emit admin:reservation type=${body.type} room=${room} socketsEnSala=${before} (tras emit=${after})`
+  );
+}
+
+export function emitAdminReservationCreated(
+  businessId: string,
+  payload: { reservationId: string }
+): void {
+  emitAdminReservationChannel(
+    businessId,
+    {
+      type: "reservation.created",
+      businessId,
+      reservationId: payload.reservationId,
+      at: new Date().toISOString()
+    },
+    "created"
+  );
+}
+
+export function emitAdminReservationCancelled(
+  businessId: string,
+  payload: { reservationId: string; status: string }
+): void {
+  emitAdminReservationChannel(
+    businessId,
+    {
+      type: "reservation.cancelled",
+      businessId,
+      reservationId: payload.reservationId,
+      status: payload.status,
+      at: new Date().toISOString()
+    },
+    "cancelled"
+  );
+}
+
+export function emitAdminReservationEditStarted(
+  businessId: string,
+  payload: { reservationId: string }
+): void {
+  emitAdminReservationChannel(
+    businessId,
+    {
+      type: "reservation.edit_started",
+      businessId,
+      reservationId: payload.reservationId,
+      at: new Date().toISOString()
+    },
+    "edit_started"
   );
 }
 

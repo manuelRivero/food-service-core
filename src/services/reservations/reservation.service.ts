@@ -18,6 +18,7 @@ import {
 } from '../../repositories/reservation.repository';
 import { updateConversationState } from '../../repositories/conversationState.repository';
 import { buildListMessageFromButtons } from '../../whatsappBuilders';
+import { emitAdminReservationEditStarted } from '../../socket/adminSocket';
 import { generateReservationQR } from '../../utils/reservationQr';
 import type { FindTableInput, FindTableResult, ReservationState } from './types';
 import { wantsReservationManagement } from './reservationIntentText';
@@ -315,6 +316,16 @@ export const handleReservationIntent = async (
   }
 
   if (ctx.payloadId === 'RESERVATION_RESET') {
+    if (ctx.customer?.id && ctx.business?.id) {
+      const previousActive = await findLatestOccupyingReservationForCustomer(
+        ctx.customer.id
+      );
+      if (previousActive) {
+        emitAdminReservationEditStarted(ctx.business.id, {
+          reservationId: previousActive.id
+        });
+      }
+    }
     const nextState: ReservationState = { step: 'ASK_DATE' };
     await updateConversationState(ctx.conversationId, {
       metadata: { ...metadata, reservation: nextState }
