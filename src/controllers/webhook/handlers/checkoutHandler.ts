@@ -12,12 +12,12 @@ export class CheckoutHandler implements IntentHandler {
   }
 
   async execute(ctx: WebhookContext): Promise<HandlerResult | null> {
-    const content = await handleCheckoutFromWebhook(ctx.payload);
+    const result = await handleCheckoutFromWebhook(ctx.payload);
     
-    if (!content) {
+    if (!result) {
       return noResponse();
     }
 
-    return textResponse(content);
+    return textResponse(result.content, result.followUps);
   }
 }

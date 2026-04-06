@@ -2,13 +2,15 @@
 
 import { customer as CustomerType, business as BusinessType, conversation as ConversationType } from '@prisma/client';
 import { OrderPaymentStatus, OrderStatus } from '@prisma/client';
+import QRCode from 'qrcode';
 import { prisma } from '../lib/prisma';
-import { createConversationMessage, createOrGetOpenConversation, findBusinessByPhoneNumberId, findOrCreateConversationState, findOrCreateCustomer, updateConversationLastMessageAt } from '../repositories';
-import { WhatsAppWebhookPayload } from '../controllers/webhook/types';
+import { createOrGetOpenConversation, findBusinessByPhoneNumberId, findOrCreateConversationState, findOrCreateCustomer } from '../repositories';
+import { HandlerFollowUp, WhatsAppWebhookPayload } from '../controllers/webhook/types';
 
 
 interface CheckoutResult {
     message: string | null;
+    followUps?: HandlerFollowUp[];
     errorMessage?: string;
 }
 
@@ -29,8 +31,6 @@ export const buildCheckoutMessage = async (
 
     if (!cart || cart.order_item.length === 0) {
         const errorText = '🤖\n\n*Tu pedido está vacío 🛒*\n\nPodés explorar el menú para empezar tu pedido.';
-        await createConversationMessage(conversation.id, 'ai', errorText, false);
-        await updateConversationLastMessageAt(conversation.id);
         return { message: null, errorMessage: errorText };
     }
 
@@ -53,8 +53,11 @@ export const buildCheckoutMessage = async (
         }
     });
 
-    await prisma.order_item.deleteMany({ where: { order_id: order.id } });
-    await prisma.orders.delete({ where: { id: order.id } });
+    const qrDataUrl = await QRCode.toDataURL(order.id, {
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        width: 280
+    });
 
     const messageText = `✅ *Pedido confirmado*\n\n` +
         `Número: #${order.id}\n` +
@@ -62,15 +65,20 @@ export const buildCheckoutMessage = async (
         `Estado: ${order.status}\n\n` +
         `En breve recibirás el link de pago. ¡Gracias!`;
 
-    await createConversationMessage(conversation.id, 'ai', messageText, false);
-    await updateConversationLastMessageAt(conversation.id);
+    const followUps: HandlerFollowUp[] = [
+        { type: 'image', dataUrl: qrDataUrl },
+        {
+            type: 'text',
+            message: '¡Gracias por tu pedido! Te avisaremos por este medio cuando tu pedido sea despachado.'
+        }
+    ];
 
-    return { message: messageText };
+    return { message: messageText, followUps };
 };
 
 export const handleCheckoutFromWebhook = async (
     payload: WhatsAppWebhookPayload
-): Promise<string | null> => {
+): Promise<{ content: string; followUps?: HandlerFollowUp[] } | null> => {
 
     const entry = payload.entry?.[0];
     const change = entry?.changes?.[0];
@@ -90,6 +98,15 @@ export const handleCheckoutFromWebhook = async (
 
     const result = await buildCheckoutMessage(business, conversation, customer);
 
-    if (result.errorMessage) return result.errorMessage;
-    return result.message;
+    if (result.errorMessage) {
+        return { content: result.errorMessage };
+    }
+    if (!result.message) {
+        return null;
+    }
+
+    return {
+        content: result.message,
+        followUps: result.followUps
+    };
 };
