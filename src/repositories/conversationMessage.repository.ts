@@ -1,5 +1,6 @@
 import { Prisma, type conversation_message } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { emitAdminWhatsappMessageCreated } from '../socket/adminSocket';
 
 export const createConversationMessage = async (
   conversationId: string,
@@ -16,7 +17,7 @@ export const createConversationMessage = async (
   }
 ): Promise<conversation_message | null> => {
   try {
-    return await prisma.conversation_message.create({
+    const created = await prisma.conversation_message.create({
       data: {
         conversation_id: conversationId,
         sender,
@@ -33,6 +34,24 @@ export const createConversationMessage = async (
             : undefined
       }
     });
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { business_id: true }
+    });
+
+    if (conversation?.business_id) {
+      emitAdminWhatsappMessageCreated(conversation.business_id, {
+        conversationId,
+        messageId: created.id,
+        sender: created.sender,
+        message: created.message,
+        isAiGenerated: created.is_ai_generated,
+        createdAt: created.created_at.toISOString()
+      });
+    }
+
+    return created;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return null;

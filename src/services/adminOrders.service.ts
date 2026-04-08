@@ -1,4 +1,4 @@
-import type { OrderPaymentStatus, Prisma } from "@prisma/client";
+import { OrderPaymentStatus, OrderStatus, type Prisma } from "@prisma/client";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import type { AdminPatchableOrderStatus } from "../constants/orderWorkflow";
@@ -160,6 +160,8 @@ export type UpdateAdminOrderDeliveryStatusResult = {
 
 /**
  * Actualiza el estado operativo del pedido (entrega) y notifica al cliente por WhatsApp.
+ * Si el estado pasa a `delivered` (p. ej. repartidor confirma tras escanear el QR), también
+ * marca `payment_status` como `paid` (cobro contra entrega).
  */
 export async function updateAdminOrderDeliveryStatus(
   businessId: string,
@@ -175,10 +177,24 @@ export async function updateAdminOrderDeliveryStatus(
     return null;
   }
 
+  const markPaidOnDelivery = status === OrderStatus.delivered;
+
   await prisma.orders.update({
     where: { id: orderId },
-    data: { status }
+    data: markPaidOnDelivery
+      ? { status, payment_status: OrderPaymentStatus.paid }
+      : { status }
   });
+
+  if (
+    markPaidOnDelivery &&
+    existing.payment_status !== OrderPaymentStatus.paid
+  ) {
+    emitAdminOrderPaymentStatusChanged(businessId, {
+      orderId,
+      payment_status: OrderPaymentStatus.paid
+    });
+  }
 
   const notify = await notifyCustomerOrderStatusFromAdmin({
     businessId,
@@ -207,7 +223,7 @@ export type UpdateAdminOrderPaymentStatusResult = {
 };
 
 /**
- * Actualiza solo el cobro (`payment_status`): unpaid | paid | deferred.
+ * Actualiza solo el cobro (`payment_status`): unpaid | paid.
  */
 export async function updateAdminOrderPaymentStatus(
   businessId: string,

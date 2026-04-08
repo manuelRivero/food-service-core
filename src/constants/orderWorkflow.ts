@@ -55,6 +55,5 @@ export const ORDER_STATUS_LABEL_ES: Record<OrderStatus, string> = {
 /** Etiquetas para el cobro (independiente de la logística). */
 export const ORDER_PAYMENT_STATUS_LABEL_ES: Record<OrderPaymentStatus, string> = {
   [OrderPaymentStatus.unpaid]: "Sin cobrar",
-  [OrderPaymentStatus.paid]: "Cobrado",
-  [OrderPaymentStatus.deferred]: "Pago al entregar"
+  [OrderPaymentStatus.paid]: "Cobrado"
 };

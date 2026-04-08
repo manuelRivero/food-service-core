@@ -54,8 +54,7 @@ function withAllOrderStatuses(rows: GroupRow[]): Record<OrderStatus, number> {
 function withAllOrderPaymentStatuses(rows: GroupRow[]): Record<OrderPaymentStatus, number> {
   const base: Record<OrderPaymentStatus, number> = {
     unpaid: 0,
-    paid: 0,
-    deferred: 0
+    paid: 0
   };
   for (const row of rows) {
     if (row.key in base) {

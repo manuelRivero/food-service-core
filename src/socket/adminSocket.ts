@@ -350,3 +350,57 @@ export function emitAdminOrderPaymentStatusChanged(
     "payment_status_changed"
   );
 }
+
+/** Payload del evento Socket `admin:whatsapp` para nuevos mensajes de conversación. */
+export type AdminWhatsappRealtimePayload = {
+  type: "whatsapp.message_created";
+  businessId: string;
+  conversationId: string;
+  messageId: string;
+  sender: string;
+  message: string;
+  isAiGenerated: boolean;
+  createdAt: string;
+};
+
+function emitAdminWhatsappChannel(
+  businessId: string,
+  body: AdminWhatsappRealtimePayload
+): void {
+  if (!io) {
+    console.error(
+      `${LOG} emit admin:whatsapp OMITIDO: Socket.IO no inicializado businessId=${businessId}`
+    );
+    return;
+  }
+  const room = adminRoom(businessId);
+  const before = roomSize(io, room);
+  io.to(room).emit("admin:whatsapp", body);
+  const after = roomSize(io, room);
+  console.log(
+    `${LOG} emit admin:whatsapp type=${body.type} room=${room} socketsEnSala=${before} (tras emit=${after})`
+  );
+}
+
+export function emitAdminWhatsappMessageCreated(
+  businessId: string,
+  payload: {
+    conversationId: string;
+    messageId: string;
+    sender: string;
+    message: string;
+    isAiGenerated: boolean;
+    createdAt: string;
+  }
+): void {
+  emitAdminWhatsappChannel(businessId, {
+    type: "whatsapp.message_created",
+    businessId,
+    conversationId: payload.conversationId,
+    messageId: payload.messageId,
+    sender: payload.sender,
+    message: payload.message,
+    isAiGenerated: payload.isAiGenerated,
+    createdAt: payload.createdAt
+  });
+}

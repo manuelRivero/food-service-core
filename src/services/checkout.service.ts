@@ -40,7 +40,7 @@ export const buildCheckoutMessage = async (
             customer_id: customer.id,
             conversation_id: conversation.id,
             status: OrderStatus.placed,
-            payment_status: OrderPaymentStatus.deferred,
+            payment_status: OrderPaymentStatus.unpaid,
             total_amount: cart.order_item.reduce((sum, item) => sum + (item.quantity * item.unit_price.toNumber()), 0),
             order_item: {
                 create: cart.order_item.map(item => ({

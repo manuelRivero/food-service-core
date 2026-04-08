@@ -1608,7 +1608,7 @@ export const handleCheckout = async (
     const order = await tx.orders.create({
       data: {
         status: OrderStatus.placed,
-        payment_status: OrderPaymentStatus.deferred,
+        payment_status: OrderPaymentStatus.unpaid,
         currency_code: draftOrder.currency,
         total_amount: totalAmount,
         conversation_id: conversation.id,
