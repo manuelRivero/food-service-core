@@ -9,6 +9,13 @@ import {
   getReservationById,
   getReservations
 } from "../controllers/adminReservations.controller";
+import {
+  getMenuCategoriesOptions,
+  getMenuItems,
+  patchMenuItem,
+  postMenuItem,
+  removeMenuItem
+} from "../controllers/adminMenuItems.controller";
 import { getDashboardSummary } from "../controllers/adminDashboard.controller";
 import { getWhatsappMessages } from "../controllers/adminWhatsappMessages.controller";
 import {
@@ -16,7 +23,7 @@ import {
   patchWhatsappConversationBotStatus
 } from "../controllers/adminWhatsappBotControl.controller";
 import { postAdminWhatsappReply } from "../controllers/adminWhatsappReply.controller";
-import { authenticateJwt } from "../middleware/auth.middleware";
+import { authenticateJwt, requireRoles } from "../middleware/auth.middleware";
 
 const router = Router();
 
@@ -37,6 +44,15 @@ router.patch(
   patchWhatsappConversationBotStatus
 );
 router.post("/whatsapp/conversations/:conversationId/messages", postAdminWhatsappReply);
+router.get(
+  "/menu-categories/options",
+  requireRoles("OWNER", "ADMIN"),
+  getMenuCategoriesOptions
+);
+router.get("/menu-items", requireRoles("OWNER", "ADMIN"), getMenuItems);
+router.post("/menu-items", requireRoles("OWNER", "ADMIN"), postMenuItem);
+router.patch("/menu-items/:id", requireRoles("OWNER", "ADMIN"), patchMenuItem);
+router.delete("/menu-items/:id", requireRoles("OWNER", "ADMIN"), removeMenuItem);
 
 router.get("/reservations", getReservations);
 router.get("/reservations/:id", getReservationById);
