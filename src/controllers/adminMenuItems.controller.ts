@@ -1,8 +1,10 @@
 import type { Request, Response } from "express";
+import { MenuCategoryTag } from "@prisma/client";
 import { z } from "zod";
 import {
   createAdminMenuItem,
   deleteAdminMenuItem,
+  getAdminMenuItemById,
   listAdminMenuCategoriesOptions,
   listAdminMenuItems,
   updateAdminMenuItem
@@ -17,7 +19,9 @@ const listQuerySchema = z.object({
 });
 
 const createSchema = z.object({
-  categoryId: z.string().uuid(),
+  categoryId: z.string().uuid().optional(),
+  categoryTag: z.nativeEnum(MenuCategoryTag).optional(),
+  sectionId: z.nativeEnum(MenuCategoryTag).optional(),
   name: z.string().trim().min(1).max(120),
   description: z.string().max(2000).optional().nullable(),
   ingredients: z.string().max(2000).optional().nullable(),
@@ -26,6 +30,9 @@ const createSchema = z.object({
   isFeatured: z.boolean().optional(),
   image: z.string().url().optional().nullable(),
   isAvailable: z.boolean().optional()
+}).refine((data) => Boolean(data.categoryId || data.categoryTag || data.sectionId), {
+  message: "Debe enviar categoryId o categoryTag/sectionId",
+  path: ["categoryId"]
 });
 
 const idParamSchema = z.object({
@@ -34,6 +41,8 @@ const idParamSchema = z.object({
 
 const updateSchema = z.object({
   categoryId: z.string().uuid().optional(),
+  categoryTag: z.nativeEnum(MenuCategoryTag).optional(),
+  sectionId: z.nativeEnum(MenuCategoryTag).optional(),
   name: z.string().trim().min(1).max(120).optional(),
   description: z.string().max(2000).optional().nullable(),
   ingredients: z.string().max(2000).optional().nullable(),
@@ -80,6 +89,29 @@ export async function getMenuCategoriesOptions(req: Request, res: Response) {
   return res.json({ items });
 }
 
+export async function getMenuItemById(req: Request, res: Response) {
+  const businessId = req.user?.businessId;
+  if (!businessId) {
+    return res.status(401).json({ error: "No autenticado" });
+  }
+
+  const parsedParams = idParamSchema.safeParse(req.params);
+  if (!parsedParams.success) {
+    return res.status(400).json({ error: "id inválido" });
+  }
+
+  const row = await getAdminMenuItemById({
+    businessId,
+    id: parsedParams.data.id
+  });
+
+  if (!row) {
+    return res.status(404).json({ error: "Menu item no encontrado" });
+  }
+
+  return res.json(row);
+}
+
 export async function postMenuItem(req: Request, res: Response) {
   const businessId = req.user?.businessId;
   if (!businessId) {
@@ -97,7 +129,8 @@ export async function postMenuItem(req: Request, res: Response) {
   try {
     const row = await createAdminMenuItem({
       businessId,
-      ...parsed.data
+      ...parsed.data,
+      categoryTag: parsed.data.categoryTag ?? parsed.data.sectionId
     });
     return res.status(201).json(row);
   } catch (error) {
@@ -131,7 +164,8 @@ export async function patchMenuItem(req: Request, res: Response) {
     const row = await updateAdminMenuItem({
       businessId,
       id: parsedParams.data.id,
-      ...parsedBody.data
+      ...parsedBody.data,
+      categoryTag: parsedBody.data.categoryTag ?? parsedBody.data.sectionId
     });
 
     if (!row) {

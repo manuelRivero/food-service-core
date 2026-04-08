@@ -11,6 +11,7 @@ import {
 } from "../controllers/adminReservations.controller";
 import {
   getMenuCategoriesOptions,
+  getMenuItemById,
   getMenuItems,
   patchMenuItem,
   postMenuItem,
@@ -50,6 +51,7 @@ router.get(
   getMenuCategoriesOptions
 );
 router.get("/menu-items", requireRoles("OWNER", "ADMIN"), getMenuItems);
+router.get("/menu-items/:id", requireRoles("OWNER", "ADMIN"), getMenuItemById);
 router.post("/menu-items", requireRoles("OWNER", "ADMIN"), postMenuItem);
 router.patch("/menu-items/:id", requireRoles("OWNER", "ADMIN"), patchMenuItem);
 router.delete("/menu-items/:id", requireRoles("OWNER", "ADMIN"), removeMenuItem);
