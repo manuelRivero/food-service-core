@@ -15,6 +15,7 @@ import {
   getWhatsappConversationBotStatus,
   patchWhatsappConversationBotStatus
 } from "../controllers/adminWhatsappBotControl.controller";
+import { postAdminWhatsappReply } from "../controllers/adminWhatsappReply.controller";
 import { authenticateJwt } from "../middleware/auth.middleware";
 
 const router = Router();
@@ -35,6 +36,7 @@ router.patch(
   "/whatsapp/conversations/:conversationId/bot",
   patchWhatsappConversationBotStatus
 );
+router.post("/whatsapp/conversations/:conversationId/messages", postAdminWhatsappReply);
 
 router.get("/reservations", getReservations);
 router.get("/reservations/:id", getReservationById);

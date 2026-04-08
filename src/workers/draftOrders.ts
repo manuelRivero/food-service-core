@@ -22,6 +22,26 @@ export const processDraftOrderTimeouts = async () => {
 
         if (!order.expires_at) continue;
 
+        const openConversation = await prisma.conversation.findFirst({
+            where: {
+                business_id: order.business_id!,
+                status: 'open',
+                customer: { phone_number: order.customer_phone }
+            },
+            include: {
+                conversation_state: {
+                    select: { is_human_handled: true }
+                }
+            }
+        });
+
+        const isHumanHandled = Boolean(
+            openConversation?.conversation_state?.is_human_handled
+        );
+        if (isHumanHandled) {
+            continue;
+        }
+
         const remainingMs = order.expires_at.getTime() - now.getTime();
         const remainingMinutes = remainingMs / 60000;
 
@@ -159,7 +179,11 @@ export const processDraftOrderTimeouts = async () => {
             status: 'open',
             last_message_at: { lte: reminderThreshold },
             idle_reminder_sent_at: null,
-            idle_closed_at: null
+            idle_closed_at: null,
+            OR: [
+                { conversation_state: null },
+                { conversation_state: { is_human_handled: false } }
+            ]
         },
         include: {
             business: true,
@@ -222,7 +246,11 @@ export const processDraftOrderTimeouts = async () => {
         where: {
             status: 'open',
             last_message_at: { lte: expireThreshold },
-            idle_closed_at: null
+            idle_closed_at: null,
+            OR: [
+                { conversation_state: null },
+                { conversation_state: { is_human_handled: false } }
+            ]
         },
         include: {
             business: true,
