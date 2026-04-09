@@ -34,6 +34,23 @@ import {
   normalizeDate,
   selectTables,
 } from './utils';
+import { getBusinessConfig } from '../businessConfig.service';
+
+function filterSlotsByLeadMinutes(
+  slots: Array<{ id: string; start_time: string; end_time: string }>,
+  date: Date,
+  now: Date,
+  minLeadMinutes: number
+): Array<{ id: string; start_time: string; end_time: string }> {
+  if (minLeadMinutes <= 0) {
+    return slots;
+  }
+  const threshold = new Date(now.getTime() + minLeadMinutes * 60000);
+  return slots.filter((slot) => {
+    const slotStart = buildDateTime(date, slot.start_time);
+    return slotStart.getTime() >= threshold.getTime();
+  });
+}
 
 /** Instrucción breve; el formato se valida con `dateRegex` / `normalizeDate`. */
 function reservationAskDateInstructions(nextDateExample: string): string {
@@ -287,6 +304,17 @@ export const handleReservationIntent = async (
 ): Promise<
   string | WhatsAppInteractiveMessage | WhatsAppListMessage | HandlerResult | null
 > => {
+  const businessConfig = ctx.business?.id
+    ? await getBusinessConfig(ctx.business.id)
+    : null;
+
+  if (businessConfig && !businessConfig.reservations_enabled) {
+    return '🤖\n\nLas reservas están deshabilitadas temporalmente para este negocio.';
+  }
+
+  const reservationMinLeadMinutes =
+    businessConfig?.reservation_min_lead_minutes ?? 60;
+
   const metadata = ctx.conversationState?.metadata ?? {};
   const reservation: ReservationState | undefined = metadata.reservation;
   const messageText = ctx.message?.text?.body?.trim() ?? '';
@@ -400,7 +428,13 @@ export const handleReservationIntent = async (
         ctx.business.id,
         date
       );
-      const availableSlots = filterSlotsByTurnLead(slots, date, now);
+      const byTurnLead = filterSlotsByTurnLead(slots, date, now);
+      const availableSlots = filterSlotsByLeadMinutes(
+        byTurnLead,
+        date,
+        now,
+        reservationMinLeadMinutes
+      );
       if (!availableSlots.length) {
         return buildReservationErrorMessage(
           '🤖\n\n*Sin slots disponibles* ❌\n\nNo encontramos horarios disponibles para esa fecha. Probá con otra fecha y te ayudo.'
@@ -432,7 +466,13 @@ export const handleReservationIntent = async (
           ctx.business.id,
           date
         );
-        const availableSlots = filterSlotsByTurnLead(slots, date, now);
+        const byTurnLead = filterSlotsByTurnLead(slots, date, now);
+        const availableSlots = filterSlotsByLeadMinutes(
+          byTurnLead,
+          date,
+          now,
+          reservationMinLeadMinutes
+        );
         if (!availableSlots.length) {
           return buildReservationErrorMessage(
             '🤖\n\n*Sin slots disponibles* ❌\n\nNo encontramos horarios disponibles para esa fecha. Probá con otra fecha y te ayudo.'
@@ -459,6 +499,16 @@ export const handleReservationIntent = async (
       if (!slot) {
         return buildReservationErrorMessage(
           '🤖\n\n*Slot inválido* ❌\n\nEse horario ya no está disponible. Elegí otro para continuar.'
+        );
+      }
+      const reservationDateForLead = normalizeDate(reservation.date);
+      const slotStart = buildDateTime(reservationDateForLead, slot.start_time);
+      const minAllowedStart = new Date(
+        Date.now() + reservationMinLeadMinutes * 60000
+      );
+      if (slotStart.getTime() < minAllowedStart.getTime()) {
+        return buildReservationErrorMessage(
+          '🤖\n\n*Horario no disponible* ❌\n\nEse horario no cumple el tiempo mínimo de anticipación. Elegí otro horario.'
         );
       }
       const nextState: ReservationState = {

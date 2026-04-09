@@ -35,6 +35,7 @@ import {
   formatClosedBusinessCustomerNotice,
   getBusinessOpenInfo
 } from '../../services/businessHours.service';
+import { getBusinessConfig } from '../../services/businessConfig.service';
 import { extractStrictNumericPeopleCount } from '../../helpers/peopleCountExtraction';
 import {
   parsePeopleCountResume,
@@ -72,6 +73,7 @@ export const processWebhook = async (payload: any): Promise<void> => {
       console.error('[Orchestrator] Business not found:', ctx.phoneNumberId);
       return;
     }
+    const businessConfig = await getBusinessConfig(business.id);
 
     const customer = await findOrCreateCustomer(business.id, ctx.to);
 
@@ -118,10 +120,14 @@ export const processWebhook = async (payload: any): Promise<void> => {
 
     let workingConversationState = conversationState;
 
-    if (workingConversationState.is_human_handled) {
+    if (!businessConfig.bot_enabled || workingConversationState.is_human_handled) {
       console.log(
-        "[Orchestrator] Bot deshabilitado para conversación (modo humano activo), no se responde automáticamente",
-        { conversationId: conversation.id }
+        "[Orchestrator] Bot deshabilitado (config negocio o modo humano), no se responde automáticamente",
+        {
+          conversationId: conversation.id,
+          botEnabled: businessConfig.bot_enabled,
+          isHumanHandled: workingConversationState.is_human_handled
+        }
       );
       return;
     }

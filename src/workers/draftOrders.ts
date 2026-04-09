@@ -1,11 +1,8 @@
 import { sendListResponseNoContext, sendResponseNoContext } from '../controllers/webhook/sender';
 import { prisma } from '../lib/prisma';
+import { getBusinessConfig } from '../services/businessConfig.service';
 import { workerTextMessages } from './textMessages';
 import { buildListMessageFromButtons } from '../whatsappBuilders';
-
-const REMINDER_MINUTES = 1;
-const IDLE_REMINDER_MINUTES = Number(process.env.CONVERSATION_IDLE_REMINDER_MINUTES ?? 1);
-const IDLE_EXPIRE_MINUTES = Number(process.env.CONVERSATION_IDLE_EXPIRE_MINUTES ?? 2);
 
 export const processDraftOrderTimeouts = async () => {
 
@@ -50,18 +47,20 @@ export const processDraftOrderTimeouts = async () => {
         });
 
         if (!business) continue;
+        const cfg = await getBusinessConfig(business.id);
 
         /**
          * Reminder
          */
         if (
-            remainingMinutes <= REMINDER_MINUTES &&
+            cfg.send_order_reminders &&
+            remainingMinutes <= cfg.draft_order_reminder_minutes &&
             remainingMinutes > 0 &&
             !order.reminder_sent_at
         ) {
             console.log('Sending reminder for draft order', order.id);
             const listMessage = buildListMessageFromButtons(
-                workerTextMessages.draftOrderReminderListBody(REMINDER_MINUTES),
+                workerTextMessages.draftOrderReminderListBody(cfg.draft_order_reminder_minutes),
                 [
                     {
                         title: 'Seguir comprando',
@@ -171,15 +170,9 @@ export const processDraftOrderTimeouts = async () => {
     /**
      * Conversaciones inactivas (sin importar si hay pedido)
      */
-    const reminderThreshold = new Date(now.getTime() - IDLE_REMINDER_MINUTES * 60000);
-    const expireThreshold = new Date(now.getTime() - IDLE_EXPIRE_MINUTES * 60000);
-
-    const conversationsToRemind = await prisma.conversation.findMany({
+    const openConversations = await prisma.conversation.findMany({
         where: {
             status: 'open',
-            last_message_at: { lte: reminderThreshold },
-            idle_reminder_sent_at: null,
-            idle_closed_at: null,
             OR: [
                 { conversation_state: null },
                 { conversation_state: { is_human_handled: false } }
@@ -191,15 +184,31 @@ export const processDraftOrderTimeouts = async () => {
         }
     });
 
-    for (const conversation of conversationsToRemind) {
+    for (const conversation of openConversations) {
         if (!conversation.business?.whatsapp_phone_id || !conversation.customer?.phone_number) continue;
+        const cfg = await getBusinessConfig(conversation.business.id);
+
+        const reminderThreshold = new Date(now.getTime() - cfg.idle_reminder_minutes * 60000);
+        const expireThreshold = new Date(now.getTime() - cfg.idle_close_minutes * 60000);
+
+        const shouldRemind =
+            cfg.send_idle_reminders &&
+            !conversation.idle_reminder_sent_at &&
+            !conversation.idle_closed_at &&
+            conversation.last_message_at <= reminderThreshold;
+
+        const shouldClose =
+            !conversation.idle_closed_at &&
+            conversation.last_message_at <= expireThreshold;
+
+        if (shouldRemind) {
         console.log('[IdleReminder] Sending to', {
             businessPhoneId: conversation.business.whatsapp_phone_id,
             to: conversation.customer.phone_number,
             conversationId: conversation.id
         });
         const idleReminderList = buildListMessageFromButtons(
-            workerTextMessages.conversationIdleReminderListBody(IDLE_EXPIRE_MINUTES),
+            workerTextMessages.conversationIdleReminderListBody(cfg.idle_close_minutes),
             [
                 {
                     title: 'Ver menú',
@@ -240,26 +249,8 @@ export const processDraftOrderTimeouts = async () => {
             where: { id: conversation.id },
             data: { idle_reminder_sent_at: now }
         });
-    }
-
-    const conversationsToClose = await prisma.conversation.findMany({
-        where: {
-            status: 'open',
-            last_message_at: { lte: expireThreshold },
-            idle_closed_at: null,
-            OR: [
-                { conversation_state: null },
-                { conversation_state: { is_human_handled: false } }
-            ]
-        },
-        include: {
-            business: true,
-            customer: true
         }
-    });
-
-    for (const conversation of conversationsToClose) {
-        if (!conversation.business?.whatsapp_phone_id || !conversation.customer?.phone_number) continue;
+        if (!shouldClose) continue;
         await sendResponseNoContext(
             conversation.business.whatsapp_phone_id,
             conversation.customer.phone_number,
