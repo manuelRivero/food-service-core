@@ -25,6 +25,12 @@ import {
   removeMenuItem
 } from "../controllers/adminMenuItems.controller";
 import { getDashboardSummary } from "../controllers/adminDashboard.controller";
+import {
+  createAdminBusinessConfig,
+  getAdminBusinessConfig,
+  patchAdminBusinessConfig,
+  removeAdminBusinessConfig
+} from "../controllers/adminBusinessConfig.controller";
 import { getWhatsappMessages } from "../controllers/adminWhatsappMessages.controller";
 import {
   getWhatsappConversationBotStatus,
@@ -42,6 +48,10 @@ router.get("/orders/:id", getOrderById);
 router.patch("/orders/:id/status", patchOrderDeliveryStatus);
 router.patch("/orders/:id/payment-status", patchOrderPaymentStatus);
 router.get("/dashboard/summary", getDashboardSummary);
+router.get("/config", requireRoles("OWNER", "ADMIN"), getAdminBusinessConfig);
+router.post("/config", requireRoles("OWNER", "ADMIN"), createAdminBusinessConfig);
+router.patch("/config", requireRoles("OWNER", "ADMIN"), patchAdminBusinessConfig);
+router.delete("/config", requireRoles("OWNER", "ADMIN"), removeAdminBusinessConfig);
 router.get("/whatsapp/messages", getWhatsappMessages);
 router.get(
   "/whatsapp/conversations/:conversationId/bot",
