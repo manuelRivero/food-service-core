@@ -1,0 +1,171 @@
+================================================================================
+DOCUMENTO DE CONTEXTO: CARRITO, CLASIFICACIÓN, requestedPartySize Y UX
+(Respuestas basadas en el código del repo food-service-backend a fecha de redacción)
+================================================================================
+
+------------------------------------------------------------------------------
+1. SOBRE EL CARRITO (FUENTE DE VERDAD)
+------------------------------------------------------------------------------
+
+¿Dónde vive el carrito actualmente?
+- Principalmente en BASE DE DATOS, tablas `draft_order` y `draft_order_item`.
+- El borrador se asocia al negocio y al teléfono del cliente (`customer_phone`), no al JSON de `conversation_state`.
+- `conversation_state` guarda modo de conversación (GLOBAL / FILTER_SET / PRODUCT_FOCUS) y `metadata` (incluye `requestedPartySize`, listas pendientes, etc.); NO es el carrito en sí.
+
+¿DB? ¿memory? ¿conversation_state?
+- DB: sí (`draft_order`, `draft_order_item`).
+- Memoria: no como fuente del carrito persistente.
+- `conversation_state`: contexto de flujo de chat, no líneas del pedido.
+
+¿Cómo están modelados los items?
+- `draft_order_item`: `product_id` (→ `menu_item`), `quantity` (Int), `unit_price`, `total_price`.
+- Equivale a líneas con cantidad por producto.
+
+¿Tenés category o algo equivalente? (entrada, principal, etc.)
+- El producto enlaza a `menu_category` vía `menu_item.category_id`.
+- La categoría tiene `category_tag` (enum Prisma): STARTER, MAIN, SIDE, DRINK, DESSERT, OTHER.
+- También tiene `name` (texto libre para mostrar en menú).
+
+¿Existe alguna forma de saber si un producto es entrada / principal / bebida / postre?
+- Sí, de forma indirecta y explícita en datos: `menu_category.category_tag`.
+- Si el tag es OTHER o la categoría está inactiva, el código de complementos puede tratar el ítem como “sin clasificar” (ver `complementaryMenu.helper.ts`).
+
+¿El carrito ya tiene cantidades por item?
+- Sí: cada `draft_order_item` tiene `quantity` (y precios por línea).
+
+Nota de consistencia en código:
+- Algunos flujos (p. ej. remover ítem) consultan `orders` + `order_item` por `conversation_id`; el alta típica de ítems usa `draft_order`. Conviene tener claro cuál es el camino “oficial” del producto en producción para evitar dos fuentes de verdad.
+
+
+------------------------------------------------------------------------------
+2. SOBRE CLASIFICACIÓN DE PRODUCTOS
+------------------------------------------------------------------------------
+
+¿Cómo clasificás hoy los productos?
+- Por categoría de menú: `menu_item` → `menu_category`.
+- Rol semántico fuerte: enum `MenuCategoryTag` en la categoría (no en cada ítem suelto).
+
+¿category string? ¿tags? ¿nombre libre?
+- Nombre de categoría: string (`menu_category.name`).
+- Tag estructurado: `category_tag` (enum).
+- No hay tags múltiples por producto en el schema actual: un ítem tiene una `category_id`.
+
+¿Las categorías son consistentes?
+- Los valores de rol (entrada, principal, etc.) son consistentes a nivel enum.
+- Los nombres visibles (`name`) dependen de cómo cargue el negocio el menú.
+
+¿Un producto puede pertenecer a más de una categoría?
+- En el modelo actual: no; una sola `category_id` por `menu_item`.
+
+¿Qué pasa con items ambiguos?
+- Se resuelve a nivel negocio al asignar la categoría y el `category_tag`; el código no infiere “empanada = entrada o principal” por palabras clave en runtime.
+
+
+------------------------------------------------------------------------------
+3. SOBRE requestedPartySize
+------------------------------------------------------------------------------
+
+¿Dónde se guarda?
+- En `conversation_state.metadata` (JSON), campo `requestedPartySize` (número).
+- Compatibilidad: lectura legacy de `pendingProductQueryQuantity` vía `getRequestedPartySize()` en `productQuery/utils.ts`.
+
+¿Cuándo se actualiza?
+- En el flujo `executeProductQuery` (`productQuery/service.ts`): si la clasificación trae `classification.quantity > 0`, se resuelve con `resolveRequestedPartySize` (prioridad al mensaje actual, si no al valor ya guardado).
+- En rutas legacy de WhatsApp (`whatsapp.service.ts`) se preserva o reescribe al armar listas / detalle cuando aplica.
+- No hay hoy un handler dedicado tipo “ahora somos 2” que actualice solo ese campo sin pasar por una nueva consulta de producto con cantidad detectada: eso sería una mejora explícita (orquestador / intención ORDER_INFO o actualización desde mensaje libre).
+
+¿Cuándo se limpia?
+- Al pasar a modo GLOBAL en ciertos intents no relacionados con producto (p. ej. small talk, horarios, etc.): se eliminan `requestedPartySize` y la clave legacy del metadata (ver `whatsapp.service.ts`).
+- Al cerrar conversación: `closeConversation` pone `metadata: {}` en `conversation_state`.
+- No hay “timeout” específico solo para `requestedPartySize` aparte del cierre de conversación o el reset anterior.
+
+
+------------------------------------------------------------------------------
+4. SOBRE EL FLUJO DE RECOMENDACIONES (“smart ordering”)
+------------------------------------------------------------------------------
+
+¿Cuándo se activa?
+- Las recomendaciones con LLM (`getSmartRecommendations` en `smartFoodRecommendations.ts`) se usan en `executeProductQuery` cuando hay más de un resultado de búsqueda (vector/keyword según `MenuService.searchMenuItemsByKeyword`).
+- No está condicionado exclusivamente a `requestedPartySize`; si hay party size, se pasa al prompt como contexto de sesión.
+
+¿Qué prioridad para “completar principales → bebidas → postres”?
+- En complementos y sugerencias de menú “completo”, el código usa un orden fijo de tags (`MENU_SUGGESTION_ORDER` en `complementaryMenu.helper.ts`: STARTER → MAIN → DRINK → SIDE → DESSERT) como guía y fallback.
+- El detalle de qué sugerir primero en cada mensaje lo combina el LLM en `complementarySuggestion.ai.service.ts` con reglas del prompt; no hay un “motor” aparte en código que fuerce siempre principal antes que bebida salvo esa orden de tags faltantes.
+
+
+------------------------------------------------------------------------------
+5. SOBRE UX (EXPERIENCIA DE USUARIO)
+------------------------------------------------------------------------------
+
+Comportamiento actual (alto nivel):
+- Búsqueda con varios resultados: lista alineada con IDs que devuelve el LLM (recomendaciones), con fallback a top vector si falla la IA.
+- Detalle de producto: texto generado con contexto de personas si existe `requestedPartySize` / cantidad pedida.
+- Complementos tras agregar al carrito: puente interactivo hacia categorías faltantes según tags del carrito.
+
+Lo que el documento NO fija (decisión de producto pendiente):
+- Si el bot debe sugerir “todo el menú” en un mensaje o por etapas.
+- Si ante faltantes prefiere avisar “te faltan bebidas” vs listado de sugerencias sin pregunta.
+- Si debe preguntar “¿completamos entradas o pasamos a bebidas?” o solo proponer botones.
+
+Propuesta de trabajo: definir 2–3 “personas” de usuario (pedido rápido vs exploración) y acordar tono + una regla de una categoría por mensaje si se busca claridad (esto sería política de prompt/orquestación, no schema).
+
+
+------------------------------------------------------------------------------
+6. SOBRE BOTONES / ACCIONES (WHATSAPP)
+------------------------------------------------------------------------------
+
+Comportamiento actual en selección de producto desde lista (cuando hay desajuste porciones/personas):
+- Siempre hay botón “Agregar 1”.
+- Si hay `requestedPartySize` (≥2) y el plato “no alcanza” según `serves_people` vs personas pedidas, se añade botón “Agregar N” con N = esa cantidad (`ADD_ITEM:productId:N`).
+
+Qué falta decidir en producto:
+- Si cuando el carrito ya tiene ítems el botón debe decir “Agregar 1 más” vs “Completar para 3”: hoy el título es “Agregar N” genérico.
+- Si mostrar siempre “Agregar N” cuando hay party size aunque no haya mismatch de porciones: hoy el segundo botón es condicional (mismatch + requestedQty ≥ 2).
+
+
+------------------------------------------------------------------------------
+7. SOBRE CONSISTENCIA DEL LLM
+------------------------------------------------------------------------------
+
+Hoy:
+- Prompts de recomendación de menú y de complementos incluyen reglas de verdad y anti-alucinación (porciones, personas, etc.).
+- `requestedPartySize` se inyecta como contexto de sesión en detalle de producto y recomendaciones, con instrucción de no inventar datos de ficha.
+
+Decisiones abiertas:
+- Si el LLM solo sugiere o también “dirige” el siguiente paso (está repartido entre prompts y modo de conversación).
+- Si se limita explícitamente a una categoría por respuesta para reducir ruido: parcialmente abordado en complementos (un tag por mensaje en diseño de `ComplementarySuggestionsResult`).
+
+
+------------------------------------------------------------------------------
+8. SOBRE FALLBACKS
+------------------------------------------------------------------------------
+
+Si no hay `requestedPartySize`:
+- El flujo se comporta como antes: no se añade bloque de contexto de personas en prompts; botones extra “Agregar N” solo si hay lógica de mismatch y cantidad (cuando existía cantidad por otro medio o legacy).
+
+Si el carrito está vacío:
+- No hay una regla rígida en código de “empezar siempre por principales”; el orden de exploración viene de búsqueda del usuario y de complementos según tags faltantes (`getMissingMenuTags`).
+
+
+------------------------------------------------------------------------------
+9. SOBRE MÉTRICAS
+------------------------------------------------------------------------------
+
+Estado actual:
+- Mensajes pueden guardar tokens/costo de IA en `conversation_message` (campos opcionales).
+- No hay en este repo un módulo estándar de analytics de “aceptación de recomendaciones” o “drop-off por paso” listo para producto.
+
+Si se desea “pro level”:
+- Eventos explícitos (aceptó recomendación, tap en botón ADD_ITEM con origen lista vs menú, abandono tras lista).
+- Correlación conversation_id + timestamps + estado del carrito.
+
+
+------------------------------------------------------------------------------
+RESUMEN EJECUTIVO (requestedPartySize vs carrito)
+------------------------------------------------------------------------------
+
+- requestedPartySize es CONTEXTO DE CONVERSACIÓN (cuántas personas orienta el pedido), en `conversation_state.metadata`.
+- Las CANTIDADES DE LÍNEA del pedido viven en `draft_order_item.quantity`.
+- Son dos conceptos distintos: “para 3 personas” no iguala automáticamente “3 unidades de este plato” salvo que el usuario pulse “Agregar 3” o el negocio defina reglas/prompts que lo guíen.
+
+Fin del documento.

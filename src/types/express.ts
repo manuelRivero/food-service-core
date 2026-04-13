@@ -5,7 +5,8 @@ declare global {
     interface Request {
       user?: {
         userId: string;
-        businessId: string;
+        /** Vacío solo para `SUPER_ADMIN` (sin tenant en el token). */
+        businessId: string | null;
         role: BusinessUserRole;
       };
     }

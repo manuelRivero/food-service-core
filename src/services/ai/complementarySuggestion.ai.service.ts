@@ -223,7 +223,11 @@ ${catalogLines}`;
     { role: 'user', content: user },
   ]);
 
-  if (content.includes('🚫') || content.includes('⚡')) {
+  if (
+    content.includes('🚫') ||
+    content.includes('⚡') ||
+    content.includes('⏳')
+  ) {
     return null;
   }
 

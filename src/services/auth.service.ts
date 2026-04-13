@@ -3,17 +3,15 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma";
 import {
   type BusinessUserRole,
-  BUSINESS_USER_ROLES,
   parseBusinessUserRole
 } from "../types/auth";
 
 const BCRYPT_ROUNDS = 12;
 
-const ACCESS_ROLES = BUSINESS_USER_ROLES;
-
 export type AccessTokenPayload = {
   userId: string;
-  businessId: string;
+  /** `null` cuando el rol es `SUPER_ADMIN` (sin `business_id` en membresía). */
+  businessId: string | null;
   role: BusinessUserRole;
 };
 
@@ -103,19 +101,28 @@ export function signRefreshToken(payload: RefreshTokenPayload): string {
 export function verifyAccessToken(token: string): AccessTokenPayload {
   const decoded = jwt.verify(token, getAccessSecret(), {
     algorithms: ["HS256"]
-  }) as jwt.JwtPayload & AccessTokenPayload;
-  if (
-    !decoded.userId ||
-    !decoded.businessId ||
-    !decoded.role ||
-    !ACCESS_ROLES.includes(decoded.role as BusinessUserRole)
-  ) {
+  }) as jwt.JwtPayload & {
+    userId?: string;
+    businessId?: string | null;
+    role?: string;
+  };
+  if (!decoded.userId || decoded.role === undefined) {
+    throw new Error("INVALID_ACCESS_TOKEN");
+  }
+  const role = parseBusinessUserRole(decoded.role);
+  if (role === "SUPER_ADMIN") {
+    if (decoded.businessId != null && decoded.businessId !== "") {
+      throw new Error("INVALID_ACCESS_TOKEN");
+    }
+    return { userId: decoded.userId, businessId: null, role };
+  }
+  if (!decoded.businessId) {
     throw new Error("INVALID_ACCESS_TOKEN");
   }
   return {
     userId: decoded.userId,
     businessId: decoded.businessId,
-    role: parseBusinessUserRole(decoded.role)
+    role
   };
 }
 
@@ -140,17 +147,21 @@ async function pickMembership(userId: string, businessId?: string) {
   if (memberships.length === 0) {
     throw new Error("NO_MEMBERSHIPS");
   }
+  if (businessId) {
+    const row = memberships.find((m) => m.business_id === businessId);
+    if (!row) {
+      throw new Error("MEMBERSHIP_NOT_FOUND");
+    }
+    return row;
+  }
   if (memberships.length === 1) {
     return memberships[0];
   }
-  if (!businessId) {
-    throw new Error("BUSINESS_ID_REQUIRED");
+  const superAdmin = memberships.find((m) => m.role === "SUPER_ADMIN");
+  if (superAdmin) {
+    return superAdmin;
   }
-  const row = memberships.find((m) => m.business_id === businessId);
-  if (!row) {
-    throw new Error("MEMBERSHIP_NOT_FOUND");
-  }
-  return row;
+  throw new Error("BUSINESS_ID_REQUIRED");
 }
 
 export async function login(
@@ -183,7 +194,7 @@ export async function login(
 
   const accessToken = signAccessToken({
     userId: user.id,
-    businessId: membership.business_id,
+    businessId: membership.business_id ?? null,
     role: parseBusinessUserRole(membership.role)
   });
   const refreshToken = signRefreshToken({
@@ -220,7 +231,7 @@ export async function refreshAccessToken(
   const bu = session.business_user;
   const accessToken = signAccessToken({
     userId: session.user_id,
-    businessId: bu.business_id,
+    businessId: bu.business_id ?? null,
     role: parseBusinessUserRole(bu.role)
   });
 

@@ -16,8 +16,8 @@ function getBearerToken(req: Request): string | undefined {
 
 /**
  * Token: `Authorization: Bearer <jwt>` o cookie HttpOnly (nombre por defecto `access_token`).
- * Tras este middleware, las rutas protegidas deben acotar datos con
- * `business_id = req.user.businessId` (aislamiento multi-tenant).
+ * Tras este middleware, las rutas de tenant deben acotar datos con
+ * `business_id = req.user.businessId` (salvo `SUPER_ADMIN`, donde puede ser `null`).
  */
 export function authenticateJwt(
   req: Request,

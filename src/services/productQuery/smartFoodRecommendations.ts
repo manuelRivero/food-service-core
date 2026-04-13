@@ -749,7 +749,12 @@ export async function getSmartRecommendations(params: {
       { role: 'user', content: user },
     ]);
 
-    if (!content || content.includes('🚫') || content.includes('⚡')) {
+    if (
+      !content ||
+      content.includes('🚫') ||
+      content.includes('⚡') ||
+      content.includes('⏳')
+    ) {
       return llmFailureResult();
     }
 

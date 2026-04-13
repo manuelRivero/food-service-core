@@ -131,9 +131,15 @@ export function attachAdminSocket(httpServer: HttpServer): Server {
   });
 
   io.on("connection", (socket) => {
-    const businessId = socket.data.businessId as string | undefined;
+    const businessId = socket.data.businessId as string | null | undefined;
     const role = socket.data.role as BusinessUserRole | undefined;
     if (!businessId) {
+      if (role === "SUPER_ADMIN") {
+        console.log(
+          `${LOG} conexión SUPER_ADMIN sin tenant (sin sala admin) socket.id=${socket.id}`
+        );
+        return;
+      }
       console.warn(`${LOG} connection sin businessId, desconectando socket.id=${socket.id}`);
       socket.disconnect(true);
       return;

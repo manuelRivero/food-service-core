@@ -26,7 +26,10 @@ model business {
   ai_reset_at            DateTime                 @default(now()) @db.Timestamptz(6)
   ai_blocked             Boolean                  @default(false)
   currency_code          String?                  @db.Char(3)
+  latitude               Float?
+  longitude              Float?
   currency               currency?                @relation(fields: [currency_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  business_config        business_config?
   business_coverage_zone business_coverage_zone[]
   business_hours         business_hours[]
   business_user          business_user[]
@@ -41,16 +44,17 @@ model business {
   reservation_block      reservation_block[]
   reservation_config     reservation_config?
   reservation_slot       reservation_slot[]
+  subscription           subscription?
   table                  table[]
 }
 
 model business_user {
   id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id      String         @db.Uuid
-  business_id  String         @db.Uuid
+  business_id  String?        @db.Uuid
   role         String
   created_at   DateTime?      @default(now()) @db.Timestamptz(6)
-  business     business       @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_business")
+  business     business?      @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_business")
   app_user     AppUser        @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user")
   user_session user_session[]
 
@@ -479,6 +483,67 @@ model AppUser {
   user_session  user_session[]
 
   @@map("user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model business_config {
+  id                                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id                          String   @unique @db.Uuid
+  bot_enabled                          Boolean  @default(true)
+  allow_human_handoff                  Boolean  @default(true)
+  human_handoff_auto_timeout_minutes   Int?
+  send_idle_reminders                  Boolean  @default(true)
+  idle_reminder_minutes                Int      @default(1)
+  idle_close_minutes                   Int      @default(2)
+  send_order_reminders                 Boolean  @default(true)
+  draft_order_reminder_minutes         Int      @default(1)
+  draft_order_expire_minutes           Int      @default(2)
+  reservations_enabled                 Boolean  @default(true)
+  reservation_min_lead_minutes         Int      @default(60)
+  reservation_max_days_ahead           Int      @default(30)
+  reservation_default_duration_minutes Int      @default(90)
+  reservation_require_confirmation     Boolean  @default(true)
+  reservation_allow_same_day           Boolean  @default(true)
+  orders_enabled                       Boolean  @default(true)
+  checkout_enabled                     Boolean  @default(true)
+  created_at                           DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                           DateTime @default(now()) @db.Timestamptz(6)
+  business                             business @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_business_config_business")
+
+  @@index([business_id], map: "idx_business_config_business_id")
+}
+
+model plan {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String
+  code              String         @unique
+  monthly_price_usd Decimal?       @db.Decimal(10, 2)
+  token_limit       Int
+  is_active         Boolean?       @default(true)
+  created_at        DateTime?      @default(now()) @db.Timestamptz(6)
+  subscription      subscription[]
+}
+
+model subscription {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id            String    @unique(map: "unique_business_subscription") @db.Uuid
+  stripe_customer_id     String
+  stripe_subscription_id String    @unique
+  stripe_price_id        String?
+  status                 String
+  cancel_at_period_end   Boolean?  @default(false)
+  current_period_start   DateTime  @db.Timestamptz(6)
+  current_period_end     DateTime  @db.Timestamptz(6)
+  created_at             DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime? @default(now()) @db.Timestamptz(6)
+  plan_id                String?   @db.Uuid
+  is_trial               Boolean?  @default(false)
+  trial_end              DateTime? @db.Timestamptz(6)
+  business               business  @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_subscription_business")
+  plan                   plan?     @relation(fields: [plan_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_subscription_plan")
+
+  @@index([business_id], map: "idx_subscription_business_id")
+  @@index([stripe_customer_id], map: "idx_subscription_customer_id")
 }
 
 /// Flujo operativo del pedido (logística). No indica si ya se cobró — ver `payment_status`.

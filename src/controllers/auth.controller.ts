@@ -48,6 +48,9 @@ export async function postLogin(req: Request, res: Response) {
     if (msg === "MEMBERSHIP_NOT_FOUND") {
       return res.status(403).json({ error: "No tienes acceso a ese negocio" });
     }
+    if (msg === "INVALID_MEMBERSHIP_ROLE") {
+      return res.status(500).json({ error: "Rol de cuenta inválido" });
+    }
     throw e;
   }
 }

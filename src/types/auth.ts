@@ -1,5 +1,6 @@
 /** Alineado con `business_user.role` en BD (TEXT / CHECK), no enum en Prisma. */
 export const BUSINESS_USER_ROLES = [
+  "SUPER_ADMIN",
   "OWNER",
   "ADMIN",
   "STAFF",

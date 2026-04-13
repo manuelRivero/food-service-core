@@ -44,7 +44,7 @@ import {
   shouldBlockForMissingPeopleCount,
 } from '../../services/peopleCountGate.service';
 import { normalizeMetadata, partySizeMetadataFields } from '../../services/productQuery/utils';
-
+import { evaluateSubscriptionForBotAi } from '../../services/subscriptionBotAccess.service';
 
 export const processWebhook = async (payload: any): Promise<void> => {
 
@@ -96,6 +96,22 @@ export const processWebhook = async (payload: any): Promise<void> => {
     const persistResult = await persistUserMessage(ctx);
     if (!persistResult) {
       console.error('[Orchestrator] Failed to persist message');
+      return;
+    }
+
+    const subscriptionAccess = await evaluateSubscriptionForBotAi(business);
+    if (!subscriptionAccess.ok) {
+      await sendResponse(ctx, {
+        content: subscriptionAccess.message,
+        isInteractive: false
+      });
+      await createConversationMessage(
+        persistResult.conversationId,
+        'ai',
+        subscriptionAccess.message,
+        true
+      );
+      await updateConversationLastMessageAt(persistResult.conversationId);
       return;
     }
 
