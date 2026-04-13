@@ -17,6 +17,13 @@ import {
   removeDeliveryZone
 } from "../controllers/adminDeliveryZones.controller";
 import {
+  getTableById,
+  getTables,
+  patchTable,
+  postTable,
+  removeTable
+} from "../controllers/adminTables.controller";
+import {
   getMenuCategoriesOptions,
   getMenuItemById,
   getMenuItems,
@@ -89,6 +96,12 @@ router.delete(
   requireRoles("OWNER", "ADMIN"),
   removeDeliveryZone
 );
+
+router.get("/tables", requireRoles("OWNER", "ADMIN"), getTables);
+router.get("/tables/:id", requireRoles("OWNER", "ADMIN"), getTableById);
+router.post("/tables", requireRoles("OWNER", "ADMIN"), postTable);
+router.patch("/tables/:id", requireRoles("OWNER", "ADMIN"), patchTable);
+router.delete("/tables/:id", requireRoles("OWNER", "ADMIN"), removeTable);
 
 router.get("/reservations", getReservations);
 router.get("/reservations/:id", getReservationById);

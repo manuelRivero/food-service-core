@@ -28,6 +28,9 @@ model business {
   currency_code          String?                  @db.Char(3)
   latitude               Float?
   longitude              Float?
+  billing_mode           String?                  @default("subscription")
+  slug                   String?                  @unique
+  features               Json?                    @default("{}")
   currency               currency?                @relation(fields: [currency_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
   business_config        business_config?
   business_coverage_zone business_coverage_zone[]
@@ -450,6 +453,12 @@ model table {
   capacity          Int
   is_active         Boolean?            @default(true)
   created_at        DateTime?           @default(now()) @db.Timestamptz(6)
+  x                 Float?
+  y                 Float?
+  shape             String?
+  width             Float?
+  height            Float?
+  rotation          Float?
   reservation_block reservation_block[]
   reservation_table reservation_table[]
   business          business            @relation(fields: [business_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_table_business")
@@ -457,6 +466,7 @@ model table {
 
   @@index([business_id], map: "idx_table_business")
   @@index([environment_id], map: "idx_table_environment")
+  @@index([business_id, environment_id], map: "idx_table_business_environment")
 }
 
 model reservation_config {
