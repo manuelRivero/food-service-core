@@ -7,7 +7,9 @@ const paramsSchema = z.object({
 });
 
 const bodySchema = z.object({
-  message: z.string().trim().min(1).max(4096)
+  message: z.string().trim().min(1).max(4096),
+  /** Si true, no marca la conversación como modo humano (p. ej. aviso al volver el bot). */
+  skipHumanTakeover: z.boolean().optional()
 });
 
 export async function postAdminWhatsappReply(req: Request, res: Response) {
@@ -35,7 +37,8 @@ export async function postAdminWhatsappReply(req: Request, res: Response) {
       businessId,
       conversationId: parsedParams.data.conversationId,
       message: parsedBody.data.message,
-      adminUserId
+      adminUserId,
+      skipHumanTakeover: parsedBody.data.skipHumanTakeover === true
     });
 
     if (!result.ok) {

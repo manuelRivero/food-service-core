@@ -7,6 +7,8 @@ export async function sendAdminWhatsappReply(params: {
   conversationId: string;
   message: string;
   adminUserId: string;
+  /** No forzar is_human_handled (mensajes de sistema al reactivar bot, etc.). */
+  skipHumanTakeover?: boolean;
 }) {
   const conversation = await prisma.conversation.findFirst({
     where: {
@@ -50,17 +52,19 @@ export async function sendAdminWhatsappReply(params: {
   );
   await updateConversationLastMessageAt(conversation.id);
 
-  // Enviar mensaje humano implica takeover.
-  await prisma.conversation_state.upsert({
-    where: { conversation_id: conversation.id },
-    create: {
-      conversation_id: conversation.id,
-      is_human_handled: true
-    },
-    update: {
-      is_human_handled: true
-    }
-  });
+  if (!params.skipHumanTakeover) {
+    // Enviar mensaje humano implica takeover.
+    await prisma.conversation_state.upsert({
+      where: { conversation_id: conversation.id },
+      create: {
+        conversation_id: conversation.id,
+        is_human_handled: true
+      },
+      update: {
+        is_human_handled: true
+      }
+    });
+  }
 
   return { ok: true as const };
 }
