@@ -24,6 +24,13 @@ import {
   removeTable
 } from "../controllers/adminTables.controller";
 import {
+  getBusinessHourById,
+  getBusinessHours,
+  patchBusinessHour,
+  postBusinessHour,
+  removeBusinessHour
+} from "../controllers/adminBusinessHours.controller";
+import {
   getMenuCategoriesOptions,
   getMenuItemById,
   getMenuItems,
@@ -102,6 +109,23 @@ router.get("/tables/:id", requireRoles("OWNER", "ADMIN"), getTableById);
 router.post("/tables", requireRoles("OWNER", "ADMIN"), postTable);
 router.patch("/tables/:id", requireRoles("OWNER", "ADMIN"), patchTable);
 router.delete("/tables/:id", requireRoles("OWNER", "ADMIN"), removeTable);
+router.get("/business-hours", requireRoles("OWNER", "ADMIN"), getBusinessHours);
+router.get(
+  "/business-hours/:id",
+  requireRoles("OWNER", "ADMIN"),
+  getBusinessHourById
+);
+router.post("/business-hours", requireRoles("OWNER", "ADMIN"), postBusinessHour);
+router.patch(
+  "/business-hours/:id",
+  requireRoles("OWNER", "ADMIN"),
+  patchBusinessHour
+);
+router.delete(
+  "/business-hours/:id",
+  requireRoles("OWNER", "ADMIN"),
+  removeBusinessHour
+);
 
 router.get("/reservations", getReservations);
 router.get("/reservations/:id", getReservationById);
