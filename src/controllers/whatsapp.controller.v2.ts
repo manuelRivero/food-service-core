@@ -1,25 +1,41 @@
 import { Request, Response } from 'express';
-import { WhatsAppWebhookPayload } from './webhook/types';
-import { processWebhook } from './webhook/orchestrator';
+import axios from 'axios';
 import {
   SendMessageRequest,
   SendMessageResponse
 } from '../types/whatsapp';
 import {
   sendTextMessage,
-  ValidationError,
-  verifyWebhook as verifyWebhookService
+  ValidationError
 } from '../services/whatsapp.service';
 
-export const handleWebhook = async (
-  req: Request<{}, {}, WhatsAppWebhookPayload>,
+const REMOTE_WEBHOOK_URL = 'https://food-service-langraph.onrender.com/api/whatsapp/webhook';
+
+export const proxyWebhook = async (
+  req: Request,
   res: Response
 ): Promise<void> => {
-  // 1. Responder inmediatamente a WhatsApp
-  res.sendStatus(200);
-  
-  // 2. Delegar TODO el procesamiento
-  await processWebhook(req.body);
+  try {
+    const response = await axios({
+      method: req.method,
+      url: REMOTE_WEBHOOK_URL,
+      params: req.query,
+      data: req.body,
+      headers: {
+        'x-hub-signature-256': req.header('x-hub-signature-256') ?? '',
+        'content-type': req.header('content-type') ?? 'application/json'
+      },
+      validateStatus: () => true
+    });
+
+    res.status(response.status).set(response.headers).send(response.data);
+  } catch (error) {
+    console.error('Error reenviando webhook a backend LangGraph:', error);
+    res.status(502).json({
+      success: false,
+      error: 'No se pudo reenviar el webhook al backend de automatizacion'
+    });
+  }
 };
 
 export const sendMessage = async (
@@ -46,20 +62,6 @@ export const sendMessage = async (
     res.status(500).json({
       success: false,
       error: 'Error interno del servidor'
-    });
-  }
-};
-
-export const verifyWebhook = (req: Request, res: Response): void => {
-  const { isValid, challenge } = verifyWebhookService(req.query);
-
-  if (isValid) {
-    console.log('Webhook verificado');
-    res.status(200).send(challenge);
-  } else {
-    res.status(403).json({
-      success: false,
-      error: 'Token de verificación inválido'
     });
   }
 };
