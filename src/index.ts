@@ -18,7 +18,7 @@ setInterval(processDraftOrderTimeouts, 60000)
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-const corsOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:3000')
+const corsOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:3001')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);

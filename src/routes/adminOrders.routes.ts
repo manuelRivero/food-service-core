@@ -40,6 +40,11 @@ import {
 } from "../controllers/adminMenuItems.controller";
 import { getDashboardSummary } from "../controllers/adminDashboard.controller";
 import {
+  getClientRankingHandler,
+  getOrderVolumeHandler,
+  getTopDishesHandler,
+} from "../controllers/adminAnalytics.controller";
+import {
   createAdminBusinessConfig,
   getAdminBusinessConfig,
   patchAdminBusinessConfig,
@@ -62,6 +67,9 @@ router.get("/orders/:id", getOrderById);
 router.patch("/orders/:id/status", patchOrderDeliveryStatus);
 router.patch("/orders/:id/payment-status", patchOrderPaymentStatus);
 router.get("/dashboard/summary", getDashboardSummary);
+router.get("/analytics/order-volume", getOrderVolumeHandler);
+router.get("/analytics/client-ranking", getClientRankingHandler);
+router.get("/analytics/top-dishes", getTopDishesHandler);
 router.get("/config", requireRoles("OWNER", "ADMIN"), getAdminBusinessConfig);
 router.post("/config", requireRoles("OWNER", "ADMIN"), createAdminBusinessConfig);
 router.patch("/config", requireRoles("OWNER", "ADMIN"), patchAdminBusinessConfig);
