@@ -10,6 +10,7 @@ import checkinRoutes from './routes/checkin.routes';
 import authRoutes from './routes/auth.routes';
 import adminOrdersRoutes from './routes/adminOrders.routes';
 import superAdminRoutes from './routes/superAdmin.routes';
+import publicRoutes from './routes/public.routes';
 
 import { processDraftOrderTimeouts } from './workers/draftOrders';
 
@@ -52,6 +53,7 @@ app.use('/checkin', checkinRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminOrdersRoutes);
 app.use('/api/super-admin', superAdminRoutes);
+app.use('/api/public', publicRoutes);
 
 // Ruta de prueba
 app.get('/', (req: Request, res: Response) => {

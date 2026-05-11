@@ -74,24 +74,14 @@ export async function listAdminMenuCategoriesOptions(params: {
     },
     orderBy: [{ position: "asc" }, { name: "asc" }],
     select: {
-      category_tag: true
+      id: true,
+      name: true
     }
   });
 
-  const SECTION_LABEL: Record<MenuCategoryTag, string> = {
-    STARTER: "Entradas",
-    MAIN: "Platos fuertes",
-    SIDE: "Guarniciones",
-    DRINK: "Bebidas",
-    DESSERT: "Postres",
-    OTHER: "Otros"
-  };
-
-  const uniqueTags = Array.from(new Set(rows.map((row) => row.category_tag)));
-
-  return uniqueTags.map((tag) => ({
-    id: tag,
-    name: SECTION_LABEL[tag]
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name
   }));
 }
 
