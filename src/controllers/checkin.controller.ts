@@ -7,8 +7,15 @@ import {
   removeArrivals
 } from "../services/checkin.service";
 
+/** Express 5 tipa `req.params` como `string | string[]` en algunas rutas. */
+function firstRouteParam(value: string | string[] | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const s = Array.isArray(value) ? value[0] : value;
+  return s === "" ? undefined : s;
+}
+
 export async function getCheckin(req: Request, res: Response) {
-  const { token } = req.params;
+  const token = firstRouteParam(req.params.token);
   if (!token || !isValidReservationToken(token)) {
     return res.status(400).json({ error: "Token inválido" });
   }
@@ -22,7 +29,7 @@ export async function getCheckin(req: Request, res: Response) {
 }
 
 export async function postCheckinAdd(req: Request, res: Response) {
-  const { token } = req.params;
+  const token = firstRouteParam(req.params.token);
   if (!token || !isValidReservationToken(token)) {
     return res.status(400).json({ error: "Token inválido" });
   }
@@ -48,7 +55,7 @@ export async function postCheckinAdd(req: Request, res: Response) {
 }
 
 export async function postCheckinRemove(req: Request, res: Response) {
-  const { token } = req.params;
+  const token = firstRouteParam(req.params.token);
   if (!token || !isValidReservationToken(token)) {
     return res.status(400).json({ error: "Token inválido" });
   }
@@ -74,7 +81,7 @@ export async function postCheckinRemove(req: Request, res: Response) {
 }
 
 export async function postCheckinClose(req: Request, res: Response) {
-  const { token } = req.params;
+  const token = firstRouteParam(req.params.token);
   if (!token || !isValidReservationToken(token)) {
     return res.status(400).json({ error: "Token inválido" });
   }
