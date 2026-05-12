@@ -32,6 +32,7 @@ import {
 } from "../controllers/adminBusinessHours.controller";
 import {
   getMenuCategoriesOptions,
+  getMenuCategoryTagsOptions,
   getMenuItemById,
   getMenuItems,
   patchMenuItem,
@@ -88,6 +89,11 @@ router.get(
   "/menu-categories/options",
   requireRoles("OWNER", "ADMIN"),
   getMenuCategoriesOptions
+);
+router.get(
+  "/menu-category-tags/options",
+  requireRoles("OWNER", "ADMIN"),
+  getMenuCategoryTagsOptions
 );
 router.get("/menu-items", requireRoles("OWNER", "ADMIN"), getMenuItems);
 router.get("/menu-items/:id", requireRoles("OWNER", "ADMIN"), getMenuItemById);

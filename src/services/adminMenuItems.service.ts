@@ -8,6 +8,7 @@ export type ListAdminMenuItemsParams = {
   categoryId?: string;
   q?: string;
   includeUnavailable?: boolean;
+  all?: boolean;
 };
 
 export async function listAdminMenuItems(params: ListAdminMenuItemsParams) {
@@ -32,14 +33,13 @@ export async function listAdminMenuItems(params: ListAdminMenuItemsParams) {
     ];
   }
 
-  const skip = (params.page - 1) * params.pageSize;
   const [total, rows] = await prisma.$transaction([
     prisma.menu_item.count({ where }),
     prisma.menu_item.findMany({
       where,
       orderBy: { created_at: "desc" },
-      skip,
-      take: params.pageSize,
+      skip: params.all ? undefined : (params.page - 1) * params.pageSize,
+      take: params.all ? undefined : params.pageSize,
       include: {
         menu_category: {
           select: {
@@ -52,6 +52,16 @@ export async function listAdminMenuItems(params: ListAdminMenuItemsParams) {
     })
   ]);
 
+  const effectivePageSize = params.all ? total : params.pageSize;
+  const effectivePage = params.all ? 1 : params.page;
+  const effectiveTotalPages = params.all
+    ? total === 0
+      ? 0
+      : 1
+    : total === 0
+      ? 0
+      : Math.ceil(total / params.pageSize);
+
   return {
     items: rows.map((row) => ({
       ...row,
@@ -59,9 +69,9 @@ export async function listAdminMenuItems(params: ListAdminMenuItemsParams) {
       categoryTag: row.menu_category?.category_tag ?? null
     })),
     total,
-    page: params.page,
-    pageSize: params.pageSize,
-    totalPages: total === 0 ? 0 : Math.ceil(total / params.pageSize)
+    page: effectivePage,
+    pageSize: effectivePageSize,
+    totalPages: effectiveTotalPages
   };
 }
 
@@ -82,6 +92,36 @@ export async function listAdminMenuCategoriesOptions(params: {
   return rows.map((row) => ({
     id: row.id,
     name: row.name
+  }));
+}
+
+const MENU_CATEGORY_TAG_LABEL: Record<MenuCategoryTag, string> = {
+  STARTER: "Entradas",
+  MAIN: "Platos fuertes",
+  SIDE: "Guarniciones",
+  DRINK: "Bebidas",
+  DESSERT: "Postres",
+  OTHER: "Otros"
+};
+
+export async function listAdminMenuCategoryTagsOptions(params: {
+  businessId: string;
+}) {
+  const rows = await prisma.menu_category.findMany({
+    where: {
+      business_id: params.businessId
+    },
+    orderBy: [{ position: "asc" }, { name: "asc" }],
+    select: {
+      category_tag: true
+    }
+  });
+
+  const uniqueTags = Array.from(new Set(rows.map((row) => row.category_tag)));
+
+  return uniqueTags.map((tag) => ({
+    id: tag,
+    name: MENU_CATEGORY_TAG_LABEL[tag]
   }));
 }
 

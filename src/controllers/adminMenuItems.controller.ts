@@ -6,6 +6,7 @@ import {
   deleteAdminMenuItem,
   getAdminMenuItemById,
   listAdminMenuCategoriesOptions,
+  listAdminMenuCategoryTagsOptions,
   listAdminMenuItems,
   updateAdminMenuItem
 } from "../services/adminMenuItems.service";
@@ -15,7 +16,8 @@ const listQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   categoryId: z.string().uuid().optional(),
   q: z.string().min(1).optional(),
-  includeUnavailable: z.coerce.boolean().optional().default(false)
+  includeUnavailable: z.coerce.boolean().optional().default(false),
+  all: z.coerce.boolean().optional().default(false)
 });
 
 const createSchema = z.object({
@@ -73,7 +75,8 @@ export async function getMenuItems(req: Request, res: Response) {
     pageSize: parsed.data.pageSize,
     categoryId: parsed.data.categoryId,
     q: parsed.data.q,
-    includeUnavailable: parsed.data.includeUnavailable
+    includeUnavailable: parsed.data.includeUnavailable,
+    all: parsed.data.all
   });
 
   return res.json(result);
@@ -86,6 +89,16 @@ export async function getMenuCategoriesOptions(req: Request, res: Response) {
   }
 
   const items = await listAdminMenuCategoriesOptions({ businessId });
+  return res.json({ items });
+}
+
+export async function getMenuCategoryTagsOptions(req: Request, res: Response) {
+  const businessId = req.user?.businessId;
+  if (!businessId) {
+    return res.status(401).json({ error: "No autenticado" });
+  }
+
+  const items = await listAdminMenuCategoryTagsOptions({ businessId });
   return res.json({ items });
 }
 
