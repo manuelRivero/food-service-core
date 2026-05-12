@@ -7,9 +7,10 @@ export const ACCESS_COOKIE_NAME =
 export const REFRESH_COOKIE_NAME =
   process.env.AUTH_REFRESH_COOKIE_NAME ?? "refresh_token";
 
-const ACCESS_MAX_AGE_SEC = Number(process.env.AUTH_ACCESS_COOKIE_MAX_AGE) || 15 * 60;
+const ACCESS_MAX_AGE_SEC =
+  Number(process.env.AUTH_ACCESS_COOKIE_MAX_AGE) || 4 * 60 * 60;
 const REFRESH_MAX_AGE_SEC =
-  Number(process.env.AUTH_REFRESH_COOKIE_MAX_AGE) || 7 * 24 * 60 * 60;
+  Number(process.env.AUTH_REFRESH_COOKIE_MAX_AGE) || 8 * 60 * 60;
 
 function cookieBaseSerializeOptions(): SerializeOptions {
   const sameSiteRaw = process.env.AUTH_COOKIE_SAMESITE;

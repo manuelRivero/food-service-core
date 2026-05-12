@@ -37,11 +37,11 @@ function getRefreshSecret(): string {
 }
 
 function accessExpiresIn(): string {
-  return process.env.JWT_ACCESS_EXPIRES ?? "15m";
+  return process.env.JWT_ACCESS_EXPIRES ?? "4h";
 }
 
 function refreshExpiresIn(): string {
-  return process.env.JWT_REFRESH_EXPIRES ?? "7d";
+  return process.env.JWT_REFRESH_EXPIRES ?? "8h";
 }
 
 function refreshExpiresMs(): number {
@@ -53,7 +53,7 @@ function refreshExpiresMs(): number {
     }
     return n;
   }
-  return 7 * 24 * 60 * 60 * 1000;
+  return 8 * 60 * 60 * 1000;
 }
 
 export async function hashPassword(plain: string): Promise<string> {
