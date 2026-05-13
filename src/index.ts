@@ -5,12 +5,8 @@ import path from 'path';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
 import { attachAdminSocket } from './socket/adminSocket';
-import whatsappRoutes from './routes/whatsapp.routes';
+import apiProxyRoutes from './routes/whatsapp.routes';
 import checkinRoutes from './routes/checkin.routes';
-import authRoutes from './routes/auth.routes';
-import adminOrdersRoutes from './routes/adminOrders.routes';
-import superAdminRoutes from './routes/superAdmin.routes';
-import publicRoutes from './routes/public.routes';
 
 import { processDraftOrderTimeouts } from './workers/draftOrders';
 
@@ -47,13 +43,9 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use(express.static(path.join(process.cwd(), 'public')));
 
-// Rutas
-app.use('/api/whatsapp', whatsappRoutes);
+// Rutas: todo /api/* se reenvía a LangGraph (ver whatsapp.routes.ts)
+app.use('/api', apiProxyRoutes);
 app.use('/checkin', checkinRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminOrdersRoutes);
-app.use('/api/super-admin', superAdminRoutes);
-app.use('/api/public', publicRoutes);
 
 // Ruta de prueba
 app.get('/', (req: Request, res: Response) => {

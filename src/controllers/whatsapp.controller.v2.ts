@@ -9,31 +9,70 @@ import {
   ValidationError
 } from '../services/whatsapp.service';
 
-const REMOTE_WEBHOOK_URL = 'https://food-service-langraph.onrender.com/api/whatsapp/webhook';
+const LANGGRAPH_BASE_URL =
+  process.env.LANGGRAPH_PROXY_URL ?? 'https://food-service-langraph.onrender.com';
 
-export const proxyWebhook = async (
+const HOP_BY_HOP_HEADERS = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailers',
+  'transfer-encoding',
+  'upgrade',
+  'host',
+  'content-length'
+]);
+
+function shouldForwardRequestBody(method: string): boolean {
+  const m = method.toUpperCase();
+  return m !== 'GET' && m !== 'HEAD';
+}
+
+/**
+ * Reenvía cualquier petición al backend LangGraph conservando path y query
+ * (p. ej. /api/auth/login → LANGGRAPH_BASE_URL/api/auth/login).
+ */
+export const proxyRequestToLangGraph = async (
   req: Request,
   res: Response
 ): Promise<void> => {
+  const targetUrl = `${LANGGRAPH_BASE_URL}${req.originalUrl}`;
+
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (HOP_BY_HOP_HEADERS.has(key.toLowerCase())) continue;
+    if (value === undefined) continue;
+    headers[key] = Array.isArray(value) ? value.join(', ') : value;
+  }
+
   try {
     const response = await axios({
       method: req.method,
-      url: REMOTE_WEBHOOK_URL,
-      params: req.query,
-      data: req.body,
-      headers: {
-        'x-hub-signature-256': req.header('x-hub-signature-256') ?? '',
-        'content-type': req.header('content-type') ?? 'application/json'
-      },
-      validateStatus: () => true
+      url: targetUrl,
+      headers,
+      data: shouldForwardRequestBody(req.method) ? req.body : undefined,
+      validateStatus: () => true,
+      responseType: 'arraybuffer',
+      maxBodyLength: Infinity
     });
 
-    res.status(response.status).set(response.headers).send(response.data);
+    const skipResponseHeaders = new Set(['transfer-encoding', 'connection']);
+    for (const [key, value] of Object.entries(response.headers)) {
+      if (value === undefined || skipResponseHeaders.has(key.toLowerCase())) {
+        continue;
+      }
+      const v = value as string | string[];
+      res.setHeader(key, v);
+    }
+
+    res.status(response.status).send(Buffer.from(response.data));
   } catch (error) {
-    console.error('Error reenviando webhook a backend LangGraph:', error);
+    console.error('Error en proxy hacia LangGraph:', error);
     res.status(502).json({
       success: false,
-      error: 'No se pudo reenviar el webhook al backend de automatizacion'
+      error: 'No se pudo contactar el backend de automatización'
     });
   }
 };
